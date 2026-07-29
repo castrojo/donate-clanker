@@ -3,8 +3,9 @@
 ## Goal
 
 Replace the current Linux/systemd-specific `donate-clanker` orchestration with
-a cross-platform, foreground-only launcher for a contained Goose contributor
-workload using local inference.
+a cross-platform, foreground-only container workload using local inference.
+Bluefin exposes it through a convenience `just`/`ujust` command, but does not
+duplicate the runtime logic.
 
 The v1 experience is local-only: users do not need an API key or a separately
 installed agent CLI. They do need a Docker-compatible container engine
@@ -13,20 +14,26 @@ Windows) and hardware supported by the selected RamaLama runtime.
 
 ## Architecture
 
-The system has three ownership boundaries:
+The system has four ownership boundaries:
 
-1. **`donate-clanker` Go launcher**
+1. **Container workload**
+   - Owns the commodity Goose CLI, Hive protocol worker, RamaLama integration,
+     model/profile catalog, provider configuration, and task execution logic.
+   - Runs as the reusable artifact independent of Bluefin's `just` packaging.
+   - Receives only explicit workspace, auth/config, cache, and model settings.
+
+2. **`donate-clanker` Go launcher**
    - Detects and selects Podman, Docker, or Colima.
    - Runs the host-side upstream Hive contributor setup when required.
-   - Presents a curated local-model/profile list, with explicit model/profile
-     overrides for automation.
+   - Passes model/profile settings to the container; it does not reimplement
+     Goose, Hive, or RamaLama behavior.
    - Creates one ephemeral pod and manages its complete foreground lifecycle.
    - Mounts only the selected workspace, required Hive/GitHub configuration
      paths, and persistent model storage.
    - Forwards logs and termination signals, then removes the pod and helper
      containers on exit.
 
-2. **Goose/Hive application image**
+3. **Goose/Hive application image**
    - Is a minimal, distroless-compatible image containing Goose and the
      headless Hive contributor protocol client.
    - Receives one Hive assignment at a time.
@@ -35,7 +42,7 @@ The system has three ownership boundaries:
    - Reports task completion/failure and requests the next assignment.
    - Does not contain or access a host container socket.
 
-3. **RamaLama distribution image**
+4. **RamaLama distribution image**
    - Is maintained and published by `projectbluefin/fsdk-containers`.
    - Provides the RamaLama CLI and the runtime integration needed to select
      hardware-specific inference images.
@@ -44,7 +51,7 @@ The system has three ownership boundaries:
    - Runs as the second container in the same pod as Goose, exposing only the
      private model endpoint.
 
-The launcher is the only component that owns the pod lifecycle. If the
+The launcher is the only component that owns the host pod lifecycle. If the
 RamaLama distribution requires the host engine API to start a
 hardware-specific runtime, only the dedicated RamaLama helper receives that
 engine access; the Goose container never receives a host socket and never
@@ -52,7 +59,7 @@ performs nested container orchestration.
 
 ## Model selection and hardware
 
-The launcher offers curated model profiles and supports explicit overrides.
+The container offers curated model profiles and supports explicit overrides.
 `auto` selects the largest compatible curated profile for detected hardware.
 Profiles are versioned configuration entries containing the RamaLama model
 reference, runtime preference, context size, and minimum resource
@@ -115,7 +122,8 @@ Windows. Images are published for `linux/amd64` and `linux/arm64`; Windows
 uses Linux containers through WSL2 or a compatible Docker/Podman setup.
 
 The launcher abstracts runtime-specific commands behind a small engine
-interface:
+interface. Bluefin's `just`/`ujust` recipe only locates or invokes this
+launcher and supplies the normal workspace/config defaults:
 
 - discover or validate the selected engine;
 - create a pod/network;
@@ -125,6 +133,11 @@ interface:
 - stop and remove owned resources.
 
 No runtime-specific systemd behavior is part of the application contract.
+
+Bluefin integration is intentionally thin. It may package the launcher,
+provide a convenience recipe, and set Bluefin-specific defaults, but it must
+not contain a second copy of model selection, Hive protocol handling, pod
+cleanup, or credential mounting logic.
 
 ## Security and failure behavior
 
