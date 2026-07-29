@@ -43,10 +43,37 @@ flexibility on top, and keeps step 1 untouched.
 
 ```
 quadlet/donate-clanker.container   # the workload unit (no [Install] section)
-quadlet/tools/{claude,copilot}.conf # per-tool drop-in fragments
+quadlet/tools/{claude,copilot,goose}.conf # per-tool drop-in fragments
+bin/lib-detect.sh                  # shared host CLI detection, used by bootstrap + doctor
 bin/donate-clanker-bootstrap.sh    # idempotent installer, run by the just recipe
-just/61-donate-clanker.just        # ujust recipes: donate-clanker, donate-clanker-stop
+just/61-donate-clanker.just        # ujust recipes: donate-clanker, donate-clanker-doctor, donate-clanker-stop
 ```
+
+## Onboarding
+
+A fresh machine with none of this configured hits three gaps in order —
+`ujust donate-clanker` now handles all three instead of failing deep inside
+a container log:
+
+1. **No CLI installed/authenticated at all.** `TOOL` is no longer a silent
+   `claude` default. `bin/lib-detect.sh` auto-detects the first
+   installed-and-authenticated CLI in order (`claude`, `copilot`, `goose`)
+   and prints which one it picked. If none qualify, it fails fast on the
+   host with an install/auth hint for each, before touching podman at all.
+   Override explicitly with `TOOL=<name>`; an explicit `TOOL=` that isn't
+   installed or isn't authenticated also fails fast with the same
+   actionable one-liner (see `tool_fixit_hint`/`tool_install_hint`).
+2. **Upstream `contribute-setup` never run.** If
+   `~/.config/hive/contributor.env` doesn't exist, the bootstrap script
+   clones `kubestellar/hive` (branch `v2`) into
+   `~/.local/state/donate-clanker/hive-src` and runs **its own**
+   `just contribute-setup <tool>` — we still never reimplement the
+   registration/GitHub-auth logic ourselves, we just make sure it has run.
+3. **"Is my machine even ready?"** `ujust donate-clanker-doctor` is a
+   read-only preflight: rootless podman, the quadlet generator, `gh` auth,
+   whether upstream setup has completed, and which CLIs are
+   installed/authenticated (and which one `TOOL` would auto-pick). It never
+   starts the container.
 
 ## Design rationale
 

@@ -23,11 +23,13 @@
 donate_clanker_root := "/usr/share/ublue-os/donate-clanker"
 
 # Start donating clanker cycles to the hive — foreground, Ctrl-C to stop.
+# TOOL defaults to auto-detect: the first installed+authenticated CLI, in
+# the order defined by bin/lib-detect.sh (claude, copilot, goose).
 # Usage: ujust donate-clanker
 #        TOOL=copilot ujust donate-clanker
 #        CLANKER_SRC=~/src/some-repo ujust donate-clanker
 #        CLANKER_SRC=https://github.com/org/repo ujust donate-clanker
-donate-clanker TOOL="claude" CLANKER_SRC="":
+donate-clanker TOOL="" CLANKER_SRC="":
     #!/usr/bin/env bash
     set -euo pipefail
     export TOOL="{{TOOL}}"
@@ -39,6 +41,9 @@ donate-clanker TOOL="claude" CLANKER_SRC="":
       exit 1
     fi
     "$BOOTSTRAP"
+    # Bootstrap resolved TOOL (explicit or auto-detected) and recorded it —
+    # read it back since auto-detection happens in that separate process.
+    RESOLVED_TOOL="$(cat "${HOME}/.local/state/donate-clanker/resolved-tool" 2>/dev/null || echo "${TOOL:-unknown}")"
 
     if ! systemctl --user cat donate-clanker.container &>/dev/null; then
       echo "ERROR: quadlet did not generate a unit. Run:" >&2
@@ -57,7 +62,7 @@ donate-clanker TOOL="claude" CLANKER_SRC="":
     trap cleanup EXIT INT TERM
 
     systemctl --user start donate-clanker.service
-    echo "✓ donate-clanker is running and consuming your ${TOOL} tokens."
+    echo "✓ donate-clanker is running and consuming your ${RESOLVED_TOOL} tokens."
     echo "  Stop any time with Ctrl-C, or: ujust donate-clanker-stop"
     echo ""
     journalctl --user -u donate-clanker.service -f --no-hostname &
@@ -66,6 +71,61 @@ donate-clanker TOOL="claude" CLANKER_SRC="":
     # container's CLI/relay exited on its own), instead of hanging forever.
     while systemctl --user is-active --quiet donate-clanker.service; do sleep 2; done
     kill "$JPID" 2>/dev/null || true
+
+# Preflight check: is this machine actually ready for `ujust donate-clanker`?
+# Never starts the container — read-only diagnostics only.
+donate-clanker-doctor:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    source "{{donate_clanker_root}}/bin/lib-detect.sh" 2>/dev/null || {
+      echo "ERROR: {{donate_clanker_root}}/bin/lib-detect.sh not found." >&2
+      exit 1
+    }
+    pass=0; fail=0
+    check() {
+      local label="$1"; shift
+      if "$@" &>/dev/null; then echo "  ✓ ${label}"; pass=$((pass+1));
+      else echo "  ✗ ${label}"; fail=$((fail+1)); fi
+    }
+
+    echo "=== Runtime ==="
+    check "podman installed" command -v podman
+    check "podman rootless works (podman info)" podman info
+    check "quadlet generator present" test -x /usr/lib/systemd/system-generators/podman-system-generator
+    check "user systemd instance reachable" systemctl --user status
+    echo ""
+
+    echo "=== Upstream hive setup ==="
+    check "gh installed" command -v gh
+    check "gh authenticated" gh auth status
+    check "contribute-setup completed (~/.config/hive/contributor.env)" test -f "${HOME}/.config/hive/contributor.env"
+    echo ""
+
+    echo "=== CLI backends (quadlet/tools/*.conf) ==="
+    ready_tool=""
+    for t in "${DONATE_CLANKER_TOOL_ORDER[@]}"; do
+      if tool_installed "$t"; then
+        if tool_authenticated "$t"; then
+          echo "  ✓ ${t}: installed + authenticated"
+          [[ -z "$ready_tool" ]] && ready_tool="$t"
+        else
+          echo "  ~ ${t}: installed, NOT authenticated — $(tool_fixit_hint "$t")"
+        fi
+      else
+        echo "  ✗ ${t}: not installed — $(tool_install_hint "$t")"
+      fi
+    done
+    echo ""
+
+    if [[ -n "$ready_tool" ]]; then
+      echo "TOOL would auto-detect to: ${ready_tool}"
+    else
+      echo "No CLI is both installed and authenticated yet — TOOL auto-detect would fail."
+    fi
+    echo ""
+    echo "${pass} checks passed, ${fail} failed."
+    [[ "$fail" -eq 0 ]] || exit 1
+
 
 # Safety net: stop and fully clean up donate-clanker, whether or not it's
 # currently tracked as running. Recovers from a closed terminal / crashed
