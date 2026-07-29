@@ -244,6 +244,40 @@ systemctl --user is-active donate-clanker.service   # should print "inactive"/"f
 podman ps -a --filter name=donate-clanker           # should show no running container
 ```
 
+## Troubleshooting
+
+### Receiving tasks that aren't labeled for the agent queue
+
+If the running contributor picks up issues that don't carry the queue label
+you expect (e.g. a repo's `N-clanker-queue`-style label), this is **not** a
+`donate-clanker`/container problem — it's the hub's own task-selection
+config, fixed entirely in the Hive dashboard, not in this repo:
+
+1. Log into the hub's dashboard (e.g.
+   `https://<your-hive-instance>.hive.kubestellar.io/`), go to
+   **Config → Hub tab → "Contribute Work Queue" → Labels**.
+2. The Labels filter has two independent controls: an **"Allow only
+   these" / "Deny these"** mode toggle, and a separate list of label
+   strings. Adding a label to the list does **not** switch the mode —
+   the default mode is **"Deny these"**, so adding your queue label there
+   without switching the toggle does the *opposite* of what you want (it
+   skips that label and serves everything else). Click **"Allow only
+   these"** so it's active/highlighted, keeping your queue label in the
+   list.
+3. Label matching is **exact** (or wildcard `*`), never a substring match.
+   Make sure the string you saved matches the real GitHub label exactly,
+   including any numeric/stage prefix your repos use (e.g.
+   `3-clanker-queue`, not `clanker-queue`).
+4. Save, then confirm with `ujust donate-clanker`: the "Task assigned"
+   line in the container logs should now only ever show issues carrying
+   that exact label.
+
+There is no API-token path to make this change on your behalf from outside
+the browser: the hosted hub sits behind an edge proxy that requires a
+logged-in GitHub session for every request (bearer tokens and `?token=`
+query params are rejected there before they ever reach the app), so this
+one has to be done by hand in the dashboard.
+
 ## Assumptions flagged for correction
 
 - Defaulting the quadlet's `Network=` to the sandboxed rootless network
