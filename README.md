@@ -189,19 +189,22 @@ overlay, nothing to redo after a reboot:
 ```sh
 git clone https://github.com/castrojo/donate-clanker ~/.local/share/donate-clanker
 
-# one-off:
+# one-off, explicit file:
 just --justfile ~/.local/share/donate-clanker/just/61-donate-clanker.just donate-clanker-doctor
 just --justfile ~/.local/share/donate-clanker/just/61-donate-clanker.just donate-clanker
 
-# or fold it into your own personal justfile collection with just's own
-# import (e.g. ~/.justfile or a dotfiles-managed one), then run it through
-# that file instead:
-echo 'import "'"$HOME"'/.local/share/donate-clanker/just/61-donate-clanker.just"' >> ~/.justfile
-just --justfile ~/.justfile donate-clanker
+# recommended: fold it into a personal Justfile so no --justfile flag is
+# ever needed again. `just` auto-discovers a `Justfile`/`.justfile` by
+# walking up from the current directory, so a single import line in
+# ~/Justfile (or ~/.justfile) makes it available from anywhere under $HOME:
+echo 'import "'"$HOME"'/.local/share/donate-clanker/just/61-donate-clanker.just"' >> ~/Justfile
+cd ~ && just donate-clanker-doctor   # or from any subdirectory of $HOME
 ```
 
-This exposes the same three recipes either way: `donate-clanker`,
-`donate-clanker-doctor`, `donate-clanker-stop`.
+Verified: with that one `import` line in `~/Justfile`, `just donate-clanker`
+/ `just donate-clanker-doctor` / `just donate-clanker-stop` work unmodified
+from `$HOME` or any of its subdirectories — no alias, no `--justfile` flag,
+no shell function needed.
 
 Wiring this into `ujust` itself (so plain `ujust donate-clanker` works,
 system-wide, no `--justfile` flag) means getting this file under
