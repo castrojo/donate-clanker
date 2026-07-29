@@ -118,6 +118,19 @@ tool_install_hint() {
     *)       echo "" ;;
   esac
 }
+tool_host_dirs() {
+  # Host-side paths each tool_fragment_conf bind-mounts. Podman/quadlet does
+  # NOT create missing bind-mount sources — it fails the container start
+  # with "no such file or directory" — so these must exist before the unit
+  # starts. One path per line (no spaces expected in $HOME on supported hosts).
+  case "$1" in
+    claude)  printf '%s\n' "${HOME}/.claude" "${HOME}/.config/claude-code" ;;
+    copilot) ;;
+    goose)   printf '%s\n' "${HOME}/.config/goose" ;;
+    codex)   printf '%s\n' "${HOME}/.codex" ;;
+    *)       return 1 ;;
+  esac
+}
 tool_fragment_conf() {
   # Mirrors quadlet/tools/<name>.conf in this repo.
   case "$1" in
@@ -278,6 +291,9 @@ donate-clanker:
     write_if_changed "${CONF_DIR}/donate-clanker.container" "{{donate_clanker_unit}}"
     find "${DROPIN_DIR}" -maxdepth 1 -name '10-tool.conf' -delete
     tool_fragment_conf "$TOOL" > "${DROPIN_DIR}/10-tool.conf"
+    while IFS= read -r d; do
+      [[ -n "$d" ]] && mkdir -p "$d"
+    done < <(tool_host_dirs "$TOOL")
 
     # ── 3. Resolve CLANKER_SRC into a stable workspace symlink ──
     is_git_url() { [[ "$1" =~ ^(https?|ssh|git)://.* || "$1" =~ ^git@.* ]]; }
@@ -320,19 +336,31 @@ donate-clanker:
     # Re-derive secrets.env from this run's choices every time (never
     # additive) — provider/model selection is meant to be re-visitable on
     # each foreground run, not silently stuck from a prior one.
-    grep -v -E '^(GOOSE_PROVIDER|GOOSE_MODEL|AGENT_MODEL)=' "${CFG_DIR}/secrets.env" > "${CFG_DIR}/secrets.env.tmp" 2>/dev/null || true
+    grep -v -E '^(GOOSE_PROVIDER|GOOSE_MODEL|AGENT_MODEL|GH_TOKEN)=' "${CFG_DIR}/secrets.env" > "${CFG_DIR}/secrets.env.tmp" 2>/dev/null || true
     mv "${CFG_DIR}/secrets.env.tmp" "${CFG_DIR}/secrets.env"
     [[ -n "$AGENT_MODEL" ]] && echo "AGENT_MODEL=${AGENT_MODEL}" >> "${CFG_DIR}/secrets.env"
     if [[ "$TOOL" == "goose" ]]; then
       [[ -n "$GOOSE_PROVIDER" ]] && echo "GOOSE_PROVIDER=${GOOSE_PROVIDER}" >> "${CFG_DIR}/secrets.env"
       [[ -n "$GOOSE_MODEL" ]] && echo "GOOSE_MODEL=${GOOSE_MODEL}" >> "${CFG_DIR}/secrets.env"
     fi
+    # Upstream contributor-agent.sh needs GH_TOKEN regardless of
+    # AGENT_BACKEND — it's the contributor's personal token for the
+    # fork+push credential helper, independent of which CLI drives the
+    # actual coding. Re-derived every run from the host's gh session.
+    if command -v gh &>/dev/null; then
+      GH_TOKEN_VAL="$(gh auth token 2>/dev/null || true)"
+      [[ -n "$GH_TOKEN_VAL" ]] && echo "GH_TOKEN=${GH_TOKEN_VAL}" >> "${CFG_DIR}/secrets.env"
+    fi
+    if ! grep -q '^GH_TOKEN=' "${CFG_DIR}/secrets.env"; then
+      echo "WARNING: no GH_TOKEN available — the contributor agent needs it to push commits." >&2
+      echo "  Run: gh auth login --web --scopes repo,read:org" >&2
+    fi
     chmod 600 "${CFG_DIR}/secrets.env"
 
     systemctl --user daemon-reload
-    if ! systemctl --user cat donate-clanker.container &>/dev/null; then
-      echo "ERROR: quadlet did not generate a unit. Run:" >&2
-      echo "  /usr/lib/systemd/system-generators/podman-system-generator --user --dryrun" >&2
+    if ! systemctl --user cat donate-clanker.service &>/dev/null; then
+      echo "ERROR: quadlet did not generate donate-clanker.service. Run:" >&2
+      echo "  /usr/lib/systemd/user-generators/podman-user-generator --dryrun" >&2
       exit 1
     fi
 
