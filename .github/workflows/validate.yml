@@ -1,0 +1,113 @@
+name: validate
+
+# just/61-donate-clanker.just is the ONLY file that ships/installs — it
+# embeds the quadlet unit and every per-tool fragment as inline strings.
+# quadlet/*.conf are human-editable *source references* for maintainers and
+# are never read at runtime, so they can silently drift from what's
+# actually embedded in the Justfile. This workflow catches that drift, plus
+# basic "does it even parse" sanity checks, without needing podman, gh
+# auth, or network access to a real hive hub.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Justfile parses
+        run: |
+          set -euo pipefail
+          just --justfile just/61-donate-clanker.just --list
+
+      - name: Recipe bodies are valid bash
+        run: |
+          set -euo pipefail
+          # Recipe headers in this file look like 'donate-clanker:',
+          # 'donate-clanker-doctor:' — a bare identifier + colon at column 0,
+          # no parameters. Grab every indented line following one, until the
+          # next non-indented, non-comment, non-blank line (next recipe or
+          # variable declaration).
+          awk '
+            /^[a-zA-Z][a-zA-Z0-9_-]*:$/ { flag=1; next }
+            /^[^ \t#]/ { flag=0 }
+            flag { print }
+          ' just/61-donate-clanker.just > recipe_bodies.sh
+          bash -n recipe_bodies.sh
+          rm -f recipe_bodies.sh
+
+      - name: quadlet/*.conf vs embedded Justfile content must not drift
+        run: |
+          set -euo pipefail
+          JUSTFILE="just/61-donate-clanker.just"
+          fail=0
+
+          # Only compare meaningful lines: drop full-line comments and blank
+          # lines so header comments (present only in the human-edited
+          # quadlet/ source files, stripped from most of the embedded
+          # copies) don't cause false-positive failures. Real drift —
+          # different Environment=/Volume=/Mount=/section lines — still
+          # fails the diff.
+          normalize() {
+            grep -vE '^[[:space:]]*(#|$)' "$1" | sed -E 's/[[:space:]]+$//'
+          }
+
+          # ── donate_clanker_unit variable vs quadlet/donate-clanker.container ──
+          awk "/^donate_clanker_unit := '''\$/{flag=1;next} flag && /^'''\$/{flag=0} flag" \
+            "$JUSTFILE" > embedded_unit.txt
+          if [[ ! -s embedded_unit.txt ]]; then
+            echo "::error::could not extract donate_clanker_unit from $JUSTFILE — extraction logic may need updating"
+            fail=1
+          fi
+          if ! diff -u <(normalize quadlet/donate-clanker.container) <(normalize embedded_unit.txt); then
+            echo "::error::quadlet/donate-clanker.container has drifted from the embedded donate_clanker_unit variable in $JUSTFILE"
+            fail=1
+          fi
+          rm -f embedded_unit.txt
+
+          # ── each quadlet/tools/<name>.conf vs its case-arm in tool_fragment_conf() ──
+          # Iterate over whatever tool fragments exist on disk, generically —
+          # no hardcoded tool list, so adding a new CLI (e.g. codex, pi) never
+          # needs this workflow updated.
+          shopt -s nullglob
+          for conf in quadlet/tools/*.conf; do
+            name="$(basename "$conf" .conf)"
+            awk -v name="$name" '
+              $0 ~ "^[ \t]*" name "\\)$" { flag=1; next }
+              flag && /^[ \t]*;;[ \t]*$/ { flag=0 }
+              flag { print }
+            ' "$JUSTFILE" | sed -n '/<<.FRAG./,/^FRAG$/p' | sed '1d;$d' > "embedded_${name}.conf"
+
+            if [[ ! -s "embedded_${name}.conf" ]]; then
+              echo "::error::no tool_fragment_conf() case arm found for '${name}' in $JUSTFILE (source: $conf)"
+              fail=1
+              rm -f "embedded_${name}.conf"
+              continue
+            fi
+
+            if ! diff -u <(normalize "$conf") <(normalize "embedded_${name}.conf"); then
+              echo "::error::$conf has drifted from the '${name}' case arm in tool_fragment_conf() in $JUSTFILE"
+              fail=1
+            fi
+            rm -f "embedded_${name}.conf"
+          done
+
+          exit "$fail"
+
+      # donate-clanker-doctor needs real podman (rootless), a user systemd
+      # instance, and (for full checks) 'gh auth status' — none of which are
+      # available/meaningful on a stock GitHub-hosted runner, and we don't
+      # want this workflow to depend on real auth or network access to a
+      # hive hub. So we don't invoke the recipe here; steps above already
+      # cover what CI *can* meaningfully verify (the Justfile parses, every
+      # recipe body is syntactically valid bash, and the doctor recipe's own
+      # bash is included in that check). Exercising the actual runtime
+      # checks (podman info, gh auth status, systemctl --user) is left to
+      # manual/local testing per the README.
