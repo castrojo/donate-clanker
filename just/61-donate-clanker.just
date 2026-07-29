@@ -16,9 +16,7 @@
 # fixed list of files, NOT a glob. Getting this file under
 # /usr/share/ublue-os/just/ so plain 'ujust donate-clanker' works
 # system-wide means baking it into a custom image build (out of scope here
-# — see README "Scope"); rpm-ostree is deprecated on bootc images and isn't
-# a supported way to modify /usr on a running system, so this repo doesn't
-# recommend touching /usr at all.
+# — see README "Scope").
 #
 # For local/personal use right now, run this file directly with plain
 # 'just --justfile', or import it from your own personal Justfile — see
