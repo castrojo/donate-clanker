@@ -1,4 +1,5 @@
-# 61-donate-clanker.just — ships to /usr/share/ublue-os/just/61-donate-clanker.just
+# 61-donate-clanker.just — the file an eventual image build would ship at
+# /usr/share/ublue-os/just/61-donate-clanker.just (not done yet — see below).
 #
 # This is the ONLY file that ships/installs. Everything donate-clanker needs
 # (quadlet unit content, per-tool fragments, host CLI detection) is embedded
@@ -12,27 +13,18 @@
 # matching variable/case arm here too. They are not read at runtime.
 #
 # Bluefin's root Justfile (/usr/share/ublue-os/just/00-entry.just) imports a
-# fixed list of files, NOT a glob — but it already has:
-#   import? "/usr/share/ublue-os/just/60-custom.just"
-# which is the conventional, always-present hook for exactly this: personal
-# additions with zero edits to any Bluefin-owned file. See README
-# "Installing this into your own setup" for the copy-paste commands.
+# fixed list of files, NOT a glob. Getting this file under
+# /usr/share/ublue-os/just/ so plain 'ujust donate-clanker' works
+# system-wide means baking it into a custom image build (out of scope here
+# — see README "Scope"); rpm-ostree is deprecated on bootc images and isn't
+# a supported way to modify /usr on a running system, so this repo doesn't
+# recommend touching /usr at all.
 #
-# ── /usr-immutable note ──
-# This repo isn't packaged into the image build yet (that's later work, out
-# of scope here — see README "Scope"). To test *right now* on a running
-# bootc system without an image rebuild:
-#   sudo mkdir -p /usr/share/ublue-os/just
-#   sudo cp just/61-donate-clanker.just /usr/share/ublue-os/just/
-#   echo 'import "/usr/share/ublue-os/just/61-donate-clanker.just"' | \
-#     sudo tee -a /usr/share/ublue-os/just/60-custom.just
-# ASSUMPTION: writing under /usr requires 'rpm-ostree usroverlay' (a
-# transient, reboot-cleared overlay) since /usr is read-only on Bluefin.
-# That's the conventional way to iterate on ublue-os just recipes locally
-# before they're baked into an image; flag if your setup differs.
-#
-# All state this recipe touches lives under $HOME (quadlets, config,
-# workspace) — nothing here needs root or writes elsewhere under /usr.
+# For local/personal use right now, run this file directly with plain
+# 'just --justfile', or import it from your own personal Justfile — see
+# README "Installing this into your own setup" for the copy-paste
+# commands. All state this recipe touches lives under $HOME (quadlets,
+# config, workspace) — nothing here needs root or writes elsewhere.
 
 # Deterministic detection/fallback order for TOOL auto-detect.
 tool_order := "claude copilot goose codex"

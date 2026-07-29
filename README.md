@@ -182,52 +182,32 @@ fragment text into a new `quadlet/tools/<name>.conf` for reference. Run
 ## Installing this into your own setup
 
 `just/61-donate-clanker.just` is the one file you need — everything else
-in this repo is documentation or human-editable reference.
-
-### Option A — wire it into `ujust` (recommended, one-time per boot)
-
-Bluefin's root Justfile (`/usr/share/ublue-os/just/00-entry.just`) imports a
-fixed list of files, but it already carries a hook meant for exactly this —
-`import? "/usr/share/ublue-os/just/60-custom.just"` — so you never have to
-touch a Bluefin-owned file:
-
-```sh
-git clone https://github.com/castrojo/donate-clanker
-cd donate-clanker
-
-sudo rpm-ostree usroverlay   # transient, writable /usr until next reboot
-sudo mkdir -p /usr/share/ublue-os/just
-sudo cp just/61-donate-clanker.just /usr/share/ublue-os/just/
-echo 'import "/usr/share/ublue-os/just/61-donate-clanker.just"' \
-  | sudo tee -a /usr/share/ublue-os/just/60-custom.just
-
-ujust donate-clanker-doctor   # sanity check
-ujust donate-clanker
-```
-
-`rpm-ostree usroverlay` is transient and clears on reboot, so repeat those
-four `sudo` lines after a reboot, or bake them into a custom image build
-(out of scope here — see "Scope" below) for something that survives
-reboots unattended.
-
-### Option B — no `ujust`/`sudo` at all, plain `just`
-
-If you'd rather not touch `/usr`, just run the file directly, or fold it
-into your own personal justfile collection with `just`'s own `import`:
+in this repo is documentation or human-editable reference. This doesn't
+touch `/usr` or require `sudo` at all — no image rebuild, no transient
+overlay, nothing to redo after a reboot:
 
 ```sh
 git clone https://github.com/castrojo/donate-clanker ~/.local/share/donate-clanker
 
 # one-off:
+just --justfile ~/.local/share/donate-clanker/just/61-donate-clanker.just donate-clanker-doctor
 just --justfile ~/.local/share/donate-clanker/just/61-donate-clanker.just donate-clanker
 
-# or, inside your own personal Justfile (e.g. ~/.justfile or a dotfiles-managed one):
+# or fold it into your own personal justfile collection with just's own
+# import (e.g. ~/.justfile or a dotfiles-managed one), then run it through
+# that file instead:
 echo 'import "'"$HOME"'/.local/share/donate-clanker/just/61-donate-clanker.just"' >> ~/.justfile
 just --justfile ~/.justfile donate-clanker
 ```
 
-Either option exposes the same three recipes: `donate-clanker`,
+This exposes the same three recipes either way: `donate-clanker`,
 `donate-clanker-doctor`, `donate-clanker-stop`.
+
+Wiring this into `ujust` itself (so plain `ujust donate-clanker` works,
+system-wide, no `--justfile` flag) means getting this file under
+`/usr/share/ublue-os/just/` — which on a bootc image means baking it into
+a custom image build. That's out of scope here (see "Scope" above); this
+repo intentionally only documents the no-rebuild, per-user path.
 
 ## Verify it locally
 
@@ -255,6 +235,3 @@ podman ps -a --filter name=donate-clanker           # should show no running con
 - The `CLANKER_SRC`/workspace mount is a convenience addition with no
   upstream equivalent; the hive-contributor image's actual handling of a
   pre-seeded `/home/dev/workspace` is unverified.
-- Local iteration on `/usr/share/ublue-os/just/` assumes `rpm-ostree
-  usroverlay` is the right tool for testing before this ships in an image
-  build — flag if Bluefin's actual workflow differs.
