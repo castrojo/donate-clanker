@@ -131,6 +131,23 @@ tool_host_dirs() {
     *)       return 1 ;;
   esac
 }
+copilot_live_models() {
+  # Queries the same model-listing endpoint the Copilot CLI/extensions use,
+  # so the picker always reflects what's actually available to this
+  # account today rather than a list baked into this file that goes stale.
+  # Best-effort: any missing dependency or request failure just returns
+  # non-zero so the caller can fall back to free-text input.
+  command -v curl &>/dev/null && command -v jq &>/dev/null && command -v gh &>/dev/null || return 1
+  local tok
+  tok="$(gh auth token 2>/dev/null)" || return 1
+  [[ -n "$tok" ]] || return 1
+  curl -fsS --max-time 5 \
+    -H "Authorization: Bearer ${tok}" \
+    -H "Editor-Version: donate-clanker/1.0" \
+    -H "Copilot-Integration-Id: vscode-chat" \
+    https://api.githubcopilot.com/models 2>/dev/null \
+    | jq -r '.data[]? | select(.model_picker_enabled == true and .capabilities.type == "chat") | .id' 2>/dev/null
+}
 tool_fragment_conf() {
   # Mirrors quadlet/tools/<name>.conf in this repo.
   case "$1" in
@@ -199,6 +216,13 @@ donate-clanker:
     HIVE_SRC_DIR="${STATE_DIR}/hive-src"
     mkdir -p "${CONF_DIR}" "${DROPIN_DIR}" "${STATE_DIR}" "${CFG_DIR}" "${CLONES_DIR}"
 
+    # Remembers the last TOOL/model choices made through the interactive
+    # pickers below, so re-running donate-clanker offers them back as the
+    # pre-selected default instead of starting blank every time.
+    LAST_FILE="${CFG_DIR}/last-selections.env"
+    LAST_TOOL="" LAST_MODEL_CLAUDE="" LAST_MODEL_COPILOT="" LAST_MODEL_CODEX="" LAST_GOOSE_PROVIDER="" LAST_GOOSE_MODEL=""
+    [[ -f "$LAST_FILE" ]] && source "$LAST_FILE"
+
     # ── 0. Pick TOOL: auto-detect; if exactly one CLI is ready, use it
     #      silently; if several are ready, let the user pick with gum
     #      (this is foreground/attended already, so an interactive prompt
@@ -222,7 +246,7 @@ donate-clanker:
           ;;
         *)
           if command -v gum &>/dev/null && [[ -t 0 ]]; then
-            TOOL="$(printf '%s\n' "${READY[@]}" | gum choose --header "Multiple AI CLIs are ready — pick one:")"
+            TOOL="$(printf '%s\n' "${READY[@]}" | gum choose --selected="${LAST_TOOL}" --header "Multiple AI CLIs are ready — pick one:")"
             [[ -n "$TOOL" ]] || { echo "ERROR: no selection made." >&2; exit 1; }
           else
             echo "ERROR: multiple CLIs are ready (${READY[*]}) and 'gum' isn't available to prompt." >&2
@@ -246,20 +270,54 @@ donate-clanker:
 
     # ── 0b. Optional provider/model, only prompted when not already given
     #        via env and a terminal + gum are available. Blank = use the
-    #        tool's own default. ──
+    #        tool's own default. copilot gets a live model list fetched
+    #        from the same API the Copilot CLI/extensions use, so there's
+    #        never a model name to remember or mistype; other tools keep
+    #        free-text entry. Whatever is chosen (including staying blank)
+    #        is remembered as the next run's default. ──
     AGENT_MODEL="${AGENT_MODEL:-}"
     GOOSE_PROVIDER="${GOOSE_PROVIDER:-}"
     GOOSE_MODEL="${GOOSE_MODEL:-}"
+    LAST_MODEL_FOR_TOOL=""
+    case "$TOOL" in
+      claude)  LAST_MODEL_FOR_TOOL="$LAST_MODEL_CLAUDE" ;;
+      copilot) LAST_MODEL_FOR_TOOL="$LAST_MODEL_COPILOT" ;;
+      codex)   LAST_MODEL_FOR_TOOL="$LAST_MODEL_CODEX" ;;
+    esac
     if command -v gum &>/dev/null && [[ -t 0 ]]; then
       if [[ "$TOOL" == "goose" && -z "$GOOSE_PROVIDER" ]]; then
-        GOOSE_PROVIDER="$(printf '%s\n' anthropic openai google ollama openrouter | gum choose --header "Goose provider (Esc to leave unset — needs 'goose configure' instead):")"
+        GOOSE_PROVIDER="$(printf '%s\n' anthropic openai google ollama openrouter | gum choose --selected="${LAST_GOOSE_PROVIDER}" --header "Goose provider (Esc to leave unset — needs 'goose configure' instead):")"
       fi
       if [[ "$TOOL" == "goose" ]]; then
-        [[ -z "$GOOSE_MODEL" ]] && GOOSE_MODEL="$(gum input --placeholder "e.g. claude-3-5-sonnet — blank for goose's default" --header "Goose model (optional):")"
+        [[ -z "$GOOSE_MODEL" ]] && GOOSE_MODEL="$(gum input --value "${LAST_GOOSE_MODEL}" --placeholder "e.g. claude-3-5-sonnet — blank for goose's default" --header "Goose model (optional):")"
+      elif [[ "$TOOL" == "copilot" && -z "$AGENT_MODEL" ]]; then
+        MODEL_LIST="$(copilot_live_models || true)"
+        if [[ -n "$MODEL_LIST" ]]; then
+          AGENT_MODEL="$(printf '%s\n' "$MODEL_LIST" | gum choose --selected="${LAST_MODEL_FOR_TOOL}" --header "Model for copilot (Esc to leave unset — use copilot's default):")"
+        else
+          AGENT_MODEL="$(gum input --value "${LAST_MODEL_FOR_TOOL}" --placeholder "e.g. claude-sonnet-4-6 — blank for copilot's default" --header "Model override for copilot (optional — live list unavailable):")"
+        fi
       else
-        [[ -z "$AGENT_MODEL" ]] && AGENT_MODEL="$(gum input --placeholder "e.g. claude-sonnet-4-6 — blank for ${TOOL}'s default" --header "Model override for ${TOOL} (optional):")"
+        [[ -z "$AGENT_MODEL" ]] && AGENT_MODEL="$(gum input --value "${LAST_MODEL_FOR_TOOL}" --placeholder "e.g. claude-sonnet-4-6 — blank for ${TOOL}'s default" --header "Model override for ${TOOL} (optional):")"
       fi
     fi
+
+    # Persist this run's resolved choices as next run's defaults.
+    LAST_TOOL="$TOOL"
+    case "$TOOL" in
+      claude)  LAST_MODEL_CLAUDE="$AGENT_MODEL" ;;
+      copilot) LAST_MODEL_COPILOT="$AGENT_MODEL" ;;
+      codex)   LAST_MODEL_CODEX="$AGENT_MODEL" ;;
+      goose)   LAST_GOOSE_PROVIDER="$GOOSE_PROVIDER"; LAST_GOOSE_MODEL="$GOOSE_MODEL" ;;
+    esac
+    {
+      printf 'LAST_TOOL=%q\n' "$LAST_TOOL"
+      printf 'LAST_MODEL_CLAUDE=%q\n' "$LAST_MODEL_CLAUDE"
+      printf 'LAST_MODEL_COPILOT=%q\n' "$LAST_MODEL_COPILOT"
+      printf 'LAST_MODEL_CODEX=%q\n' "$LAST_MODEL_CODEX"
+      printf 'LAST_GOOSE_PROVIDER=%q\n' "$LAST_GOOSE_PROVIDER"
+      printf 'LAST_GOOSE_MODEL=%q\n' "$LAST_GOOSE_MODEL"
+    } > "$LAST_FILE"
 
     # ── 1. Ensure upstream contribute-setup has run ──
     HIVE_CONTRIBUTOR_ENV="${HOME}/.config/hive/contributor.env"

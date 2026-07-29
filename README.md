@@ -82,7 +82,14 @@ a container log:
    prompt follows the same rule: only asked when not already given via
    `AGENT_MODEL=`/`GOOSE_PROVIDER=`/`GOOSE_MODEL=` env vars and `gum` +
    a terminal are available; leaving it blank falls back to the tool's own
-   default. The choice is written to `~/.config/donate-clanker/secrets.env`
+   default. For `copilot`, the model prompt is a `gum choose` list fetched
+   live from the same models API the Copilot CLI/extensions use — no model
+   name to remember or mistype — falling back to free-text entry if that
+   request fails for any reason. Every pick (TOOL, model, goose
+   provider/model — including a deliberate blank) is remembered in
+   `~/.config/donate-clanker/last-selections.env` and offered back as the
+   pre-selected default the next time you run it. The final resolved
+   values are written to `~/.config/donate-clanker/secrets.env`
    (`chmod 600`) and re-derived fresh on every run rather than accumulating.
 2. **Upstream `contribute-setup` never run.** If
    `~/.config/hive/contributor.env` doesn't exist, the recipe
