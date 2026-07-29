@@ -120,13 +120,6 @@ tool_install_hint() {
     *)       echo "" ;;
   esac
 }
-detect_first_ready_tool() {
-  local t
-  for t in ${TOOL_ORDER}; do
-    if tool_installed "$t" && tool_authenticated "$t"; then echo "$t"; return 0; fi
-  done
-  return 1
-}
 tool_fragment_conf() {
   # Mirrors quadlet/tools/<name>.conf in this repo.
   case "$1" in
@@ -183,16 +176,38 @@ donate-clanker:
     HIVE_SRC_DIR="${STATE_DIR}/hive-src"
     mkdir -p "${CONF_DIR}" "${DROPIN_DIR}" "${STATE_DIR}" "${CFG_DIR}" "${CLONES_DIR}"
 
-    # ── 0. Pick TOOL ──
+    # ── 0. Pick TOOL: auto-detect; if exactly one CLI is ready, use it
+    #      silently; if several are ready, let the user pick with gum
+    #      (this is foreground/attended already, so an interactive prompt
+    #      here doesn't compromise the "never unattended" guarantee). An
+    #      explicit TOOL= always wins and skips detection entirely. ──
     if [[ -z "$TOOL" ]]; then
-      if TOOL="$(detect_first_ready_tool)"; then
-        echo "TOOL not set — auto-detected: ${TOOL}"
-      else
-        echo "ERROR: no supported CLI is installed and authenticated on this host." >&2
-        for t in ${TOOL_ORDER}; do echo "  ${t}: $(tool_install_hint "$t")" >&2; done
-        echo "Then re-run, or pass explicitly: TOOL=<name> ujust donate-clanker" >&2
-        exit 1
-      fi
+      READY=()
+      for t in ${TOOL_ORDER}; do
+        tool_installed "$t" && tool_authenticated "$t" && READY+=("$t")
+      done
+      case "${#READY[@]}" in
+        0)
+          echo "ERROR: no supported CLI is installed and authenticated on this host." >&2
+          for t in ${TOOL_ORDER}; do echo "  ${t}: $(tool_install_hint "$t")" >&2; done
+          echo "Then re-run, or pass explicitly: TOOL=<name> ujust donate-clanker" >&2
+          exit 1
+          ;;
+        1)
+          TOOL="${READY[0]}"
+          echo "TOOL not set — auto-detected: ${TOOL}"
+          ;;
+        *)
+          if command -v gum &>/dev/null && [[ -t 0 ]]; then
+            TOOL="$(printf '%s\n' "${READY[@]}" | gum choose --header "Multiple AI CLIs are ready — pick one:")"
+            [[ -n "$TOOL" ]] || { echo "ERROR: no selection made." >&2; exit 1; }
+          else
+            echo "ERROR: multiple CLIs are ready (${READY[*]}) and 'gum' isn't available to prompt." >&2
+            echo "  Install gum, or pass explicitly: TOOL=<name> ujust donate-clanker" >&2
+            exit 1
+          fi
+          ;;
+      esac
     else
       if ! tool_installed "$TOOL"; then
         echo "ERROR: TOOL=${TOOL} requested but not installed." >&2
@@ -203,6 +218,23 @@ donate-clanker:
         echo "ERROR: TOOL=${TOOL} is installed but not authenticated." >&2
         echo "  $(tool_fixit_hint "$TOOL")" >&2
         exit 1
+      fi
+    fi
+
+    # ── 0b. Optional provider/model, only prompted when not already given
+    #        via env and a terminal + gum are available. Blank = use the
+    #        tool's own default. ──
+    AGENT_MODEL="${AGENT_MODEL:-}"
+    GOOSE_PROVIDER="${GOOSE_PROVIDER:-}"
+    GOOSE_MODEL="${GOOSE_MODEL:-}"
+    if command -v gum &>/dev/null && [[ -t 0 ]]; then
+      if [[ "$TOOL" == "goose" && -z "$GOOSE_PROVIDER" ]]; then
+        GOOSE_PROVIDER="$(printf '%s\n' anthropic openai google ollama openrouter | gum choose --header "Goose provider (Esc to leave unset — needs 'goose configure' instead):")"
+      fi
+      if [[ "$TOOL" == "goose" ]]; then
+        [[ -z "$GOOSE_MODEL" ]] && GOOSE_MODEL="$(gum input --placeholder "e.g. claude-3-5-sonnet — blank for goose's default" --header "Goose model (optional):")"
+      else
+        [[ -z "$AGENT_MODEL" ]] && AGENT_MODEL="$(gum input --placeholder "e.g. claude-sonnet-4-6 — blank for ${TOOL}'s default" --header "Model override for ${TOOL} (optional):")"
       fi
     fi
 
@@ -275,13 +307,17 @@ donate-clanker:
       printf '# HIVE_HUB=wss://your-hive.example.com/contribute\n' > "${CFG_DIR}/contributor.env"
     fi
     touch "${CFG_DIR}/secrets.env"; chmod 600 "${CFG_DIR}/secrets.env"
+    # Re-derive secrets.env from this run's choices every time (never
+    # additive) — provider/model selection is meant to be re-visitable on
+    # each foreground run, not silently stuck from a prior one.
+    grep -v -E '^(GOOSE_PROVIDER|GOOSE_MODEL|AGENT_MODEL)=' "${CFG_DIR}/secrets.env" > "${CFG_DIR}/secrets.env.tmp" 2>/dev/null || true
+    mv "${CFG_DIR}/secrets.env.tmp" "${CFG_DIR}/secrets.env"
+    [[ -n "$AGENT_MODEL" ]] && echo "AGENT_MODEL=${AGENT_MODEL}" >> "${CFG_DIR}/secrets.env"
     if [[ "$TOOL" == "goose" ]]; then
-      grep -v -E '^(GOOSE_PROVIDER|GOOSE_MODEL)=' "${CFG_DIR}/secrets.env" > "${CFG_DIR}/secrets.env.tmp" 2>/dev/null || true
-      mv "${CFG_DIR}/secrets.env.tmp" "${CFG_DIR}/secrets.env"
-      [[ -n "${GOOSE_PROVIDER:-}" ]] && echo "GOOSE_PROVIDER=${GOOSE_PROVIDER}" >> "${CFG_DIR}/secrets.env"
-      [[ -n "${GOOSE_MODEL:-}" ]] && echo "GOOSE_MODEL=${GOOSE_MODEL}" >> "${CFG_DIR}/secrets.env"
-      chmod 600 "${CFG_DIR}/secrets.env"
+      [[ -n "$GOOSE_PROVIDER" ]] && echo "GOOSE_PROVIDER=${GOOSE_PROVIDER}" >> "${CFG_DIR}/secrets.env"
+      [[ -n "$GOOSE_MODEL" ]] && echo "GOOSE_MODEL=${GOOSE_MODEL}" >> "${CFG_DIR}/secrets.env"
     fi
+    chmod 600 "${CFG_DIR}/secrets.env"
 
     systemctl --user daemon-reload
     if ! systemctl --user cat donate-clanker.container &>/dev/null; then
@@ -324,6 +360,7 @@ donate-clanker-doctor:
     check "podman rootless works (podman info)" podman info
     check "quadlet generator present" test -x /usr/lib/systemd/system-generators/podman-system-generator
     check "user systemd instance reachable" systemctl --user status
+    check "gum installed (needed to pick between multiple ready CLIs)" command -v gum
     echo ""
 
     echo "=== Upstream hive setup ==="
@@ -333,12 +370,12 @@ donate-clanker-doctor:
     echo ""
 
     echo "=== CLI backends ==="
-    ready_tool=""
+    ready_tools=()
     for t in ${TOOL_ORDER}; do
       if tool_installed "$t"; then
         if tool_authenticated "$t"; then
           echo "  ✓ ${t}: installed + authenticated"
-          [[ -z "$ready_tool" ]] && ready_tool="$t"
+          ready_tools+=("$t")
         else
           echo "  ~ ${t}: installed, NOT authenticated — $(tool_fixit_hint "$t")"
         fi
@@ -348,11 +385,11 @@ donate-clanker-doctor:
     done
     echo ""
 
-    if [[ -n "$ready_tool" ]]; then
-      echo "TOOL would auto-detect to: ${ready_tool}"
-    else
-      echo "No CLI is both installed and authenticated yet — TOOL auto-detect would fail."
-    fi
+    case "${#ready_tools[@]}" in
+      0) echo "No CLI is both installed and authenticated yet — TOOL auto-detect would fail." ;;
+      1) echo "TOOL would auto-detect to: ${ready_tools[0]}" ;;
+      *) echo "Multiple CLIs are ready (${ready_tools[*]}) — you'll be prompted to pick one via gum." ;;
+    esac
     echo ""
     echo "${pass} checks passed, ${fail} failed."
     [[ "$fail" -eq 0 ]] || exit 1

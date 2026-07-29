@@ -63,14 +63,27 @@ A fresh machine with none of this configured hits three gaps in order —
 `ujust donate-clanker` now handles all three instead of failing deep inside
 a container log:
 
-1. **No CLI installed/authenticated at all.** `TOOL` is no longer a silent
-   `claude` default. The Justfile's embedded detection logic auto-detects
-   the first installed-and-authenticated CLI in order (`claude`, `copilot`,
-   `goose`) and prints which one it picked. If none qualify, it fails fast
-   on the host with an install/auth hint for each, before touching podman
-   at all. Override explicitly with `TOOL=<name>`; an explicit `TOOL=` that
-   isn't installed or isn't authenticated also fails fast with the same
-   actionable one-liner.
+1. **No CLI installed/authenticated at all — or too many.** `TOOL` is no
+   longer a silent `claude` default. The Justfile's embedded detection
+   logic checks every supported CLI (`claude`, `copilot`, `goose`):
+   - **Zero** installed-and-authenticated → fails fast on the host with an
+     install/auth hint for each, before touching podman at all.
+   - **Exactly one** ready → auto-picked silently, no prompt.
+   - **More than one** ready → since this is already an attended,
+     foreground-only workflow, it prompts interactively with `gum choose`
+     instead of guessing. If `gum` isn't installed or there's no terminal
+     attached, it fails fast and asks for an explicit `TOOL=<name>`.
+
+   Override explicitly with `TOOL=<name>` at any time to skip detection
+   entirely; an explicit `TOOL=` that isn't installed or isn't
+   authenticated also fails fast with the same actionable one-liner.
+
+   Once `TOOL` is resolved, an optional model (and, for `goose`, provider)
+   prompt follows the same rule: only asked when not already given via
+   `AGENT_MODEL=`/`GOOSE_PROVIDER=`/`GOOSE_MODEL=` env vars and `gum` +
+   a terminal are available; leaving it blank falls back to the tool's own
+   default. The choice is written to `~/.config/donate-clanker/secrets.env`
+   (`chmod 600`) and re-derived fresh on every run rather than accumulating.
 2. **Upstream `contribute-setup` never run.** If
    `~/.config/hive/contributor.env` doesn't exist, the recipe
    clones `kubestellar/hive` (branch `v2`) into
@@ -79,9 +92,10 @@ a container log:
    registration/GitHub-auth logic ourselves, we just make sure it has run.
 3. **"Is my machine even ready?"** `ujust donate-clanker-doctor` is a
    read-only preflight: rootless podman, the quadlet generator, `gh` auth,
-   whether upstream setup has completed, and which CLIs are
-   installed/authenticated (and which one `TOOL` would auto-pick). It never
-   starts the container.
+   `gum` (needed only when multiple CLIs are ready), whether upstream setup
+   has completed, and which CLIs are installed/authenticated — including
+   whether `TOOL` would auto-pick one or prompt because several qualify. It
+   never starts the container.
 
 ## Design rationale
 
