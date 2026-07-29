@@ -65,7 +65,7 @@ a container log:
 
 1. **No CLI installed/authenticated at all — or too many.** `TOOL` is no
    longer a silent `claude` default. The Justfile's embedded detection
-   logic checks every supported CLI (`claude`, `copilot`, `goose`):
+   logic checks every supported CLI (`claude`, `copilot`, `goose`, `codex`):
    - **Zero** installed-and-authenticated → fails fast on the host with an
      install/auth hint for each, before touching podman at all.
    - **Exactly one** ready → auto-picked silently, no prompt.
@@ -159,7 +159,7 @@ changes required.
 
 Per-tool credentials/env are never hardcoded in the base unit. Each
 supported tool has its own quadlet drop-in fragment in `quadlet/tools/`
-(`claude.conf`, `copilot.conf` — extend with more as needed, matching the
+(`claude.conf`, `copilot.conf`, `goose.conf`, `codex.conf` — extend with more as needed, matching the
 `CLI_MOUNTS` cases in the hive `Justfile`). The recipe copies
 *exactly one* of these into
 `~/.config/containers/systemd/donate-clanker.container.d/10-tool.conf`,
@@ -168,7 +168,7 @@ systemd-drop-in gotcha where multiple `*.conf` files in the same `.d/`
 directory would all merge together and mount every tool's credentials at
 once.
 
-**Adding a third tool**: drop a new `quadlet/tools/<name>.conf` with an
+**Adding another tool**: drop a new `quadlet/tools/<name>.conf` with an
 `[Container]` section (`Environment=AGENT_BACKEND=<name>` plus whatever
 `Volume=` lines that CLI needs), then run `TOOL=<name> ujust
 donate-clanker`. No other file changes needed.

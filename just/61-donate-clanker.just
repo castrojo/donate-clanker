@@ -31,7 +31,7 @@
 # workspace) — nothing here needs root or writes elsewhere under /usr.
 
 # Deterministic detection/fallback order for TOOL auto-detect.
-tool_order := "claude copilot goose"
+tool_order := "claude copilot goose codex"
 
 # TOOL/CLANKER_SRC are read from the environment (like upstream hive's own
 # Justfile does with HIVE_HUB) so 'TOOL=copilot ujust donate-clanker' works
@@ -93,6 +93,7 @@ tool_installed() {
     claude)  command -v claude &>/dev/null ;;
     copilot) command -v gh &>/dev/null ;;
     goose)   command -v goose &>/dev/null ;;
+    codex)   command -v codex &>/dev/null ;;
     *)       return 1 ;;
   esac
 }
@@ -101,6 +102,7 @@ tool_authenticated() {
     claude)  [[ -d "${HOME}/.claude" || -f "${HOME}/.claude.json" ]] ;;
     copilot) gh auth status &>/dev/null ;;
     goose)   [[ -n "${GOOSE_PROVIDER:-}" || -f "${HOME}/.config/goose/config.yaml" ]] ;;
+    codex)   [[ -n "${OPENAI_API_KEY:-}" || -d "${HOME}/.codex" ]] ;;
     *)       return 1 ;;
   esac
 }
@@ -109,6 +111,7 @@ tool_fixit_hint() {
     claude)  echo "Run: claude   (then type /login and follow the prompts)" ;;
     copilot) echo "Run: gh auth login --web --scopes repo,read:org" ;;
     goose)   echo "Run: goose configure   (or: export GOOSE_PROVIDER=... GOOSE_MODEL=...)" ;;
+    codex)   echo "Run: codex login   (or: export OPENAI_API_KEY=...)" ;;
     *)       echo "Unknown tool: $1" ;;
   esac
 }
@@ -117,6 +120,7 @@ tool_install_hint() {
     claude)  echo "Install: npm i -g @anthropic-ai/claude-code" ;;
     copilot) echo "Install: see https://cli.github.com" ;;
     goose)   echo "Install: https://github.com/block/goose/releases" ;;
+    codex)   echo "Install: npm i -g @openai/codex" ;;
     *)       echo "" ;;
   esac
 }
@@ -144,6 +148,13 @@ Environment=AGENT_BACKEND=goose
 Volume=%h/.config/goose:/home/dev/.config/goose:Z
 FRAG
       ;;
+    codex)
+      cat <<'FRAG'
+[Container]
+Environment=AGENT_BACKEND=codex
+Volume=%h/.codex:/home/dev/.codex:Z
+FRAG
+      ;;
     *)
       echo "ERROR: no fragment for tool '$1'" >&2
       return 1
@@ -154,7 +165,7 @@ FRAG
 
 # Start donating clanker cycles to the hive — foreground, Ctrl-C to stop.
 # TOOL defaults to auto-detect: the first installed+authenticated CLI, in
-# order (claude, copilot, goose).
+# order (claude, copilot, goose, codex).
 # Usage: ujust donate-clanker
 #        TOOL=copilot ujust donate-clanker
 #        CLANKER_SRC=~/src/some-repo ujust donate-clanker
