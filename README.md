@@ -12,8 +12,8 @@ https://hosted-projectbluefin-knuckle-gjvq.hive.kubestellar.io/contribute
 
 ## Scope
 
-This repo covers running it on your machine right now: the quadlet unit,
-the `ujust` recipe, and the bootstrap script that installs them into
+This repo covers running it on your machine right now: a single
+self-contained `just` recipe file that installs the quadlet unit into
 `~/.config/containers/systemd/`. Packaging this into a Bluefin image build
 (CI, `sync-templates`-style propagation, etc.) is future work and
 deliberately out of scope here.
@@ -42,12 +42,20 @@ flexibility on top, and keeps step 1 untouched.
 ## Layout
 
 ```
-quadlet/donate-clanker.container   # the workload unit (no [Install] section)
-quadlet/tools/{claude,copilot,goose}.conf # per-tool drop-in fragments
-bin/lib-detect.sh                  # shared host CLI detection, used by bootstrap + doctor
-bin/donate-clanker-bootstrap.sh    # idempotent installer, run by the just recipe
-just/61-donate-clanker.just        # ujust recipes: donate-clanker, donate-clanker-doctor, donate-clanker-stop
+just/61-donate-clanker.just   # the ONLY file that ships/installs — recipes:
+                               #   donate-clanker, donate-clanker-doctor, donate-clanker-stop
+quadlet/*.conf                # human-editable *source* for the strings embedded
+                               # in the Justfile above; not read at runtime (see
+                               # the note at the top of 61-donate-clanker.just)
 ```
+
+Everything donate-clanker needs — the quadlet unit content, per-tool
+fragments, and host CLI detection — is embedded directly in
+`61-donate-clanker.just` as private (`_`-prefixed style, via `[private]`-like
+convention) variables and inline bash, generated to disk on each run. There
+is deliberately no separate `bin/` of standalone scripts: a user browsing
+the image or this repo only ever finds one file and the three commands it
+exposes, not scripts they might run out of context.
 
 ## Onboarding
 
@@ -56,15 +64,15 @@ A fresh machine with none of this configured hits three gaps in order —
 a container log:
 
 1. **No CLI installed/authenticated at all.** `TOOL` is no longer a silent
-   `claude` default. `bin/lib-detect.sh` auto-detects the first
-   installed-and-authenticated CLI in order (`claude`, `copilot`, `goose`)
-   and prints which one it picked. If none qualify, it fails fast on the
-   host with an install/auth hint for each, before touching podman at all.
-   Override explicitly with `TOOL=<name>`; an explicit `TOOL=` that isn't
-   installed or isn't authenticated also fails fast with the same
-   actionable one-liner (see `tool_fixit_hint`/`tool_install_hint`).
+   `claude` default. The Justfile's embedded detection logic auto-detects
+   the first installed-and-authenticated CLI in order (`claude`, `copilot`,
+   `goose`) and prints which one it picked. If none qualify, it fails fast
+   on the host with an install/auth hint for each, before touching podman
+   at all. Override explicitly with `TOOL=<name>`; an explicit `TOOL=` that
+   isn't installed or isn't authenticated also fails fast with the same
+   actionable one-liner.
 2. **Upstream `contribute-setup` never run.** If
-   `~/.config/hive/contributor.env` doesn't exist, the bootstrap script
+   `~/.config/hive/contributor.env` doesn't exist, the recipe
    clones `kubestellar/hive` (branch `v2`) into
    `~/.local/state/donate-clanker/hive-src` and runs **its own**
    `just contribute-setup <tool>` — we still never reimplement the
@@ -111,7 +119,7 @@ unit down.
 
 ### Source flexibility: `CLANKER_SRC`
 
-`bin/donate-clanker-bootstrap.sh` resolves `CLANKER_SRC` into a single
+The `donate-clanker` recipe resolves `CLANKER_SRC` into a single
 stable host path, `~/.local/state/donate-clanker/workspace`, every time it
 runs:
 
@@ -128,7 +136,7 @@ symlinks at mount time, so swapping the symlink target is enough to change
 what the container sees on every run without touching the unit file.
 
 **Adding a third source type** would follow the same pattern: extend the
-`is_git_url()`/dispatch logic in the bootstrap script with a new branch
+`is_git_url()`/dispatch logic in the `donate-clanker` recipe with a new branch
 (e.g. an OCI artifact reference), resolve it to a real host directory, and
 point the same `workspace` symlink at it. No quadlet or `just` recipe
 changes required.
@@ -138,7 +146,7 @@ changes required.
 Per-tool credentials/env are never hardcoded in the base unit. Each
 supported tool has its own quadlet drop-in fragment in `quadlet/tools/`
 (`claude.conf`, `copilot.conf` — extend with more as needed, matching the
-`CLI_MOUNTS` cases in the hive `Justfile`). The bootstrap script copies
+`CLI_MOUNTS` cases in the hive `Justfile`). The recipe copies
 *exactly one* of these into
 `~/.config/containers/systemd/donate-clanker.container.d/10-tool.conf`,
 deleting any previous selection first — this avoids the standard
