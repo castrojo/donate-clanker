@@ -206,6 +206,14 @@ Verified: with that one `import` line in `~/Justfile`, `just donate-clanker`
 from `$HOME` or any of its subdirectories — no alias, no `--justfile` flag,
 no shell function needed.
 
+**Before running `donate-clanker` itself**: it needs a source to donate
+against (see "Source flexibility: `CLANKER_SRC`" below) — either run it
+from inside the git repo you want to donate cycles to, or pass
+`CLANKER_SRC=<path-or-git-url>` explicitly. Running it bare from `$HOME` (or
+anywhere else that isn't a git repo, on a first run with no prior
+workspace) fails fast with the exact command to use — `donate-clanker-doctor`
+also reports this under "Source (CLANKER_SRC)" before you hit it.
+
 Wiring this into `ujust` itself (so plain `ujust donate-clanker` works,
 system-wide, no `--justfile` flag) means getting this file under
 `/usr/share/ublue-os/just/` — which on a bootc image means baking it into

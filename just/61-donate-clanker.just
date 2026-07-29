@@ -171,6 +171,11 @@ donate-clanker:
     TOOL_ORDER="{{tool_order}}"
     TOOL="{{tool_env}}"
     CLANKER_SRC="{{clanker_src_env}}"
+    # NOT $PWD: just changes the recipe's working directory to wherever the
+    # *justfile* lives (e.g. ~ when this is imported from a personal
+    # ~/Justfile), not the directory the user actually ran 'just'/'ujust'
+    # from. invocation_directory() is just's own builtin for that real cwd.
+    INVOKED_DIR="{{invocation_directory()}}"
 
     STATE_DIR="${HOME}/.local/state/donate-clanker"
     CFG_DIR="${HOME}/.config/donate-clanker"
@@ -277,8 +282,8 @@ donate-clanker:
     # ── 3. Resolve CLANKER_SRC into a stable workspace symlink ──
     is_git_url() { [[ "$1" =~ ^(https?|ssh|git)://.* || "$1" =~ ^git@.* ]]; }
     if [[ -z "$CLANKER_SRC" ]]; then
-      if git -C "$PWD" rev-parse --is-inside-work-tree &>/dev/null; then
-        CLANKER_SRC="$PWD"
+      if git -C "$INVOKED_DIR" rev-parse --is-inside-work-tree &>/dev/null; then
+        CLANKER_SRC="$INVOKED_DIR"
         echo "CLANKER_SRC not set — defaulting to current repo: ${CLANKER_SRC}"
       elif [[ -L "$WORKSPACE" || -d "$WORKSPACE" ]]; then
         echo "CLANKER_SRC not set — reusing existing workspace at ${WORKSPACE}"
@@ -353,6 +358,7 @@ donate-clanker-doctor:
     set -uo pipefail
     {{shared_functions}}
     TOOL_ORDER="{{tool_order}}"
+    INVOKED_DIR="{{invocation_directory()}}"
     pass=0; fail=0
     check() {
       local label="$1"; shift
@@ -395,6 +401,21 @@ donate-clanker-doctor:
       1) echo "TOOL would auto-detect to: ${ready_tools[0]}" ;;
       *) echo "Multiple CLIs are ready (${ready_tools[*]}) — you'll be prompted to pick one via gum." ;;
     esac
+    echo ""
+
+    echo "=== Source (CLANKER_SRC) ==="
+    WORKSPACE="${HOME}/.local/state/donate-clanker/workspace"
+    if [[ -n "${CLANKER_SRC:-}" ]]; then
+      echo "  CLANKER_SRC is set: ${CLANKER_SRC}"
+    elif git -C "$INVOKED_DIR" rev-parse --is-inside-work-tree &>/dev/null; then
+      echo "  CLANKER_SRC not set — current directory is a git repo, would default to: ${INVOKED_DIR}"
+    elif [[ -L "$WORKSPACE" ]]; then
+      echo "  CLANKER_SRC not set — would reuse existing workspace: $(readlink -f "$WORKSPACE" 2>/dev/null || echo "$WORKSPACE")"
+    else
+      echo "  ✗ CLANKER_SRC not set, current directory isn't a git repo, and no prior workspace exists."
+      echo "    First run will fail unless you either 'cd' into the repo you want to donate against,"
+      echo "    or run: CLANKER_SRC=<path-or-git-url> ujust donate-clanker"
+    fi
     echo ""
     echo "${pass} checks passed, ${fail} failed."
     [[ "$fail" -eq 0 ]] || exit 1
