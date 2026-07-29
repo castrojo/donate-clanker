@@ -11,10 +11,12 @@
 # strings embedded below — if you change one, copy the change into the
 # matching variable/case arm here too. They are not read at runtime.
 #
-# Bluefin's root Justfile already does:
-#   import? '/usr/share/ublue-os/just/*.just'
-# so dropping this file there is enough to expose 'ujust donate-clanker' —
-# no separate import line to add.
+# Bluefin's root Justfile (/usr/share/ublue-os/just/00-entry.just) imports a
+# fixed list of files, NOT a glob — but it already has:
+#   import? "/usr/share/ublue-os/just/60-custom.just"
+# which is the conventional, always-present hook for exactly this: personal
+# additions with zero edits to any Bluefin-owned file. See README
+# "Installing this into your own setup" for the copy-paste commands.
 #
 # ── /usr-immutable note ──
 # This repo isn't packaged into the image build yet (that's later work, out
@@ -22,6 +24,8 @@
 # bootc system without an image rebuild:
 #   sudo mkdir -p /usr/share/ublue-os/just
 #   sudo cp just/61-donate-clanker.just /usr/share/ublue-os/just/
+#   echo 'import "/usr/share/ublue-os/just/61-donate-clanker.just"' | \
+#     sudo tee -a /usr/share/ublue-os/just/60-custom.just
 # ASSUMPTION: writing under /usr requires 'rpm-ostree usroverlay' (a
 # transient, reboot-cleared overlay) since /usr is read-only on Bluefin.
 # That's the conventional way to iterate on ublue-os just recipes locally

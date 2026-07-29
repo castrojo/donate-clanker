@@ -168,10 +168,66 @@ systemd-drop-in gotcha where multiple `*.conf` files in the same `.d/`
 directory would all merge together and mount every tool's credentials at
 once.
 
-**Adding another tool**: drop a new `quadlet/tools/<name>.conf` with an
-`[Container]` section (`Environment=AGENT_BACKEND=<name>` plus whatever
-`Volume=` lines that CLI needs), then run `TOOL=<name> ujust
-donate-clanker`. No other file changes needed.
+**Adding another tool**: the `.conf` files are the human-editable
+*reference* for what to add — they aren't read at runtime (see "Layout"
+above). To actually add a tool, edit `just/61-donate-clanker.just`'s
+`shared_functions` variable: add a case arm for the new tool name in
+`tool_installed`/`tool_authenticated`/`tool_fixit_hint`/`tool_install_hint`
+and in `tool_fragment_conf` (the `[Container]` fragment — usually just
+`Environment=AGENT_BACKEND=<name>` plus whatever `Volume=` lines that CLI
+needs), add the name to the `tool_order` variable, then copy the same
+fragment text into a new `quadlet/tools/<name>.conf` for reference. Run
+`TOOL=<name> ujust donate-clanker` to try it.
+
+## Installing this into your own setup
+
+`just/61-donate-clanker.just` is the one file you need — everything else
+in this repo is documentation or human-editable reference.
+
+### Option A — wire it into `ujust` (recommended, one-time per boot)
+
+Bluefin's root Justfile (`/usr/share/ublue-os/just/00-entry.just`) imports a
+fixed list of files, but it already carries a hook meant for exactly this —
+`import? "/usr/share/ublue-os/just/60-custom.just"` — so you never have to
+touch a Bluefin-owned file:
+
+```sh
+git clone https://github.com/castrojo/donate-clanker
+cd donate-clanker
+
+sudo rpm-ostree usroverlay   # transient, writable /usr until next reboot
+sudo mkdir -p /usr/share/ublue-os/just
+sudo cp just/61-donate-clanker.just /usr/share/ublue-os/just/
+echo 'import "/usr/share/ublue-os/just/61-donate-clanker.just"' \
+  | sudo tee -a /usr/share/ublue-os/just/60-custom.just
+
+ujust donate-clanker-doctor   # sanity check
+ujust donate-clanker
+```
+
+`rpm-ostree usroverlay` is transient and clears on reboot, so repeat those
+four `sudo` lines after a reboot, or bake them into a custom image build
+(out of scope here — see "Scope" below) for something that survives
+reboots unattended.
+
+### Option B — no `ujust`/`sudo` at all, plain `just`
+
+If you'd rather not touch `/usr`, just run the file directly, or fold it
+into your own personal justfile collection with `just`'s own `import`:
+
+```sh
+git clone https://github.com/castrojo/donate-clanker ~/.local/share/donate-clanker
+
+# one-off:
+just --justfile ~/.local/share/donate-clanker/just/61-donate-clanker.just donate-clanker
+
+# or, inside your own personal Justfile (e.g. ~/.justfile or a dotfiles-managed one):
+echo 'import "'"$HOME"'/.local/share/donate-clanker/just/61-donate-clanker.just"' >> ~/.justfile
+just --justfile ~/.justfile donate-clanker
+```
+
+Either option exposes the same three recipes: `donate-clanker`,
+`donate-clanker-doctor`, `donate-clanker-stop`.
 
 ## Verify it locally
 
