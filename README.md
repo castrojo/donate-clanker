@@ -1,5 +1,7 @@
 # donate-clanker
 
+**Install:** `git clone https://github.com/castrojo/donate-clanker ~/.local/share/donate-clanker && echo 'import "'"$HOME"'/.local/share/donate-clanker/just/61-donate-clanker.just"' >> ~/Justfile`
+
 `ujust donate-clanker` — run the [KubeStellar Hive](https://github.com/kubestellar/hive)
 contributor workload (donate CLI/API tokens to the Bluefin agent swarm) as a
 proper rootless Podman Quadlet, in the foreground, with nothing left running
