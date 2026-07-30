@@ -8,6 +8,9 @@ fake_bin="$scratch/bin"
 home="$scratch/home"
 cfg_dir="$home/.config/donate-clanker"
 gum_log="$scratch/gum.log"
+git_log="$scratch/git.log"
+inner_just_log="$scratch/inner-just.log"
+real_just="$(command -v just)"
 mkdir -p "$fake_bin" "$home/.config/goose" "$home/.config/hive" "$cfg_dir"
 
 cat >"$fake_bin/gh" <<'EOF'
@@ -21,6 +24,11 @@ EOF
 cat >"$fake_bin/goose" <<'EOF'
 #!/usr/bin/env bash
 exit 0
+EOF
+cat >"$fake_bin/git" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${GIT_LOG:?}"
+exit 97
 EOF
 cat >"$fake_bin/gum" <<'EOF'
 #!/usr/bin/env bash
@@ -36,7 +44,12 @@ cat >"$fake_bin/systemctl" <<'EOF'
 #!/usr/bin/env bash
 exit 1
 EOF
-chmod +x "$fake_bin/gh" "$fake_bin/claude" "$fake_bin/goose" "$fake_bin/gum" "$fake_bin/systemctl"
+cat >"$fake_bin/just" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${INNER_JUST_LOG:?}"
+exit 98
+EOF
+chmod +x "$fake_bin/gh" "$fake_bin/claude" "$fake_bin/goose" "$fake_bin/git" "$fake_bin/gum" "$fake_bin/systemctl" "$fake_bin/just"
 
 run_launcher() {
   env \
@@ -51,8 +64,10 @@ run_launcher() {
     HOME="$home" \
     PATH="$fake_bin:$PATH" \
     GUM_LOG="$gum_log" \
+    GIT_LOG="$git_log" \
+    INNER_JUST_LOG="$inner_just_log" \
     "$@" \
-    just --justfile "$repo_root/just/61-donate-clanker.just" donate-clanker
+    "$real_just" --justfile "$repo_root/just/61-donate-clanker.just" donate-clanker
 }
 
 assert_contains() {
@@ -105,6 +120,17 @@ assert_not_contains 'goose configure' "$missing_auth"
 assert_not_contains 'Legacy compatibility backends stay manual-only' "$missing_auth"
 assert_not_contains 'contribute-setup goose' "$missing_auth"
 
+set +e
+explicit_goose_missing_auth="$(run_launcher TOOL=goose 2>&1)"
+status=$?
+set -e
+test "$status" -ne 0
+assert_contains 'ERROR: GitHub authentication is required for supported onboarding.' "$explicit_goose_missing_auth"
+assert_contains 'gh auth login --web --hostname github.com --scopes repo,read:org' "$explicit_goose_missing_auth"
+assert_not_contains 'ERROR: TOOL=goose is installed but not ready.' "$explicit_goose_missing_auth"
+assert_not_contains 'goose configure' "$explicit_goose_missing_auth"
+assert_not_contains 'contribute-setup goose' "$explicit_goose_missing_auth"
+
 cat >"$home/.config/goose/config.yaml" <<'EOF'
 provider: ollama
 base_url: http://127.0.0.1:11434/v1
@@ -123,6 +149,22 @@ assert_not_contains 'Legacy compatibility backends stay manual-only' "$invalid_g
 assert_not_contains 'contribute-setup goose' "$invalid_goose"
 
 write_goose_config
+: >"$git_log"
+: >"$inner_just_log"
+rm -f "$home/.config/hive/contributor.env"
+
+set +e
+missing_hive_no_tty="$(run_launcher GH_READY=1 2>&1)"
+status=$?
+set -e
+test "$status" -ne 0
+assert_contains 'missing Hive setup at' "$missing_hive_no_tty"
+assert_contains 'stdin/stdout/stderr are not attached to a terminal' "$missing_hive_no_tty"
+assert_contains 'pre-seed it yourself from kubestellar/hive @' "$missing_hive_no_tty"
+assert_contains 'just contribute-setup goose' "$missing_hive_no_tty"
+test ! -s "$git_log"
+test ! -s "$inner_just_log"
+
 cat >"$home/.config/hive/contributor.env" <<'EOF'
 HIVE_REGISTRATION_TOKEN=super-secret-registration-token
 HIVE_HUB=wss://example.invalid/contribute

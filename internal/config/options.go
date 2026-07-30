@@ -21,13 +21,16 @@ const (
 )
 
 var (
-	ErrMissingWorkspace     = errors.New("missing workspace")
-	ErrInvalidEngine        = errors.New("invalid engine")
-	ErrConflictingSelection = errors.New("profile and model cannot both be set")
+	ErrMissingWorkspace   = errors.New("missing workspace")
+	ErrInvalidEngine      = errors.New("invalid engine")
+	ErrInvalidRuntime     = errors.New("invalid container runtime")
+	ErrProfileUnsupported = errors.New("profile selection is unavailable until the FSDK helper launch contract is published")
 )
 
 type Options struct {
 	Engine                 EnginePreference
+	ContainerRuntime       string
+	StrictSandbox          bool
 	Workspace              string
 	Profile                string
 	Model                  string
@@ -57,12 +60,12 @@ func Parse(args []string, env map[string]string) (Options, error) {
 
 	engine := fs.String("engine", string(defaults.Engine), "container engine: auto, podman, docker")
 	workspace := fs.String("workspace", defaults.Workspace, "workspace to mount read/write")
-	profile := fs.String("profile", defaults.Profile, "curated profile id")
+	profile := fs.String("profile", defaults.Profile, "reserved curated profile id (currently unsupported until the FSDK helper launch contract is published)")
 	model := fs.String("model", defaults.Model, "explicit model override")
 	cacheDir := fs.String("cache-dir", defaults.CacheDir, "persistent model cache directory")
 	hiveConfigDir := fs.String("hive-config-dir", defaults.HiveConfigDir, "Hive config directory")
 	gooseConfigPath := fs.String("goose-config", defaults.GooseConfigPath, "validated Goose local config path")
-	profileCatalogPath := fs.String("profile-catalog", defaults.ProfileCatalogPath, "profile catalog path")
+	profileCatalogPath := fs.String("profile-catalog", defaults.ProfileCatalogPath, "profile catalog path reserved for future native profile support")
 	helperImage := fs.String("helper-image", defaults.HelperImage, "helper image reference")
 	contributorImage := fs.String("contributor-image", defaults.ContributorImage, "worker image reference")
 	hiveSourceDir := fs.String("hive-source-dir", defaults.HiveSourceDir, "upstream Hive checkout location")
@@ -80,8 +83,8 @@ func Parse(args []string, env map[string]string) (Options, error) {
 	if strings.TrimSpace(*workspace) == "" {
 		return Options{}, ErrMissingWorkspace
 	}
-	if strings.TrimSpace(*profile) != "" && strings.TrimSpace(*model) != "" {
-		return Options{}, ErrConflictingSelection
+	if trimmedProfile := strings.TrimSpace(*profile); trimmedProfile != "" {
+		return Options{}, fmt.Errorf("%w: %q", ErrProfileUnsupported, trimmedProfile)
 	}
 
 	normalizedEngine, err := parseEnginePreference(*engine)
@@ -91,6 +94,8 @@ func Parse(args []string, env map[string]string) (Options, error) {
 
 	return Options{
 		Engine:                 normalizedEngine,
+		ContainerRuntime:       defaults.ContainerRuntime,
+		StrictSandbox:          defaults.StrictSandbox,
 		Workspace:              normalizePath(*workspace),
 		Profile:                strings.TrimSpace(*profile),
 		Model:                  strings.TrimSpace(*model),
@@ -130,8 +135,15 @@ func defaultOptions(env map[string]string) (Options, error) {
 		model = strings.TrimSpace(env["GOOSE_MODEL"])
 	}
 
+	containerRuntime, err := parseContainerRuntime(env["CLANKER_CONTAINER_RUNTIME"])
+	if err != nil {
+		return Options{}, err
+	}
+
 	return Options{
 		Engine:             EngineAuto,
+		ContainerRuntime:   containerRuntime,
+		StrictSandbox:      strings.TrimSpace(env["CLANKER_STRICT_SANDBOX"]) == "1",
 		Workspace:          workspace,
 		Profile:            profile,
 		Model:              model,
@@ -146,6 +158,17 @@ func defaultOptions(env map[string]string) (Options, error) {
 		NonInteractive:     strings.EqualFold(strings.TrimSpace(env["DONATE_CLANKER_NON_INTERACTIVE"]), "true"),
 		ReadinessTimeout:   defaultReadinessTimeout,
 	}, nil
+}
+
+func parseContainerRuntime(raw string) (string, error) {
+	runtime := strings.TrimSpace(raw)
+	if runtime == "" {
+		return "auto", nil
+	}
+	if strings.ContainsAny(runtime, " \t\r\n\x00") {
+		return "", fmt.Errorf("%w: %q", ErrInvalidRuntime, raw)
+	}
+	return runtime, nil
 }
 
 func parseEnginePreference(raw string) (EnginePreference, error) {

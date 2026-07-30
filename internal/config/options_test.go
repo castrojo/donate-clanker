@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -18,14 +19,62 @@ func TestParseDefaults(t *testing.T) {
 	if opts.Engine != EngineAuto {
 		t.Fatalf("Parse() engine = %q, want %q", opts.Engine, EngineAuto)
 	}
+	if opts.ContainerRuntime != "auto" {
+		t.Fatalf("Parse() container runtime = %q, want auto", opts.ContainerRuntime)
+	}
+	if opts.StrictSandbox {
+		t.Fatal("Parse() strict sandbox = true, want false")
+	}
 	if opts.Workspace != filepath.Clean("/work/repo") {
 		t.Fatalf("Parse() workspace = %q, want /work/repo", opts.Workspace)
 	}
+
 	if opts.CacheDir != filepath.Clean("/home/tester/.local/state/donate-clanker/cache/ramalama") {
 		t.Fatalf("Parse() cache_dir = %q", opts.CacheDir)
 	}
 	if opts.GooseConfigPath != filepath.Clean("/home/tester/.config/goose/config.yaml") {
 		t.Fatalf("Parse() goose_config = %q", opts.GooseConfigPath)
+	}
+}
+
+func TestParseRuntimePolicy(t *testing.T) {
+	opts, err := Parse(nil, map[string]string{
+		"HOME":                      "/home/tester",
+		"PWD":                       "/work/repo",
+		"CLANKER_CONTAINER_RUNTIME": "runsc",
+		"CLANKER_STRICT_SANDBOX":    "1",
+	})
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if opts.ContainerRuntime != "runsc" {
+		t.Fatalf("Parse() container runtime = %q, want runsc", opts.ContainerRuntime)
+	}
+	if !opts.StrictSandbox {
+		t.Fatal("Parse() strict sandbox = false, want true")
+	}
+
+	opts, err = Parse(nil, map[string]string{
+		"HOME":                   "/home/tester",
+		"PWD":                    "/work/repo",
+		"CLANKER_STRICT_SANDBOX": "true",
+	})
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if opts.StrictSandbox {
+		t.Fatal("Parse() strict sandbox = true for non-1 value")
+	}
+}
+
+func TestParseRejectsMalformedContainerRuntime(t *testing.T) {
+	_, err := Parse(nil, map[string]string{
+		"HOME":                      "/home/tester",
+		"PWD":                       "/work/repo",
+		"CLANKER_CONTAINER_RUNTIME": "runsc unsafe",
+	})
+	if !errors.Is(err, ErrInvalidRuntime) {
+		t.Fatalf("Parse() error = %v, want ErrInvalidRuntime", err)
 	}
 }
 
@@ -43,13 +92,30 @@ func TestParsePrefersExplicitHiveCommitOverride(t *testing.T) {
 	}
 }
 
-func TestParseRejectsConflictingProfileAndModel(t *testing.T) {
+func TestParseRejectsProfileFlagBeforeRuntimeSelection(t *testing.T) {
 	_, err := Parse([]string{"--profile", "Qwen3.5-4B", "--model", "override"}, map[string]string{
 		"HOME": "/home/tester",
 		"PWD":  "/work/repo",
 	})
-	if !errors.Is(err, ErrConflictingSelection) {
-		t.Fatalf("Parse() error = %v, want ErrConflictingSelection", err)
+	if !errors.Is(err, ErrProfileUnsupported) {
+		t.Fatalf("Parse() error = %v, want ErrProfileUnsupported", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "Qwen3.5-4B") {
+		t.Fatalf("Parse() error = %v, want profile id in message", err)
+	}
+}
+
+func TestParseRejectsProfileEnvironmentOverride(t *testing.T) {
+	_, err := Parse(nil, map[string]string{
+		"HOME":                   "/home/tester",
+		"PWD":                    "/work/repo",
+		"DONATE_CLANKER_PROFILE": "Qwen3.5-9B",
+	})
+	if !errors.Is(err, ErrProfileUnsupported) {
+		t.Fatalf("Parse() error = %v, want ErrProfileUnsupported", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "Qwen3.5-9B") {
+		t.Fatalf("Parse() error = %v, want profile id in message", err)
 	}
 }
 

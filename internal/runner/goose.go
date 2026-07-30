@@ -3,6 +3,7 @@ package runner
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -28,6 +29,7 @@ var (
 	ErrMissingPrompt     = errors.New("missing Goose prompt")
 	ErrMissingWorkspace  = errors.New("missing Goose workspace")
 	ErrMissingRuntimeDir = errors.New("missing Goose runtime directory")
+	ErrMissingTaskID     = errors.New("missing Hive task ID")
 	ErrMissingConfig     = errors.New("missing bundled Goose config")
 )
 
@@ -204,6 +206,20 @@ func stageBundledConfig(runtimeDir string, config []byte) (string, error) {
 		return "", err
 	}
 	return homeDir, nil
+}
+
+// TaskRuntimeDir returns a task-specific child of runtimeRoot without allowing
+// assignment-controlled text to influence the filesystem path.
+func TaskRuntimeDir(runtimeRoot string, taskID string) (string, error) {
+	root := strings.TrimSpace(runtimeRoot)
+	if root == "" {
+		return "", ErrMissingRuntimeDir
+	}
+	id := strings.TrimSpace(taskID)
+	if id == "" {
+		return "", ErrMissingTaskID
+	}
+	return filepath.Join(filepath.Clean(root), "tasks", base64.RawURLEncoding.EncodeToString([]byte(id))), nil
 }
 
 func gooseEnvironment(task Task, homeDir string) map[string]string {

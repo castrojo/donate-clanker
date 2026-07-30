@@ -8,6 +8,7 @@ task, then validate with the repository's existing checks.
 | Task | Skill |
 | --- | --- |
 | Change Hive credentials, Goose execution, mounts, or assignment prompts | [`worker-credential-boundary.md`](skills/worker-credential-boundary.md) |
+| Change native contributor assignment isolation, local observations, or helper profile launch behavior | [`worker-credential-boundary.md`](skills/worker-credential-boundary.md) |
 | Onboard or audit this repository against the factory | [`factory-onboarding.md`](skills/factory-onboarding.md) |
 | Record a durable workaround or repository convention | [`skill-improvement.md`](skills/skill-improvement.md) |
 

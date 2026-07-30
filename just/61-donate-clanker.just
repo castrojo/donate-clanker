@@ -91,6 +91,13 @@ TimeoutStopSec=20
 # in a terminal they're watching, never because systemd started it for them.
 '''
 
+# Optional gVisor runtime drop-in. Generated only after the caller's rootless
+# Podman context accepts runsc; mirrors quadlet/runtime/runsc.conf.
+runsc_runtime_conf := '''
+[Container]
+GlobalArgs=--runtime=runsc
+'''
+
 # Shared bash, 'eval''d at the top of every recipe script that needs it:
 # host CLI detection + the per-tool quadlet fragment text. Keeping this in
 # one place instead of duplicating it per-recipe is the only concession to
@@ -171,6 +178,14 @@ require_supported_goose() {
     echo "  Re-run donate-clanker from an interactive terminal to complete pinned Hive setup." >&2
     return 1
   fi
+}
+can_run_attended_hive_setup() {
+  [[ "${DONATE_CLANKER_TEST_ATTACH_TTY:-}" == "1" ]] || { [[ -t 0 ]] && [[ -t 1 ]] && [[ -t 2 ]]; }
+}
+print_missing_hive_setup_guidance() {
+  local path="$1" reason="$2" tool="$3" commit="$4"
+  echo "ERROR: missing Hive setup at ${path}; ${reason}." >&2
+  echo "  Re-run donate-clanker from an interactive terminal, or pre-seed it yourself from kubestellar/hive @ ${commit} by running \`just contribute-setup ${tool}\` in an interactive checkout (set DONATE_CLANKER_HIVE_COMMIT to another full commit if needed)" >&2
 }
 tool_installed() {
   case "$1" in
@@ -275,6 +290,11 @@ FRAG
       ;;
   esac
 }
+runsc_available() {
+  local runtime
+  runtime="$(podman --runtime runsc info --format '{{.Host.OCIRuntime.Name}}' 2>/dev/null)" || return 1
+  [[ "$runtime" == "runsc" ]]
+}
 gum_can_prompt() {
   command -v gum &>/dev/null || return 1
   [[ "${DONATE_CLANKER_TEST_GUM_TTY:-}" == "1" ]] || [[ -t 0 ]]
@@ -327,13 +347,17 @@ donate-clanker:
     LAST_TOOL="" LAST_MODEL_CLAUDE="" LAST_MODEL_COPILOT="" LAST_MODEL_CODEX=""
     [[ -f "$LAST_FILE" ]] && source "$LAST_FILE"
 
-    # ── 0. Pick TOOL: the supported auto-detect path is GitHub + Goose
-    #      local inference only. Unsupported backends remain explicit,
-    #      manual compatibility paths and are not production-gated. ──
+    # ── 0. Pick TOOL: the supported Goose path always runs the same
+    #      GitHub -> Goose binary -> Goose config -> existing Hive config
+    #      gate. Auto-detect resolves to Goose only after that gate
+    #      passes. Unsupported backends remain explicit, manual
+    #      compatibility paths and are not production-gated. ──
     if [[ -z "$TOOL" ]]; then
       require_supported_goose || exit 1
       TOOL="goose"
       echo "TOOL not set — auto-detected supported backend: ${TOOL}"
+    elif [[ "$TOOL" == "goose" ]]; then
+      require_supported_goose || exit 1
     else
       if ! tool_installed "$TOOL"; then
         echo "ERROR: TOOL=${TOOL} requested but not installed." >&2
@@ -343,10 +367,6 @@ donate-clanker:
       if ! tool_authenticated "$TOOL"; then
         echo "ERROR: TOOL=${TOOL} is installed but not ready." >&2
         echo "  $(tool_fixit_hint "$TOOL")" >&2
-        if [[ "$TOOL" == "goose" ]]; then
-          github_auth_ready || echo "  Run: ${GITHUB_LOGIN_COMMAND}" >&2
-          validate_goose_config_file "${HOME}/.config/goose/config.yaml" || true
-        fi
         exit 1
       fi
     fi
@@ -460,6 +480,14 @@ donate-clanker:
     # ── 1. Ensure upstream contribute-setup has run ──
     HIVE_CONTRIBUTOR_ENV="${HOME}/.config/hive/contributor.env"
     if [[ ! -f "$HIVE_CONTRIBUTOR_ENV" ]]; then
+      if [[ "${DONATE_CLANKER_NON_INTERACTIVE:-}" == "true" ]]; then
+        print_missing_hive_setup_guidance "$HIVE_CONTRIBUTOR_ENV" "non-interactive mode cannot answer the upstream prompts" "$TOOL" "$HIVE_COMMIT"
+        exit 1
+      fi
+      if ! can_run_attended_hive_setup; then
+        print_missing_hive_setup_guidance "$HIVE_CONTRIBUTOR_ENV" "stdin/stdout/stderr are not attached to a terminal" "$TOOL" "$HIVE_COMMIT"
+        exit 1
+      fi
       echo "Upstream contribute-setup hasn't run yet (no ${HIVE_CONTRIBUTOR_ENV})."
       for cmd in just gh git; do
         command -v "$cmd" &>/dev/null || { echo "ERROR: '${cmd}' is required to run contribute-setup." >&2; exit 1; }
@@ -476,7 +504,7 @@ donate-clanker:
       exit 1
     fi
 
-    # ── 2. Write the quadlet unit + selected tool fragment (write-if-changed) ──
+    # ── 2. Write the quadlet unit + selected tool/runtime fragments (write-if-changed) ──
     write_if_changed() {
       local dst="$1" content="$2"
       if [[ ! -f "$dst" ]] || [[ "$(cat "$dst")" != "$content" ]]; then
@@ -487,6 +515,26 @@ donate-clanker:
     write_if_changed "${CONF_DIR}/donate-clanker.container" "{{donate_clanker_unit}}"
     find "${DROPIN_DIR}" -maxdepth 1 -name '10-tool.conf' -delete
     tool_fragment_conf "$TOOL" > "${DROPIN_DIR}/10-tool.conf"
+    RUNTIME_CONF="${DROPIN_DIR}/20-runtime.conf"
+    RUNTIME_REQUEST="${CLANKER_CONTAINER_RUNTIME:-auto}"
+    case "$RUNTIME_REQUEST" in
+      auto|runsc) ;;
+      *)
+        rm -f "$RUNTIME_CONF"
+        echo "ERROR: compatibility Quadlet runtime supports only auto or runsc, got: ${RUNTIME_REQUEST}" >&2
+        exit 1
+        ;;
+    esac
+    if ! runsc_available; then
+      rm -f "$RUNTIME_CONF"
+      if [[ "$RUNTIME_REQUEST" == "runsc" || "${CLANKER_STRICT_SANDBOX:-}" == "1" ]]; then
+        echo "ERROR: gVisor runsc is unavailable in this rootless Podman context; refusing to start without the strict sandbox." >&2
+        exit 1
+      fi
+      echo "WARNING: gVisor runsc is unavailable in this rootless Podman context; continuing with Podman's default runtime." >&2
+    else
+      write_if_changed "$RUNTIME_CONF" "{{runsc_runtime_conf}}"
+    fi
     while IFS= read -r d; do
       [[ -n "$d" ]] && mkdir -p "$d"
     done < <(tool_host_dirs "$TOOL")

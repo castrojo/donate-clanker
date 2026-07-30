@@ -21,8 +21,23 @@ func (e podmanEngine) Version(ctx context.Context) error {
 	return err
 }
 
+func (e podmanEngine) ProbeRuntime(ctx context.Context, runtime string) error {
+	result, err := e.runner.Run(ctx, "podman", "--runtime", runtime, "info", "--format", "{{.Host.OCIRuntime.Name}}")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(result.Stdout) != runtime {
+		return fmt.Errorf("runtime %q was not selected", runtime)
+	}
+	return nil
+}
+
 func (e podmanEngine) PodCreate(ctx context.Context, spec PodSpec) error {
-	args := []string{"pod", "create", "--replace", "--name", spec.Name}
+	var args []string
+	if spec.Runtime != "" {
+		args = append(args, "--runtime", spec.Runtime)
+	}
+	args = append(args, "pod", "create", "--replace", "--name", spec.Name)
 	for _, key := range sortedMapKeys(spec.Labels) {
 		args = append(args, "--label", fmt.Sprintf("%s=%s", key, spec.Labels[key]))
 	}
@@ -35,6 +50,9 @@ func (e podmanEngine) PodCreate(ctx context.Context, spec PodSpec) error {
 
 func (e podmanEngine) Run(ctx context.Context, spec RunSpec) (Process, error) {
 	args := []string{"run"}
+	if spec.Runtime != "" {
+		args = append(args, "--runtime", spec.Runtime)
+	}
 	if spec.Detach {
 		args = append(args, "-d")
 	} else {

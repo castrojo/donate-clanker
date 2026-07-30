@@ -199,7 +199,6 @@ func (c *Client) handleConnection(ctx context.Context, conn *websocket.Conn, cre
 			if !ok {
 				return errConnectionUnavailable
 			}
-			c.touch()
 
 			switch msg.Type {
 			case "auth_challenge":
@@ -241,7 +240,7 @@ func (c *Client) handleConnection(ctx context.Context, conn *websocket.Conn, cre
 				}
 
 			case "pong":
-				// liveness already updated by touch()
+				c.touch()
 			}
 
 		case err := <-readErr:

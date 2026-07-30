@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/projectbluefin/donate-clanker/internal/config"
 	"github.com/projectbluefin/donate-clanker/internal/contract"
@@ -85,6 +86,7 @@ func run(args []string) error {
 			Policy:   policy,
 			Contract: manifest,
 		},
+		observationWriter: os.Stderr,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -94,54 +96,57 @@ func run(args []string) error {
 }
 
 type contributorHandler struct {
-	baseTask runner.Task
-	goose    runner.Goose
+	baseTask          runner.Task
+	goose             runner.Goose
+	observationWriter io.Writer
+	now               func() time.Time
 
 	mu     sync.Mutex
 	active *activeTask
 }
 
-var errTokenRefreshed = errors.New("task token refreshed")
-
 type activeTask struct {
 	assignment hive.Assignment
-	cancel     context.CancelCauseFunc
 }
 
 func (h *contributorHandler) Handle(ctx context.Context, assignment hive.Assignment) (hive.TaskReport, error) {
-	for {
-		h.mu.Lock()
-		if h.active != nil && h.active.assignment.TaskID == assignment.TaskID {
-			assignment = h.active.assignment
-		}
-		runCtx, cancel := context.WithCancelCause(ctx)
-		h.active = &activeTask{assignment: assignment, cancel: cancel}
-		h.mu.Unlock()
+	now := h.now
+	if now == nil {
+		now = time.Now
+	}
+	startedAt := now()
 
-		task := h.baseTask
-		task.Prompt = assignment.Verbatim()
-		task.GitHubToken = assignment.GitHubToken
-		result, err := h.goose.Run(runCtx, task)
-		cancel(nil)
-
+	h.mu.Lock()
+	active := &activeTask{assignment: assignment}
+	h.active = active
+	h.mu.Unlock()
+	defer func() {
 		h.mu.Lock()
-		if h.active != nil && h.active.assignment.TaskID == assignment.TaskID {
-			assignment = h.active.assignment
+		if h.active == active {
 			h.active = nil
 		}
 		h.mu.Unlock()
+	}()
 
-		if errors.Is(context.Cause(runCtx), errTokenRefreshed) {
-			continue
-		}
-
-		report := hive.TaskReport{
-			Result:  result.Result,
-			Summary: result.Summary,
-			Output:  result.Output,
-		}
-		return report, err
+	task := h.baseTask
+	task.Prompt = assignment.Verbatim()
+	task.GitHubToken = assignment.GitHubToken
+	var err error
+	task.RuntimeDir, err = runner.TaskRuntimeDir(task.RuntimeDir, assignment.TaskID)
+	if err != nil {
+		return hive.TaskReport{}, err
 	}
+	result, err := h.goose.Run(ctx, task)
+	if cleanupErr := os.RemoveAll(task.RuntimeDir); cleanupErr != nil {
+		writeTaskCleanupError(h.observationWriter, cleanupErr)
+	}
+	writeTaskObservation(h.observationWriter, assignment, startedAt, now(), ctx, err)
+
+	return hive.TaskReport{
+		Result:  result.Result,
+		Summary: result.Summary,
+		Output:  result.Output,
+	}, err
 }
 
 func (h *contributorHandler) Refresh(_ context.Context, assignment hive.Assignment) error {
@@ -152,7 +157,6 @@ func (h *contributorHandler) Refresh(_ context.Context, assignment hive.Assignme
 		return nil
 	}
 	h.active.assignment = assignment
-	h.active.cancel(errTokenRefreshed)
 	return nil
 }
 
@@ -197,4 +201,11 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func writeTaskCleanupError(writer io.Writer, err error) {
+	if writer == nil || err == nil {
+		return
+	}
+	_, _ = io.WriteString(writer, "task runtime cleanup failed: "+err.Error()+"\n")
 }

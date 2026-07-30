@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -196,6 +197,12 @@ func TestClientRespondsToPingAndCompletesTask(t *testing.T) {
 	if pong.Type != "pong" || pong.Seq != 42 {
 		t.Fatalf("pong = %+v", pong)
 	}
+	client.mu.Lock()
+	active := client.active
+	client.mu.Unlock()
+	if active == nil || active.assignment.TaskID != "task-123" {
+		t.Fatalf("active task after ping = %+v, want task-123", active)
+	}
 
 	handler.finish <- handlerOutcome{
 		report: TaskReport{
@@ -228,6 +235,56 @@ func TestClientRespondsToPingAndCompletesTask(t *testing.T) {
 	err := <-errCh
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run() error = %v, want context.Canceled", err)
+	}
+}
+
+func TestClientOnlyPongsExtendHeartbeatLiveness(t *testing.T) {
+	wsURL, conns, cleanup := newWSTestServer(t)
+	defer cleanup()
+
+	base := time.Now().Add(time.Hour)
+	clock := &testClock{now: base}
+	client := NewClient()
+	client.HeartbeatInterval = 100 * time.Millisecond
+	client.HeartbeatTimeout = 50 * time.Millisecond
+	client.Now = clock.Now
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	clientConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- client.handleConnection(ctx, clientConn, Credentials{
+			RegistrationToken: "secret-token",
+			CLIBackend:        "goose",
+		}, &blockingHandler{})
+	}()
+
+	conn := <-conns
+	authenticateConnection(t, conn)
+	if ready := readWSMessage(t, conn); ready.Type != "ready" {
+		t.Fatalf("message after auth_ok = %q, want ready", ready.Type)
+	}
+	if ping := readWSMessage(t, conn); ping.Type != "ping" {
+		t.Fatalf("heartbeat message = %+v, want ping", ping)
+	}
+
+	clock.Set(base.Add(25 * time.Millisecond))
+	writeWSMessage(t, conn, wsMessage{Type: "task_progress", TaskID: "unrelated"})
+	time.Sleep(10 * time.Millisecond)
+	clock.Set(base.Add(client.HeartbeatTimeout + time.Millisecond))
+
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, ErrHeartbeatTimeout) {
+			t.Fatalf("handleConnection() error = %v, want ErrHeartbeatTimeout", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("handleConnection() did not time out after non-pong message")
 	}
 }
 
@@ -520,6 +577,23 @@ type blockingHandler struct {
 	started   chan Assignment
 	refreshes chan Assignment
 	finish    chan handlerOutcome
+}
+
+type testClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *testClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *testClock) Set(now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = now
 }
 
 type handlerOutcome struct {

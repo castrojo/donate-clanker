@@ -17,6 +17,7 @@ type Spec struct {
 	Labels        map[string]string
 	ModelHostPort int
 	ContainerPort int
+	Runtime       string
 }
 
 type ModelSpec struct {
@@ -24,6 +25,7 @@ type ModelSpec struct {
 	Env              map[string]string
 	Mounts           []config.Mount
 	Command          []string
+	Runtime          string
 	ReadinessTimeout time.Duration
 }
 
@@ -33,6 +35,7 @@ type WorkerSpec struct {
 	Mounts  []config.Mount
 	Command []string
 	WorkDir string
+	Runtime string
 }
 
 type Handle struct {
@@ -67,6 +70,7 @@ func Create(ctx context.Context, eng engine.Engine, spec Spec) (*Handle, error) 
 
 	if err := eng.PodCreate(ctx, engine.PodSpec{
 		Name:          name,
+		Runtime:       spec.Runtime,
 		Labels:        spec.Labels,
 		HostPort:      hostPort,
 		ContainerPort: containerPort,

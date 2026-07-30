@@ -1,0 +1,18 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 2c9f875913ee60ca25ce70243dc24d5b6415598c  # v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^docs/skills/(factory-onboarding|skill-improvement)\.md$
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-json
+      - id: check-yaml
+  - repo: local
+    hooks:
+      - id: gofmt
+        name: gofmt
+        language: system
+        entry: gofmt -w
+        types: [go]

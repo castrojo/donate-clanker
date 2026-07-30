@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -8,6 +9,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -28,7 +31,7 @@ func TestRunOrdersFoundationSteps(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 
-	want := []string{"detect", "github", "goose", "hive", "catalog", "creds", "mounts", "create-pod", "start-model", "start-worker", "wait", "close"}
+	want := []string{"detect", "runtime", "github", "goose", "hive", "creds", "mounts", "create-pod", "start-model", "start-worker", "wait", "close"}
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("run() calls = %#v, want %#v", calls, want)
 	}
@@ -46,7 +49,7 @@ func TestRunStopsOnSetupFailure(t *testing.T) {
 	if err == nil || err.Error() != "setup failed" {
 		t.Fatalf("run() error = %v, want setup failed", err)
 	}
-	if want := []string{"detect", "github", "goose", "hive"}; !reflect.DeepEqual(calls, want) {
+	if want := []string{"detect", "runtime", "github", "goose", "hive"}; !reflect.DeepEqual(calls, want) {
 		t.Fatalf("run() calls = %#v, want %#v", calls, want)
 	}
 }
@@ -103,7 +106,7 @@ func TestRunCleansUpWhenWorkerStartFails(t *testing.T) {
 	if err == nil || err.Error() != "worker failed" {
 		t.Fatalf("run() error = %v, want worker failed", err)
 	}
-	if want := []string{"detect", "github", "goose", "hive", "catalog", "creds", "mounts", "create-pod", "start-model", "start-worker", "close"}; !reflect.DeepEqual(calls, want) {
+	if want := []string{"detect", "runtime", "github", "goose", "hive", "creds", "mounts", "create-pod", "start-model", "start-worker", "close"}; !reflect.DeepEqual(calls, want) {
 		t.Fatalf("run() calls = %#v, want %#v", calls, want)
 	}
 }
@@ -113,12 +116,14 @@ func TestRunSignalsWorkerOnInterrupt(t *testing.T) {
 	deps := testDependencies(&calls)
 	ctx, cancel := context.WithCancel(context.Background())
 	process := &blockingProcess{release: make(chan struct{}), calls: &calls}
+	t.Cleanup(func() {
+		close(process.release)
+	})
 	deps.startWorker = func(context.Context, podHandle, pod.WorkerSpec) (engine.Process, error) {
 		calls = append(calls, "start-worker")
 		go func() {
 			time.Sleep(100 * time.Millisecond)
 			cancel()
-			close(process.release)
 		}()
 		return process, nil
 	}
@@ -133,19 +138,88 @@ func TestRunSignalsWorkerOnInterrupt(t *testing.T) {
 	if !process.signaled {
 		t.Fatal("run() did not signal worker on interrupt")
 	}
-	if want := []string{"detect", "github", "goose", "hive", "catalog", "creds", "mounts", "create-pod", "start-model", "start-worker", "signal", "close"}; !reflect.DeepEqual(calls, want) {
+	if want := []string{"detect", "runtime", "github", "goose", "hive", "creds", "mounts", "create-pod", "start-model", "start-worker", "signal", "close"}; !reflect.DeepEqual(calls, want) {
 		t.Fatalf("run() calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestRunClosesWorkerOutputBeforeReturningOnInterrupt(t *testing.T) {
+	var calls []string
+	deps := testDependencies(&calls)
+	var stdout bytes.Buffer
+	deps.stdout = &stdout
+	ctx, cancel := context.WithCancel(context.Background())
+	output := &interruptibleReadCloser{
+		release: make(chan struct{}),
+		done:    make(chan struct{}),
+		closed:  make(chan struct{}),
+		data:    []byte("late worker output\n"),
+	}
+	process := &interruptOutputProcess{
+		output:      output,
+		waitRelease: make(chan struct{}),
+		calls:       &calls,
+	}
+	t.Cleanup(func() {
+		close(process.waitRelease)
+	})
+	deps.startWorker = func(context.Context, podHandle, pod.WorkerSpec) (engine.Process, error) {
+		calls = append(calls, "start-worker")
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			cancel()
+		}()
+		return process, nil
+	}
+	deps.notifyContext = func(parent context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) {
+		return context.WithCancel(parent)
+	}
+
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- run(ctx, testOptions(), deps)
+	}()
+
+	select {
+	case <-output.closed:
+	case <-time.After(time.Second):
+		t.Fatal("run() did not close worker output on interrupt")
+	}
+
+	select {
+	case err := <-runDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("run() error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("run() did not return after closing worker output")
+	}
+
+	close(output.release)
+	time.Sleep(50 * time.Millisecond)
+
+	if got := stdout.String(); got != "" {
+		t.Fatalf("run() output after interrupt = %q, want empty", got)
+	}
+	if !process.signaled {
+		t.Fatal("run() did not signal worker on interrupt")
 	}
 }
 
 func TestRunScopesWorkerMountsAndEnv(t *testing.T) {
 	var calls []string
 	deps := testDependencies(&calls)
+	var podSpec pod.Spec
 	var modelSpec pod.ModelSpec
 	var workerSpec pod.WorkerSpec
 	deps.loadCredentials = func(string) (hive.Credentials, error) {
 		calls = append(calls, "creds")
 		return hive.Credentials{RegistrationToken: "hive-secret", WSURL: "wss://example.invalid/api/contribute/ws", CLIBackend: "goose"}, nil
+	}
+	deps.createPod = func(_ context.Context, _ engine.Engine, spec pod.Spec) (podHandle, error) {
+		calls = append(calls, "create-pod")
+		podSpec = spec
+		return &fakeHandle{calls: &calls}, nil
 	}
 	deps.startModel = func(_ context.Context, _ podHandle, spec pod.ModelSpec) error {
 		calls = append(calls, "start-model")
@@ -164,6 +238,12 @@ func TestRunScopesWorkerMountsAndEnv(t *testing.T) {
 
 	if len(modelSpec.Mounts) != 1 || modelSpec.Mounts[0].ContainerPath != config.CacheMountPath {
 		t.Fatalf("startModel mounts = %#v, want only cache", modelSpec.Mounts)
+	}
+	if podSpec.Runtime != "runsc" {
+		t.Fatalf("createPod runtime = %q, want runsc", podSpec.Runtime)
+	}
+	if modelSpec.Runtime != "runsc" || workerSpec.Runtime != "runsc" {
+		t.Fatalf("container runtimes = (%q, %q), want runsc for both", modelSpec.Runtime, workerSpec.Runtime)
 	}
 	if len(workerSpec.Mounts) != 1 || workerSpec.Mounts[0].ContainerPath != config.WorkspaceMountPath {
 		t.Fatalf("startWorker mounts = %#v, want only workspace", workerSpec.Mounts)
@@ -186,11 +266,31 @@ func TestRunScopesWorkerMountsAndEnv(t *testing.T) {
 	}
 }
 
+func TestRunRejectsProfileWithoutHelperLaunchContract(t *testing.T) {
+	var calls []string
+	deps := testDependencies(&calls)
+	opts := testOptions()
+	opts.Model = ""
+	opts.Profile = "Qwen3.5-4B"
+
+	err := run(context.Background(), opts, deps)
+	if !errors.Is(err, ErrHelperProfileContract) {
+		t.Fatalf("run() error = %v, want ErrHelperProfileContract", err)
+	}
+	if want := []string{"detect", "runtime", "github", "goose", "hive", "catalog"}; !reflect.DeepEqual(calls, want) {
+		t.Fatalf("run() calls = %#v, want %#v", calls, want)
+	}
+}
+
 func testDependencies(calls *[]string) dependencies {
 	return dependencies{
 		detectEngine: func(context.Context, engine.Preference) (engine.Engine, error) {
 			*calls = append(*calls, "detect")
 			return fakeEngine{}, nil
+		},
+		resolveRuntime: func(context.Context, engine.Engine, string, bool) (string, string, error) {
+			*calls = append(*calls, "runtime")
+			return "runsc", "", nil
 		},
 		checkGitHubAuth: func(context.Context, setup.CommandRunner) error {
 			*calls = append(*calls, "github")
@@ -217,11 +317,19 @@ func testDependencies(calls *[]string) dependencies {
 		},
 		loadBundledCatalog: func() (profile.Catalog, error) {
 			*calls = append(*calls, "catalog")
-			return profile.Catalog{"Qwen3.5-4B": {}}, nil
+			return profile.Catalog{"Qwen3.5-4B": {
+				ContextSize: 32768,
+				Thinking:    false,
+				RuntimeArgs: []string{"--thinking", "false"},
+			}}, nil
 		},
 		loadCatalog: func(string) (profile.Catalog, error) {
 			*calls = append(*calls, "catalog")
-			return profile.Catalog{"Qwen3.5-4B": {}}, nil
+			return profile.Catalog{"Qwen3.5-4B": {
+				ContextSize: 32768,
+				Thinking:    false,
+				RuntimeArgs: []string{"--thinking", "false"},
+			}}, nil
 		},
 		createPod: func(context.Context, engine.Engine, pod.Spec) (podHandle, error) {
 			*calls = append(*calls, "create-pod")
@@ -242,13 +350,101 @@ func testDependencies(calls *[]string) dependencies {
 		stdout:        io.Discard,
 		now:           func() time.Time { return time.Unix(1, 0) },
 	}
+
+}
+
+func TestRunStrictSandboxStopsBeforePodCreation(t *testing.T) {
+	var calls []string
+	deps := testDependencies(&calls)
+	deps.resolveRuntime = func(context.Context, engine.Engine, string, bool) (string, string, error) {
+		calls = append(calls, "runtime")
+		return "", "", engine.ErrRuntimeUnavailable
+	}
+
+	opts := testOptions()
+	opts.StrictSandbox = true
+	err := run(context.Background(), opts, deps)
+	if !errors.Is(err, engine.ErrRuntimeUnavailable) {
+		t.Fatalf("run() error = %v, want ErrRuntimeUnavailable", err)
+	}
+	if want := []string{"detect", "runtime"}; !reflect.DeepEqual(calls, want) {
+		t.Fatalf("run() calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestRunWritesRuntimeFallbackWarning(t *testing.T) {
+	var calls []string
+	deps := testDependencies(&calls)
+	var output bytes.Buffer
+	deps.stdout = &output
+	deps.resolveRuntime = func(context.Context, engine.Engine, string, bool) (string, string, error) {
+		calls = append(calls, "runtime")
+		return "", "warning: using the default runtime", nil
+	}
+
+	if err := run(context.Background(), testOptions(), deps); err != nil {
+		t.Fatalf("run() error = %v", err)
+	}
+	if !strings.Contains(output.String(), "warning: using the default runtime") {
+		t.Fatalf("run() output = %q, want runtime fallback warning", output.String())
+	}
+}
+
+func TestRunWaitsForWorkerOutputBeforeReturning(t *testing.T) {
+	var calls []string
+	deps := testDependencies(&calls)
+	var stdout bytes.Buffer
+	deps.stdout = &stdout
+
+	output := &gatedReadCloser{
+		release: make(chan struct{}),
+		closed:  make(chan struct{}),
+		data:    []byte("final worker output\n"),
+	}
+	deps.startWorker = func(context.Context, podHandle, pod.WorkerSpec) (engine.Process, error) {
+		calls = append(calls, "start-worker")
+		return &gatedOutputProcess{calls: &calls, output: output}, nil
+	}
+
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- run(context.Background(), testOptions(), deps)
+	}()
+
+	select {
+	case err := <-runDone:
+		close(output.release)
+		t.Fatalf("run() returned before worker output copied: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(output.release)
+
+	select {
+	case err := <-runDone:
+		if err != nil {
+			t.Fatalf("run() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("run() did not return after worker output completed")
+	}
+
+	select {
+	case <-output.closed:
+	case <-time.After(time.Second):
+		t.Fatal("worker output reader was not closed")
+	}
+
+	if got, want := stdout.String(), "final worker output\n"; got != want {
+		t.Fatalf("run() output = %q, want %q", got, want)
+	}
 }
 
 func testOptions() config.Options {
 	return config.Options{
 		Engine:             config.EngineAuto,
 		Workspace:          "/workspace",
-		Profile:            "Qwen3.5-4B",
+		Model:              "Qwen3.5-4B",
 		CacheDir:           "/cache",
 		HiveConfigDir:      "/hive",
 		GooseConfigPath:    "/goose/config.yaml",
@@ -276,20 +472,7 @@ func TestResolveModelUsesBundledCatalogOutsideCheckout(t *testing.T) {
 		}
 	})
 
-	opts, err := config.Parse([]string{"--profile", "Qwen3.5-4B"}, map[string]string{
-		"HOME": "/home/tester",
-		"PWD":  "/work/repo",
-	})
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-
-	if got, want := opts.ProfileCatalogPath, filepath.Join(scratch, "image", "config", "models.json"); got != want {
-		t.Fatalf("Parse() profile catalog path = %q, want %q", got, want)
-	}
-	if opts.ProfileCatalogExplicit {
-		t.Fatal("Parse() unexpectedly marked default profile catalog as explicit")
-	}
+	opts := config.Options{Profile: "Qwen3.5-4B"}
 
 	model, err := resolveModel(opts, dependencies{
 		loadBundledCatalog: profile.LoadBundled,
@@ -301,8 +484,11 @@ func TestResolveModelUsesBundledCatalogOutsideCheckout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveModel() error = %v", err)
 	}
-	if model != "Qwen3.5-4B" {
-		t.Fatalf("resolveModel() model = %q, want %q", model, "Qwen3.5-4B")
+	if model.name != "Qwen3.5-4B" {
+		t.Fatalf("resolveModel() model = %q, want %q", model.name, "Qwen3.5-4B")
+	}
+	if model.profile == nil || model.profile.ContextSize != 32768 {
+		t.Fatalf("resolveModel() profile = %#v, want bundled profile", model.profile)
 	}
 }
 
@@ -329,15 +515,10 @@ func TestResolveModelHonorsExplicitProfileCatalogOverride(t *testing.T) {
 		}
 	}`))
 
-	opts, err := config.Parse([]string{"--profile", "custom", "--profile-catalog", catalogPath}, map[string]string{
-		"HOME": "/home/tester",
-		"PWD":  "/work/repo",
-	})
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-	if !opts.ProfileCatalogExplicit {
-		t.Fatal("Parse() did not mark --profile-catalog override as explicit")
+	opts := config.Options{
+		Profile:                "custom",
+		ProfileCatalogPath:     catalogPath,
+		ProfileCatalogExplicit: true,
 	}
 
 	model, err := resolveModel(opts, dependencies{
@@ -350,8 +531,11 @@ func TestResolveModelHonorsExplicitProfileCatalogOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveModel() error = %v", err)
 	}
-	if model != "custom" {
-		t.Fatalf("resolveModel() model = %q, want %q", model, "custom")
+	if model.name != "custom" {
+		t.Fatalf("resolveModel() model = %q, want %q", model.name, "custom")
+	}
+	if model.profile == nil || !reflect.DeepEqual(model.profile.RuntimeArgs, []string{"--thinking", "false"}) {
+		t.Fatalf("resolveModel() profile = %#v, want explicit runtime arguments", model.profile)
 	}
 }
 
@@ -397,6 +581,105 @@ func (p *blockingProcess) Signal(os.Signal) error {
 	return nil
 }
 func (p *blockingProcess) StdoutStderr() io.ReadCloser { return io.NopCloser(noopReader{}) }
+
+type gatedOutputProcess struct {
+	calls  *[]string
+	output io.ReadCloser
+}
+
+func (p *gatedOutputProcess) Wait() error {
+	if p.calls != nil {
+		*p.calls = append(*p.calls, "wait")
+	}
+	return nil
+}
+func (p *gatedOutputProcess) Signal(os.Signal) error { return nil }
+func (p *gatedOutputProcess) StdoutStderr() io.ReadCloser {
+	return p.output
+}
+
+type gatedReadCloser struct {
+	release chan struct{}
+	closed  chan struct{}
+	data    []byte
+	read    bool
+}
+
+func (r *gatedReadCloser) Read(p []byte) (int, error) {
+	if r.read {
+		return 0, io.EOF
+	}
+	<-r.release
+	r.read = true
+	n := copy(p, r.data)
+	return n, io.EOF
+}
+
+func (r *gatedReadCloser) Close() error {
+	close(r.closed)
+	return nil
+}
+
+type interruptOutputProcess struct {
+	output      io.ReadCloser
+	waitRelease chan struct{}
+	signaled    bool
+	calls       *[]string
+}
+
+func (p *interruptOutputProcess) Wait() error {
+	<-p.waitRelease
+	return nil
+}
+func (p *interruptOutputProcess) Signal(os.Signal) error {
+	p.signaled = true
+	if p.calls != nil {
+		*p.calls = append(*p.calls, "signal")
+	}
+	return nil
+}
+func (p *interruptOutputProcess) StdoutStderr() io.ReadCloser {
+	return p.output
+}
+
+type interruptibleReadCloser struct {
+	release chan struct{}
+	done    chan struct{}
+	closed  chan struct{}
+	data    []byte
+	once    sync.Once
+	read    bool
+}
+
+func (r *interruptibleReadCloser) Read(p []byte) (int, error) {
+	if r.read {
+		return 0, io.EOF
+	}
+
+	select {
+	case <-r.done:
+		r.read = true
+		return 0, io.EOF
+	case <-r.release:
+		select {
+		case <-r.done:
+			r.read = true
+			return 0, io.EOF
+		default:
+		}
+		r.read = true
+		n := copy(p, r.data)
+		return n, io.EOF
+	}
+}
+
+func (r *interruptibleReadCloser) Close() error {
+	r.once.Do(func() {
+		close(r.done)
+		close(r.closed)
+	})
+	return nil
+}
 
 type noopReader struct{}
 

@@ -359,6 +359,37 @@ func TestGooseRunRedactsAndPropagatesFailure(t *testing.T) {
 	}
 }
 
+func TestTaskRuntimeDirIsolatesAndContainsTaskIDs(t *testing.T) {
+	root := repoScratch(t, "task-runtime-root")
+	first, err := TaskRuntimeDir(root, "task-one")
+	if err != nil {
+		t.Fatalf("TaskRuntimeDir() error = %v", err)
+	}
+	second, err := TaskRuntimeDir(root, "../task-two")
+	if err != nil {
+		t.Fatalf("TaskRuntimeDir() error = %v", err)
+	}
+
+	if first == second {
+		t.Fatalf("TaskRuntimeDir() = %q for two task IDs, want distinct paths", first)
+	}
+	for _, runtimeDir := range []string{first, second} {
+		relative, err := filepath.Rel(filepath.Clean(root), runtimeDir)
+		if err != nil {
+			t.Fatalf("Rel(%q, %q) error = %v", root, runtimeDir, err)
+		}
+		if relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			t.Fatalf("TaskRuntimeDir() = %q, escapes root %q", runtimeDir, root)
+		}
+	}
+}
+
+func TestTaskRuntimeDirRejectsMissingTaskID(t *testing.T) {
+	if _, err := TaskRuntimeDir("runtime", " \t"); !errors.Is(err, ErrMissingTaskID) {
+		t.Fatalf("TaskRuntimeDir() error = %v, want %v", err, ErrMissingTaskID)
+	}
+}
+
 type fakeCommandRunner struct {
 	calls  []Command
 	output CommandOutput

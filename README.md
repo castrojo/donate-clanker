@@ -34,9 +34,7 @@ On this Bluefin machine, `ujust donate-clanker` is configured as a local
 shortcut for the same published-image command. It defaults to the authenticated
 Copilot backend, refreshes the `stable` image before starting, and attaches the
 interactive UI. Use `ujust donate-clanker-stop` only to clean up a stale
-process; normal shutdown is `Ctrl-C`. The shortcut also opens each assigned
-GitHub issue in the system browser using `xdg-open`; the direct Podman command
-does not open host applications.
+process; normal shutdown is `Ctrl-C`.
 
 Source of truth for the contributor workflow this wraps:
 https://hosted-projectbluefin-knuckle-gjvq.hive.kubestellar.io/contribute
@@ -50,12 +48,52 @@ launcher integration. The direct Podman command is the portable path; the
 self-contained `just` recipe remains available for hosts that want Quadlet
 management and explicit tool selection.
 
-## Native launcher configuration (not compatibility mode)
+## Native contributor runtime (not compatibility mode)
 
-The repository retains bundled Goose/RamaLama configuration under
-`image/config/` for native launcher integrations. The published
-`ghcr.io/projectbluefin/donate-clanker` compatibility image does not copy or
-use these files; it delegates to the upstream Hive contributor runtime.
+The optional native launcher starts this repository's `contributor` worker and
+the FSDK helper separately. The worker owns the Hive connection and handles
+one assignment at a time: every assignment gets exactly one fresh, isolated
+`goose run --no-session` with an assignment-specific runtime directory. A
+token refresh never restarts an active run. Native execution does not create,
+select, inject keys into, or supervise tmux sessions, panes, or windows.
+
+The published `ghcr.io/projectbluefin/donate-clanker` compatibility image is
+different: it is only a wrapper around the pinned upstream Hive contributor
+image. It does not contain the native Goose/RamaLama launcher, native
+assignment isolation, or local inference helper; its interactive behavior is
+owned by that upstream runtime.
+
+The native path retains bundled Goose/RamaLama configuration under
+`image/config/`. It is not configuration for the compatibility image.
+
+### gVisor runtime selection
+
+The native launcher and Quadlet compatibility path prefer gVisor's `runsc`
+when the caller's **rootless Podman** context supports it.
+`CLANKER_CONTAINER_RUNTIME` defaults to `auto`: native mode probes `runsc`
+and uses it when available; an explicit native value selects that OCI runtime
+only after its probe succeeds. The Quadlet compatibility path supports
+`auto` and the explicit `runsc` override.
+
+Both paths verify the selected runtime with Podman, for example:
+
+```sh
+podman --runtime runsc info --format '{{.Host.OCIRuntime.Name}}'
+```
+
+If the rootless probe cannot select `runsc`, `auto` removes any Quadlet
+runtime drop-in (or leaves the native runtime unset), emits a warning, and
+continues with Podman's default runtime. Set `CLANKER_STRICT_SANDBOX=1` to
+fail before starting a container or pod instead; compatibility mode also
+fails for an unavailable explicit `CLANKER_CONTAINER_RUNTIME=runsc`.
+
+Installing and registering `runsc` with Podman is the host operator's
+responsibility. This repository does not provide Docker-specific gVisor
+installation instructions as a guarantee that a Podman host is configured.
+gVisor changes the OCI runtime; it does not change the workload boundary:
+the contributor still needs its existing outbound network access, a writable
+workspace, and (for the native helper) a writable model cache. Compatibility
+credential mounts remain read-only (`/config/hive` and `/config/github`).
 
 ### Context7 (optional, no credential required)
 
@@ -73,21 +111,39 @@ prerequisite** for starting or completing work:
 - **Offline mode is fully supported** — tasks proceed using only the
   workspace content mounted by the container.
 
-### Extended thinking disabled by default
+### Profile policy and helper launch boundary
 
-All bundled model profiles (`image/config/models.json`) run with extended
-thinking explicitly disabled:
+All bundled model profiles (`image/config/models.json`) declare extended
+thinking disabled:
 
 - `thinking: false` is declared in every profile's JSON entry.
 - `--thinking false` is included in every profile's RamaLama runtime
-  arguments, disabling reasoning at the inference-server level.
-- Goose also receives `GOOSE_THINKING_EFFORT=off` as a secondary guard.
+  arguments as catalog policy.
 - Profiles for Qwen3.5 and Qwen3.6 additionally pass
   `--chat-template-kwargs '{"enable_thinking":false}'` to the llama.cpp
-  chat template layer.
+  chat template layer as catalog policy.
 
-These defaults are verified by CI static checks (`validate.yml`) that run
-without GPU hardware, Podman, or network access.
+The FSDK helper image has no versioned launch contract for this catalog's
+`context_size` or `runtime_args`. Therefore native `--profile` and
+`DONATE_CLANKER_PROFILE` are currently rejected during launcher option parsing,
+before auth/setup or pod creation. The launcher does not translate or forward
+profile values as helper flags or environment variables, and
+`--profile-catalog` remains reserved until that contract exists. A direct
+native Goose run still sets `GOOSE_THINKING_EFFORT=off`.
+
+Local pre-commit hooks provide formatting and basic syntax feedback. The
+`validate.yml` CI workflow is authoritative for the full static profile-policy
+checks and runs without GPU hardware, Podman, or network access.
+
+### Local task observations
+
+After each terminal native Goose result, the contributor writes one
+newline-delimited JSON record to local stderr. It contains only task identity,
+kind/repository/number, timestamps, duration, and a success/failure/cancelled
+outcome—never assignment text, credentials, model output, commands, or raw
+errors. This is not telemetry or a transcript: the native runtime does not
+persist observations or send them anywhere. Its retention ceiling is the
+lifetime and retention policy of the stderr consumer outside this runtime.
 
 ## What the reference workflow actually does
 
@@ -143,8 +199,9 @@ deep container logs. It evaluates GitHub auth, Goose
 installation/configuration, and existing Hive configuration in order and
 stops at the first unmet prerequisite:
 
-1. **GitHub auth is authoritative.** Auto-detect only covers `TOOL=goose`,
-   and Goose is considered ready only when `gh auth status --hostname
+1. **GitHub auth is authoritative.** Auto-detect only resolves to
+   `TOOL=goose`, and explicit `TOOL=goose` runs the same ordered readiness
+   gate. Goose is considered ready only when `gh auth status --hostname
    github.com` succeeds. A `~/.config/gh` directory alone is **never**
    treated as proof of authentication. If auth is missing or invalid, fix it
    with:

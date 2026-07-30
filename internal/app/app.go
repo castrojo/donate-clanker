@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 var (
 	ErrMissingHelperImage      = errors.New("missing helper image")
 	ErrMissingContributorImage = errors.New("missing contributor image")
+	ErrHelperProfileContract   = errors.New("helper profile launch contract is not established")
 )
 
 type podHandle interface {
@@ -31,6 +33,7 @@ type podHandle interface {
 
 type dependencies struct {
 	detectEngine       func(context.Context, engine.Preference) (engine.Engine, error)
+	resolveRuntime     func(context.Context, engine.Engine, string, bool) (string, string, error)
 	checkGitHubAuth    func(context.Context, setup.CommandRunner) error
 	checkGooseConfig   func(string) error
 	ensureHiveSetup    func(context.Context, setup.SetupOptions) error
@@ -56,6 +59,7 @@ func defaultDependencies() dependencies {
 		detectEngine: func(ctx context.Context, preference engine.Preference) (engine.Engine, error) {
 			return engine.Detect(ctx, preference)
 		},
+		resolveRuntime:   engine.ResolveRuntime,
 		checkGitHubAuth:  setup.CheckGitHubAuth,
 		checkGooseConfig: setup.CheckGooseLocalConfig,
 		ensureHiveSetup:  setup.EnsureHiveSetup,
@@ -108,6 +112,13 @@ func run(ctx context.Context, opts config.Options, deps dependencies) error {
 	if err != nil {
 		return err
 	}
+	runtime, warning, err := deps.resolveRuntime(signalCtx, eng, opts.ContainerRuntime, opts.StrictSandbox)
+	if err != nil {
+		return err
+	}
+	if warning != "" {
+		_, _ = fmt.Fprintln(deps.stdout, warning)
+	}
 
 	if err := deps.checkGitHubAuth(signalCtx, deps.commandRunner); err != nil {
 		return err
@@ -129,6 +140,10 @@ func run(ctx context.Context, opts config.Options, deps dependencies) error {
 	if err != nil {
 		return err
 	}
+	modelSpec, err := helperModelSpec(opts, resolvedModel)
+	if err != nil {
+		return err
+	}
 
 	creds, err := deps.loadCredentials(filepath.Join(opts.HiveConfigDir, "contributor.env"))
 	if err != nil {
@@ -144,6 +159,7 @@ func run(ctx context.Context, opts config.Options, deps dependencies) error {
 		NamePrefix:    fmt.Sprintf("donate-clanker-%d", deps.now().UnixNano()),
 		ModelHostPort: 0,
 		ContainerPort: opts.ModelContainerPort,
+		Runtime:       runtime,
 		Labels: map[string]string{
 			"app.kubernetes.io/name": "donate-clanker",
 		},
@@ -158,32 +174,42 @@ func run(ctx context.Context, opts config.Options, deps dependencies) error {
 	}()
 
 	helperMounts, workerMounts := splitMounts(mounts)
-	if err := deps.startModel(signalCtx, handle, pod.ModelSpec{
-		Image:            opts.HelperImage,
-		Mounts:           helperMounts,
-		ReadinessTimeout: opts.ReadinessTimeout,
-	}); err != nil {
+	modelSpec.Mounts = helperMounts
+	modelSpec.Runtime = runtime
+	if err := deps.startModel(signalCtx, handle, modelSpec); err != nil {
 		return err
 	}
 
-	workerEnv := workerEnvironment(resolvedModel, handle.WorkerEndpointURL(), creds)
+	workerEnv := workerEnvironment(resolvedModel.name, handle.WorkerEndpointURL(), creds)
 
 	process, err := deps.startWorker(signalCtx, handle, pod.WorkerSpec{
 		Image:   opts.ContributorImage,
 		Env:     workerEnv,
 		Mounts:  workerMounts,
 		WorkDir: config.WorkspaceMountPath,
+		Runtime: runtime,
 	})
 	if err != nil {
 		return err
 	}
 
 	output := process.StdoutStderr()
+	outputDone := make(chan struct{})
+	closeOutput := func() {}
 	if output != nil {
+		var closeOnce sync.Once
+		closeOutput = func() {
+			closeOnce.Do(func() {
+				_ = output.Close()
+			})
+		}
 		go func() {
-			defer output.Close()
+			defer close(outputDone)
+			defer closeOutput()
 			_, _ = io.Copy(deps.stdout, output)
 		}()
+	} else {
+		close(outputDone)
 	}
 
 	waitCh := make(chan error, 1)
@@ -193,19 +219,38 @@ func run(ctx context.Context, opts config.Options, deps dependencies) error {
 
 	select {
 	case err := <-waitCh:
+		<-outputDone
 		return err
 	case <-signalCtx.Done():
+		select {
+		case err := <-waitCh:
+			<-outputDone
+			return err
+		default:
+		}
 		_ = process.Signal(os.Interrupt)
-		return signalCtx.Err()
+		closeOutput()
+		<-outputDone
+		select {
+		case err := <-waitCh:
+			return err
+		default:
+			return signalCtx.Err()
+		}
 	}
 }
 
-func resolveModel(opts config.Options, deps dependencies) (string, error) {
+type resolvedModel struct {
+	name    string
+	profile *profile.Profile
+}
+
+func resolveModel(opts config.Options, deps dependencies) (resolvedModel, error) {
 	if opts.Model != "" {
-		return opts.Model, nil
+		return resolvedModel{name: opts.Model}, nil
 	}
 	if opts.Profile == "" {
-		return config.DefaultGooseModel, nil
+		return resolvedModel{name: config.DefaultGooseModel}, nil
 	}
 
 	var (
@@ -218,12 +263,23 @@ func resolveModel(opts config.Options, deps dependencies) (string, error) {
 		catalog, err = deps.loadBundledCatalog()
 	}
 	if err != nil {
-		return "", err
+		return resolvedModel{}, err
 	}
-	if _, ok := catalog[opts.Profile]; !ok {
-		return "", fmt.Errorf("unknown profile %q", opts.Profile)
+	selected, ok := catalog[opts.Profile]
+	if !ok {
+		return resolvedModel{}, fmt.Errorf("unknown profile %q", opts.Profile)
 	}
-	return opts.Profile, nil
+	return resolvedModel{name: opts.Profile, profile: &selected}, nil
+}
+
+func helperModelSpec(opts config.Options, model resolvedModel) (pod.ModelSpec, error) {
+	if model.profile != nil {
+		return pod.ModelSpec{}, fmt.Errorf("%w: profile %q", ErrHelperProfileContract, model.name)
+	}
+	return pod.ModelSpec{
+		Image:            opts.HelperImage,
+		ReadinessTimeout: opts.ReadinessTimeout,
+	}, nil
 }
 
 func splitMounts(mounts []config.Mount) ([]config.Mount, []config.Mount) {
