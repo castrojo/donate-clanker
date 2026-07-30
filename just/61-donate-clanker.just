@@ -36,6 +36,7 @@ hive_repo_url := "https://github.com/kubestellar/hive"
 hive_commit := "e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e"
 vm_runner_image := env("DONATE_CLANKER_VM_RUNNER_IMAGE", "")
 vm_raw_image := env("DONATE_CLANKER_VM_RAW", "")
+vm_version := "25.08.14"
 
 # Shared bash, 'eval''d at the top of every recipe script that needs it:
 # host CLI detection + the selected tool's container mounts. Keeping this in
@@ -123,6 +124,33 @@ ensure_vm_runner() {
     command -v qemu-system-x86_64 &>/dev/null || {
       echo "ERROR: qemu-system-x86_64 is required for local VM prototyping." >&2
       return 1
+    }
+    fetch_vm_raw() {
+      local state_dir="$1" version="$2" arch raw url
+      arch="$(uname -m)"
+      case "$arch" in
+        x86_64) ;;
+        aarch64) ;;
+        *) echo "ERROR: unsupported host architecture: $arch" >&2; return 1 ;;
+      esac
+      command -v curl &>/dev/null || { echo "ERROR: curl is required to fetch the VM artifact." >&2; return 1; }
+      raw="${state_dir}/donate-clanker-vm-${version}-${arch}.raw"
+      url="https://github.com/projectbluefin/fsdk-containers/releases/download/v${version}/$(basename "$raw")"
+      mkdir -p "$state_dir"
+      echo "Fetching donate-clanker VM ${version} for ${arch}..."
+      curl -fL --retry 3 --output "${raw}.partial" "$url" || {
+        rm -f "${raw}.partial"
+        echo "ERROR: VM release asset is not published yet: ${url}" >&2
+        return 1
+      }
+      mv "${raw}.partial" "$raw"
+      curl -fL --retry 3 --output "${raw}.sha256" "${url}.sha256"
+      (cd "$state_dir" && sha256sum -c "$(basename "${raw}.sha256")") || {
+        rm -f "$raw" "${raw}.sha256"
+        echo "ERROR: downloaded VM checksum failed." >&2
+        return 1
+      }
+      printf '%s\n' "$raw"
     }
     [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]] || {
       echo "ERROR: /dev/kvm is unavailable or not usable by this user." >&2
@@ -408,6 +436,9 @@ donate-clanker:
       LOCAL_VM_CANDIDATES=("${STATE_DIR}"/*.raw)
       shopt -u nullglob
       [[ "${#LOCAL_VM_CANDIDATES[@]}" -eq 1 ]] && VM_RAW="${LOCAL_VM_CANDIDATES[0]}"
+    fi
+    if [[ -z "$VM_RAW" && "${DONATE_CLANKER_TEST_SKIP_VM_FETCH:-}" != 1 ]]; then
+      VM_RAW="$(fetch_vm_raw "$STATE_DIR" "{{vm_version}}")"
     fi
     if [[ -n "$VM_RAW" ]]; then
       [[ -f "$VM_RAW" ]] || { echo "ERROR: VM raw disk not found: $VM_RAW" >&2; exit 1; }

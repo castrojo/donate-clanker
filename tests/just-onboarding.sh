@@ -87,6 +87,7 @@ run_launcher() {
     HOME="$home" PATH="$fake_bin:$PATH" \
     GUM_LOG="$gum_log" RUNNER_LOG="$runner_log" RUNNER_CONSUMED="$scratch/runner-consumed" \
     DONATE_CLANKER_TEST_CONSUMER="$consumer" \
+    DONATE_CLANKER_TEST_SKIP_VM_FETCH=1 \
     DONATE_CLANKER_VM_RUNNER_IMAGE="ghcr.io/projectbluefin/donate-clanker-vm-runner@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
     "$@" \
     "$real_just" --justfile "$repo_root/just/61-donate-clanker.just" donate-clanker
