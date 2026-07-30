@@ -48,6 +48,18 @@ guest. It does not copy the host home directory, SSH keys, general-purpose
 environment, or container-engine socket into the VM. Assignment credentials
 are scoped to the guest task and are scrubbed during cleanup.
 
+For local VM prototyping, place one built raw disk in
+`~/.local/state/donate-clanker/` or point `DONATE_CLANKER_VM_RAW` at it:
+
+```bash
+DONATE_CLANKER_VM_RAW=/path/to/donate-clanker-vm-25.08.14-x86_64.raw \
+  ujust donate-clanker
+```
+
+This boots the raw FSDK disk directly with host QEMU/KVM using 4 vCPUs and
+8 GiB RAM. The default remote-agent profile is 2 vCPUs/4 GiB; local inference
+memory belongs to the host model runtime, not this worker VM.
+
 Use the read-only preflight before launching:
 
 ```bash
