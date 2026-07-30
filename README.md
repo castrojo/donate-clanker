@@ -62,8 +62,8 @@ The native path retains bundled Goose/RamaLama configuration under
 
 The product container runs only through `limactl shell donate-clanker`, using
 Podman installed in the named guest VM rather than a host engine or socket.
-Lima receives a writable workspace mount and a read-only Hive configuration
-mount. The guest container gets explicit mounts for `/workspace`, `/config`
+Lima receives an explicit writable workspace mount; its Hive/tool mounts rely
+on Lima's default read-only behavior. The guest container gets explicit mounts for `/workspace`, `/config`
 (read-only), and only its selected tool configuration (read-only).
 
 ### Context7 (optional, no credential required)

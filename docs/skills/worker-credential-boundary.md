@@ -52,8 +52,9 @@ the reusable `donate-clanker` Lima VM. It invokes the guest's Podman through
 only Bluefin DX may install Lima with `brew install lima`; all other hosts
 must provide Lima themselves.
 
-Create the VM from `template:podman` with explicit writable workspace and
-read-only `~/.config/hive` mounts. Bind only `/workspace` and `/config` into
+Create the VM from `template:podman` with an explicit writable workspace mount;
+leave `~/.config/hive` and selected tool config mounts unsuffixed so Lima keeps
+them read-only by default. Bind only `/workspace` and `/config` into
 the guest container, with `/config` read-only; selected tool configuration is
 likewise read-only. Keep the container attached to the invoking terminal with
 `podman run --rm -it`, and reuse the VM rather than creating a host service.
@@ -129,8 +130,8 @@ supports Go-template formatting (source: Context7
 `/websites/podman_io_en`).
 
 Lima documents `limactl start --name=<name> template:podman`, named-instance
-reuse, `limactl shell <name> <command>`, and explicit read-only or writable
-mounts (source: Context7 `/lima-vm/lima`).
+reuse, `limactl shell <name> <command>`, and `--mount-only /path` as
+read-only unless the path ends in `:w` (source: Context7 `/lima-vm/lima`).
 
 ## Common Rationalizations
 
@@ -185,7 +186,8 @@ mounts (source: Context7 `/lima-vm/lima`).
   `limactl` never invokes Homebrew
 - [ ] The named `donate-clanker` VM is created from `template:podman` once
   and reused thereafter
-- [ ] The guest contributor runs foreground with an explicit read-only
-  `/config` mount and writable `/workspace` mount
+- [ ] The guest contributor runs foreground with a read-only `/config` mount,
+  writable `/workspace` mount, and Lima host mounts that use `:w` only for
+  the workspace
 - [ ] `go test ./cmd/contributor ./internal/app ./internal/config ./internal/runner ./internal/hive` passes
 - [ ] `go test ./...` passes

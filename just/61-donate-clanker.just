@@ -239,7 +239,7 @@ ensure_lima_vm() {
   local -a lima_args
   shift 4
   mount_marker="${state_dir}/lima-mounts"
-  desired_mounts="$(printf '%s\n' "${workspace}:w" "${hive_dir}:r" "$@")"
+  desired_mounts="$(printf '%s\n' "${workspace}:w" "${hive_dir}" "$@")"
   if limactl list --format '{{.Name}}' | grep -Fxq "$instance"; then
     if [[ -f "$mount_marker" ]] && printf '%s' "$desired_mounts" | cmp -s - "$mount_marker"; then
       limactl start "$instance"
@@ -249,7 +249,7 @@ ensure_lima_vm() {
   fi
   lima_args=(start --name "$instance" --tty=false
     --mount-only "${workspace}:w"
-    --mount-only "${hive_dir}:r")
+    --mount-only "${hive_dir}")
   for mount in "$@"; do
     lima_args+=(--mount-only "$mount")
   done
@@ -507,7 +507,7 @@ donate-clanker:
     WORKSPACE_TARGET="$(realpath "$WORKSPACE")"
     ensure_lima
     ensure_lima_vm "$LIMA_INSTANCE" "$STATE_DIR" "$WORKSPACE_TARGET" "${HOME}/.config/hive" \
-      "${TOOL_HOST_DIRS[@]/%/:r}"
+      "${TOOL_HOST_DIRS[@]}"
 
     CONTAINER_ARGS=(
       podman run --pull=always --rm --interactive --tty

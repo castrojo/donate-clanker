@@ -219,7 +219,7 @@ set -e
 test "$status" -ne 0
 assert_file_not_contains 'LAST_GOOSE_PROVIDER=' "$cfg_dir/last-selections.env"
 assert_file_not_contains 'LAST_GOOSE_MODEL=' "$cfg_dir/last-selections.env"
-assert_file_contains "start --name donate-clanker --tty=false --mount-only ${repo_root}:w --mount-only ${home}/.config/hive:r --mount-only ${home}/.config/goose:r template:podman" "$lima_log"
+assert_file_contains "start --name donate-clanker --tty=false --mount-only ${repo_root}:w --mount-only ${home}/.config/hive --mount-only ${home}/.config/goose template:podman" "$lima_log"
 assert_file_contains "shell donate-clanker -- podman run --pull=always --rm --interactive --tty --userns=keep-id --name donate-clanker --workdir /workspace --volume ${home}/.config/hive:/config:ro --volume ${repo_root}:/workspace --env AGENT_BACKEND=goose --volume ${home}/.config/goose:/home/dev/.config/goose:ro ghcr.io/projectbluefin/donate-clanker:stable" "$lima_log"
 test ! -s "$brew_log"
 
