@@ -58,8 +58,10 @@ type Client struct {
 	Now               func() time.Time
 
 	writeMu  sync.Mutex
+	taskMu   sync.Mutex
 	mu       sync.Mutex
 	conn     *websocket.Conn
+	connDone chan struct{}
 	authed   bool
 	lastPong time.Time
 	seq      int
@@ -183,7 +185,10 @@ func (c *Client) handleConnection(ctx context.Context, conn *websocket.Conn, cre
 
 	incoming := make(chan wsMessage, 8)
 	readErr := make(chan error, 1)
-	go readLoop(ctx, conn, incoming, readErr)
+	c.mu.Lock()
+	connDone := c.connDone
+	c.mu.Unlock()
+	go readLoop(ctx, conn, incoming, readErr, connDone)
 
 	heartbeat := time.NewTicker(c.HeartbeatInterval)
 	defer heartbeat.Stop()
@@ -355,6 +360,9 @@ func (c *Client) runTask(ctx context.Context, handler AssignmentHandler, exec *t
 }
 
 func (c *Client) finishTask(exec *taskExecution, report TaskReport, err error) {
+	c.taskMu.Lock()
+	defer c.taskMu.Unlock()
+
 	c.mu.Lock()
 	if c.active != exec {
 		c.mu.Unlock()
@@ -389,6 +397,9 @@ func (c *Client) finishTask(exec *taskExecution, report TaskReport, err error) {
 }
 
 func (c *Client) resumeAfterAuth() error {
+	c.taskMu.Lock()
+	defer c.taskMu.Unlock()
+
 	c.mu.Lock()
 	active := c.active
 	pending := c.pending
@@ -457,6 +468,7 @@ func (c *Client) writeOrQueue(msg wsMessage) error {
 func (c *Client) writeMessage(msg wsMessage) error {
 	c.mu.Lock()
 	conn := c.conn
+	connDone := c.connDone
 	authed := c.authed
 	c.mu.Unlock()
 
@@ -470,6 +482,18 @@ func (c *Client) writeMessage(msg wsMessage) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 
+	c.mu.Lock()
+	current := c.conn == conn && c.connDone == connDone
+	c.mu.Unlock()
+	if !current {
+		return errConnectionUnavailable
+	}
+	select {
+	case <-connDone:
+		return errConnectionUnavailable
+	default:
+	}
+
 	_ = conn.SetWriteDeadline(c.Now().Add(c.WriteTimeout))
 	if err := conn.WriteJSON(msg); err != nil {
 		return err
@@ -481,6 +505,7 @@ func (c *Client) setConnection(conn *websocket.Conn) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.conn = conn
+	c.connDone = make(chan struct{})
 	c.authed = false
 	c.lastPong = c.Now()
 }
@@ -500,6 +525,7 @@ func (c *Client) clearConnection(conn *websocket.Conn) {
 	defer c.mu.Unlock()
 	if c.conn == conn {
 		c.conn = nil
+		c.connDone = nil
 		c.authed = false
 	}
 }
@@ -562,8 +588,9 @@ func (c *Client) nextSeq() int {
 	return c.seq
 }
 
-func readLoop(ctx context.Context, conn *websocket.Conn, incoming chan<- wsMessage, readErr chan<- error) {
+func readLoop(ctx context.Context, conn *websocket.Conn, incoming chan<- wsMessage, readErr chan<- error, done chan struct{}) {
 	defer close(incoming)
+	defer close(done)
 
 	for {
 		_, raw, err := conn.ReadMessage()

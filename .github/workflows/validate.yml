@@ -209,22 +209,38 @@ jobs:
           grep -Fq 'DONATE_CLANKER_HIVE_COMMIT' README.md
           grep -Fq 'gh auth login --web --hostname github.com --scopes repo,read:org' README.md
 
-      - name: Worker image smoke test
+      - name: Compatibility image contract and smoke test
         run: |
           set -euo pipefail
-          docker build -f image/Containerfile -t donate-clanker-worker:test .
-          docker run --rm --entrypoint /bin/sh donate-clanker-worker:test -lc '
-            set -e
-            command -v goose
-            command -v contributor
-            goose --version >/dev/null
-            test -r /etc/ssl/certs/ca-certificates.crt
-            test -f /etc/donate-clanker/goose.yaml
-            test -f /etc/donate-clanker/local-agent-policy.md
-            test -w /var/lib/donate-clanker
+          docker build -f image/Containerfile -t donate-clanker-compat:test .
+          test "$(docker inspect donate-clanker-compat:test --format '{{.Config.User}}')" = "dev"
+          test "$(docker inspect donate-clanker-compat:test --format '{{json .Config.Entrypoint}}')" = '["/usr/local/bin/donate-clanker-entrypoint"]'
+          test "$(docker inspect donate-clanker-compat:test --format '{{.Config.WorkingDir}}')" = "/workspace"
+          docker run --rm --entrypoint /bin/sh donate-clanker-compat:test -c '
+            set -eu
+            test -x /usr/local/bin/donate-clanker-entrypoint
             test ! -S /var/run/docker.sock
             test ! -S /run/podman/podman.sock
           '
+          smoke_dir="$PWD/.compat-smoke-config"
+          rm -rf "$smoke_dir"
+          mkdir -p "$smoke_dir"
+          printf '%s\n' \
+            'HIVE_REGISTRATION_TOKEN=test-token' \
+            'AGENT_BACKEND=definitely-missing-cli' \
+            'HIVE_HUB=wss://example.invalid/contribute' \
+            > "$smoke_dir/contributor.env"
+          set +e
+          output="$(docker run --rm \
+            -v "$smoke_dir:/config/hive:ro" \
+            -v "$PWD:/workspace:ro" \
+            donate-clanker-compat:test 2>&1)"
+          status=$?
+          set -e
+          rm -rf "$smoke_dir"
+          test "$status" -ne 0
+          printf '%s\n' "$output" | grep -Fq \
+            'definitely-missing-cli CLI not found.'
 
       # donate-clanker-doctor needs real podman (rootless), a user systemd
       # instance, and (for full checks) 'gh auth status' — none of which are
