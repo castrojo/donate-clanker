@@ -1,5 +1,12 @@
 # Portable donate-clanker Container Entrypoint
 
+> **Implementation note:** The original monolithic Goose/RamaLama design below
+> was superseded by the published compatibility wrapper. The current image
+> wraps the pinned `ghcr.io/kubestellar/hive-contributor` runtime, starts its
+> relay and Copilot process, and attaches the contributor tmux session to the
+> invoking terminal. The direct Podman command in `README.md` is the canonical
+> portable contract.
+
 ## Goal
 
 Replace the README's raw upstream Hive `podman run` example with a short,
@@ -14,17 +21,17 @@ podman run --rm -it --userns=keep-id \
 
 ## Contract
 
-The published image owns the contributor launcher, Goose runtime, local
-RamaLama integration, bundled policy, model catalog, and default paths. The
-host supplies only:
+The published compatibility image owns the upstream contributor launcher and
+supplies the terminal-facing session. The host supplies only:
 
 - `/config`: read-only Hive/GitHub authentication state
 - `/workspace`: the repository or working directory to donate against
 
-The entrypoint validates the mounted configuration before starting. Missing,
-malformed, or unauthenticated state produces an actionable error and never
-starts a worker. The container remains foreground-only and removes itself on
-exit.
+The entrypoint maps the portable mounts, loads `gh-auth.env` for the upstream
+GitHub token contract, starts the upstream contributor process, and attaches
+the `contributor` tmux session. Missing mounts fail before startup. Detaching
+or interrupting the terminal cleans up the relay and session; Podman removes
+the ephemeral container on exit.
 
 The image must use a non-root runtime user, must not require a host container
 socket, and must not mount the host home directory wholesale. README examples
@@ -36,20 +43,20 @@ use the immutable production image reference or the explicitly documented
 1. Podman starts the published image with the two documented mounts.
 2. The entrypoint resolves `/config` and `/workspace` using container-local
    defaults.
-3. Hive credentials and GitHub authentication are validated.
-4. The launcher starts the local inference helper and worker in the same pod
-   network namespace.
-5. The worker connects to Hive, executes assignments through Goose, and exits
-   cleanly when the terminal or container is stopped.
+3. The entrypoint starts the upstream relay and CLI inside a `contributor`
+   tmux session.
+4. The entrypoint attaches the invoking terminal to that session.
+5. The worker connects to Hive, executes assignments through the configured
+   upstream backend, and exits cleanly when the terminal or container stops.
 
 ## Error handling
 
 - Missing `/config` or required files: identify the missing host setup command.
-- Invalid Hive URL or registration data: report the exact field without secrets.
 - Missing `/workspace`: fail before starting inference.
-- Missing helper or contributor image configuration: use image-bundled defaults
-  or fail with the exact override variable, never silently fall back.
-- Shutdown signals: stop the worker and helper, then remove the ephemeral pod.
+- Missing `gh-auth.env`: preserve the upstream authentication error without
+  printing secret values.
+- Shutdown signals or tmux detach: stop the contributor process and relay, then
+  remove the ephemeral container.
 
 ## Validation
 

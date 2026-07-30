@@ -32,7 +32,8 @@ Do not use this for:
 5. Give Goose only the active assignment's GitHub token via `GH_TOKEN`/`GITHUB_TOKEN`; never pass host GitHub config directories into Goose.
 6. Keep local policy and Hive assignment as separate prompt sections. Policy must precede assignment with explicit headings, and the assignment body must remain verbatim under `Hive assignment (verbatim):`.
 7. Preserve redaction on both command output and surfaced errors. Redact `*_TOKEN=...`, YAML-style secret keys, and the full `Authorization:` line value.
-8. Run focused tests for `cmd/contributor`, `internal/app`, `internal/config`, `internal/runner`, and `internal/hive`, then run `go test ./...`.
+8. For the published compatibility image, mount only `/config` and `/workspace`, source `/config/hive/gh-auth.env` into the upstream process environment, and attach the contributor tmux session to the invoking terminal.
+9. Run focused tests for `cmd/contributor`, `internal/app`, `internal/config`, `internal/runner`, and `internal/hive`, then run `go test ./...`.
 
 ## Common Rationalizations
 
@@ -52,6 +53,7 @@ Do not use this for:
 - Host `GH_TOKEN` can flow into Goose without coming from the assignment
 - Prompt text lacks separate policy/assignment headings
 - Tests only cover success paths and not env/mount exposure or redaction
+- A foreground compatibility container starts a detached tmux session but never attaches it to the user's terminal
 
 ## Verification
 
@@ -61,5 +63,6 @@ Do not use this for:
 - [ ] Goose receives only assignment-scoped GitHub token values
 - [ ] Prompt output preserves verbatim assignment text under a dedicated heading
 - [ ] Redaction covers `GH_TOKEN`, `GITHUB_TOKEN`, and full `Authorization:` lines
+- [ ] Compatibility image sources `gh-auth.env` and attaches tmux without requiring a host container socket
 - [ ] `go test ./cmd/contributor ./internal/app ./internal/config ./internal/runner ./internal/hive` passes
 - [ ] `go test ./...` passes
