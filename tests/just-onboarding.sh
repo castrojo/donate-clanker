@@ -19,7 +19,18 @@ EOF
 chmod +x "$fake_bin/gh" "$fake_bin/goose"
 
 run_launcher() {
-  HOME="$home" PATH="$fake_bin:$PATH" \
+  env \
+    -u TOOL \
+    -u CLANKER_SRC \
+    -u DONATE_CLANKER_HIVE_COMMIT \
+    -u AGENT_MODEL \
+    -u GOOSE_PROVIDER \
+    -u GOOSE_MODEL \
+    -u CLANKER_CONTAINER_RUNTIME \
+    -u CLANKER_STRICT_SANDBOX \
+    HOME="$home" \
+    PATH="$fake_bin:$PATH" \
+    "$@" \
     just --justfile "$repo_root/just/61-donate-clanker.just" donate-clanker
 }
 
@@ -49,6 +60,8 @@ set -e
 test "$status" -ne 0
 assert_contains 'gh auth login --web --hostname github.com --scopes repo,read:org' "$missing_auth"
 assert_not_contains 'goose configure' "$missing_auth"
+assert_not_contains 'Legacy compatibility backends stay manual-only' "$missing_auth"
+assert_not_contains 'contribute-setup goose' "$missing_auth"
 
 cat >"$home/.config/goose/config.yaml" <<'EOF'
 provider: ollama
@@ -58,11 +71,13 @@ model: llama3.1
 EOF
 
 set +e
-invalid_goose="$(GH_READY=1 run_launcher 2>&1)"
+invalid_goose="$(run_launcher GH_READY=1 2>&1)"
 status=$?
 set -e
 test "$status" -ne 0
 assert_contains 'goose configure' "$invalid_goose"
+assert_not_contains 'gh auth login --web --hostname github.com --scopes repo,read:org' "$invalid_goose"
+assert_not_contains 'Legacy compatibility backends stay manual-only' "$invalid_goose"
 assert_not_contains 'contribute-setup goose' "$invalid_goose"
 
 write_goose_config
@@ -75,7 +90,7 @@ AGENT_BACKEND=ollama
 EOF
 
 set +e
-invalid_hive="$(GH_READY=1 run_launcher 2>&1)"
+invalid_hive="$(run_launcher GH_READY=1 2>&1)"
 status=$?
 set -e
 test "$status" -ne 0
