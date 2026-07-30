@@ -35,6 +35,7 @@ hive_repo_url := "https://github.com/kubestellar/hive"
 # on 2026-07-29.
 hive_commit := "e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e"
 vm_runner_image := env("DONATE_CLANKER_VM_RUNNER_IMAGE", "")
+vm_raw_image := env("DONATE_CLANKER_VM_RAW", "")
 
 # Shared bash, 'eval''d at the top of every recipe script that needs it:
 # host CLI detection + the selected tool's container mounts. Keeping this in
@@ -117,6 +118,16 @@ ensure_vm_runner() {
     echo "ERROR: Podman is required to run the pinned QEMU VM runner." >&2
     echo "  Install Podman, then re-run donate-clanker." >&2
     return 1
+  }
+  ensure_vm_host() {
+    command -v qemu-system-x86_64 &>/dev/null || {
+      echo "ERROR: qemu-system-x86_64 is required for local VM prototyping." >&2
+      return 1
+    }
+    [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]] || {
+      echo "ERROR: /dev/kvm is unavailable or not usable by this user." >&2
+      return 1
+    }
   }
   command -v python3 &>/dev/null || {
     echo "ERROR: python3 is required to open the one-shot VM bootstrap channel." >&2
@@ -389,6 +400,30 @@ donate-clanker:
     # ── 2. Run the self-contained QEMU VM in the foreground. The guest
     #        clones assignments itself; only the per-run control/overlay
     #        directory crosses this boundary. ──
+    VM_RAW="{{vm_raw_image}}"
+    if [[ -z "$VM_RAW" ]]; then
+      shopt -s nullglob
+      LOCAL_VM_CANDIDATES=("${STATE_DIR}"/*.raw)
+      shopt -u nullglob
+      [[ "${#LOCAL_VM_CANDIDATES[@]}" -eq 1 ]] && VM_RAW="${LOCAL_VM_CANDIDATES[0]}"
+    fi
+    if [[ -n "$VM_RAW" ]]; then
+      [[ -f "$VM_RAW" ]] || { echo "ERROR: VM raw disk not found: $VM_RAW" >&2; exit 1; }
+      [[ -f "${VM_RAW}.sha256" ]] && (cd "$(dirname "$VM_RAW")" && sha256sum -c "$(basename "${VM_RAW}.sha256")")
+      ensure_vm_host
+      OVMF="$(find /usr/share /usr/lib -name OVMF_CODE.fd -print -quit 2>/dev/null)"
+      [[ -n "$OVMF" ]] || { echo "ERROR: OVMF_CODE.fd not found." >&2; exit 1; }
+      echo "✓ booting local donate-clanker VM (4 vCPU, 8 GiB RAM)."
+      exec qemu-system-x86_64 \
+        -enable-kvm -machine q35 -cpu host -smp 4 -m 8192 \
+        -bios "$OVMF" \
+        -drive "file=${VM_RAW},format=raw,if=virtio" \
+        -nic user,model=virtio \
+        -chardev "socket,id=control,path=${BOOTSTRAP_SOCKET}" \
+        -device virtio-serial-pci \
+        -device "virtserialport,chardev=control,name=org.projectbluefin.donate-clanker.bootstrap" \
+        -nographic
+    fi
     [[ -n "{{vm_runner_image}}" ]] || {
       echo "ERROR: donate-clanker VM runner is not configured." >&2
       echo "  Set DONATE_CLANKER_VM_RUNNER_IMAGE to the signed immutable runner image reference." >&2
