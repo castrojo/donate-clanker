@@ -1,0 +1,40 @@
+{
+  "Qwen3.5-4B": {
+    "context_size": 32768,
+    "thinking": false,
+    "runtime_args": [
+      "--thinking",
+      "false",
+      "--chat-template-kwargs",
+      "{\"enable_thinking\":false}"
+    ]
+  },
+  "Qwen3.5-9B": {
+    "context_size": 32768,
+    "thinking": false,
+    "runtime_args": [
+      "--thinking",
+      "false",
+      "--chat-template-kwargs",
+      "{\"enable_thinking\":false}"
+    ]
+  },
+  "Qwen3-Coder-30B-A3B": {
+    "context_size": 32768,
+    "thinking": false,
+    "runtime_args": [
+      "--thinking",
+      "false"
+    ]
+  },
+  "Qwen3.6-35B-A3B": {
+    "context_size": 32768,
+    "thinking": false,
+    "runtime_args": [
+      "--thinking",
+      "false",
+      "--chat-template-kwargs",
+      "{\"enable_thinking\":false}"
+    ]
+  }
+}
