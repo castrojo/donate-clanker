@@ -139,7 +139,9 @@ exposes, not scripts they might run out of context.
 The native launcher onboarding path is **GitHub + Goose/local
 inference**. `ujust donate-clanker` now fails fast on the host with
 actionable, secret-safe checks instead of relying on filesystem presence or
-deep container logs:
+deep container logs. It evaluates GitHub auth, Goose
+installation/configuration, and existing Hive configuration in order and
+stops at the first unmet prerequisite:
 
 1. **GitHub auth is authoritative.** Auto-detect only covers `TOOL=goose`,
    and Goose is considered ready only when `gh auth status --hostname
@@ -151,17 +153,16 @@ deep container logs:
    gh auth login --web --hostname github.com --scopes repo,read:org
    ```
 
-2. **Goose local inference must be configured semantically.** The launcher
-   validates `~/.config/goose/config.yaml` for the supported path — not just
-   the existence of `~/.config/goose/`. The file must contain non-empty
-   top-level `provider`, `base_url`, `api_key`, and `model` keys, and the
-   supported production path requires `provider: openai` so Goose talks to a
-   local OpenAI-compatible endpoint. `goose configure` is the expected way to
-   write that file. Optional `GOOSE_PROVIDER=` / `GOOSE_MODEL=` overrides are
-   still honored for a run, but they do not replace the base local config
-   check.
+2. **Goose must be installed and semantically configured.** After GitHub auth
+   passes, the supported path requires a `goose` binary on `PATH` and then
+   validates `~/.config/goose/config.yaml` — not just the existence of
+   `~/.config/goose/`. The file must contain non-empty top-level `provider`,
+   `base_url`, `api_key`, and `model` keys, and the supported production path
+   requires `provider: openai` so Goose talks to a local OpenAI-compatible
+   endpoint. `goose configure` owns that local configuration for the
+   supported path.
 
-3. **Hive setup is reused, then validated.** If
+3. **Existing Hive setup is reused, then validated.** If
    `~/.config/hive/contributor.env` is missing, the recipe fetches
    `kubestellar/hive` into `~/.local/state/donate-clanker/hive-src` at the
    exact pinned commit
@@ -189,16 +190,15 @@ deep container logs:
    (`claude`, `copilot`, `codex`) remain manual compatibility paths via
    explicit `TOOL=<name>` and are not part of the production-gated workflow.
 
-Once `TOOL` is resolved, an optional model (and, for `goose`, provider)
-prompt follows the same rule as before: only asked when not already given via
-`AGENT_MODEL=`/`GOOSE_PROVIDER=`/`GOOSE_MODEL=` env vars and `gum` + a
-terminal are available; leaving it blank falls back to the tool's own
-default. Every pick (TOOL, model, goose provider/model — including a
-deliberate blank) is remembered in
-`~/.config/donate-clanker/last-selections.env` and offered back as the
-pre-selected default the next time you run it. The final resolved values are
-written to `~/.config/donate-clanker/secrets.env` (`chmod 600`) and
-re-derived fresh on every run rather than accumulating.
+Once `TOOL` is resolved, only the legacy/manual backends may prompt for an
+optional `AGENT_MODEL=` override when `gum` + a terminal are available;
+leaving it blank falls back to the tool's own default. The supported Goose
+path does not prompt for provider/model values, because `goose configure`
+owns the local OpenAI-compatible configuration. The launcher remembers
+`TOOL` and legacy model overrides in
+`~/.config/donate-clanker/last-selections.env` and rewrites
+`~/.config/donate-clanker/secrets.env` (`chmod 600`) from scratch on every
+run rather than accumulating old values.
 
 ## Design rationale
 
