@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/projectbluefin/donate-clanker/internal/config"
+	"github.com/projectbluefin/donate-clanker/internal/contract"
 	"github.com/projectbluefin/donate-clanker/internal/hive"
 	"github.com/projectbluefin/donate-clanker/internal/runner"
 )
@@ -48,6 +49,10 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	manifest, err := contract.LoadBundled()
+	if err != nil {
+		return err
+	}
 	if _, err := os.Stat(filepath.Clean(*workspace)); err != nil {
 		return err
 	}
@@ -76,8 +81,9 @@ func run(args []string) error {
 			BundledConfig: bundledConfig,
 		},
 		goose: runner.Goose{
-			Command: *gooseBinary,
-			Policy:  policy,
+			Command:  *gooseBinary,
+			Policy:   policy,
+			Contract: manifest,
 		},
 	}
 

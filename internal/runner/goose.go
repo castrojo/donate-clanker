@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/projectbluefin/donate-clanker/internal/contract"
 )
 
 const (
@@ -71,9 +73,10 @@ type CommandRunner interface {
 type ExecCommandRunner struct{}
 
 type Goose struct {
-	Command string
-	Policy  string
-	Runner  CommandRunner
+	Command  string
+	Policy   string
+	Contract contract.Manifest
+	Runner   CommandRunner
 }
 
 type ExecutionError struct {
@@ -84,18 +87,27 @@ func (e *ExecutionError) Error() string {
 	return e.Reason
 }
 
-func PrepareTaskPrompt(policy string, assignment string) string {
-	trimmedPolicy := strings.TrimSpace(policy)
-	if trimmedPolicy == "" {
-		return assignment
-	}
-
+func PrepareTaskPrompt(policy string, contractSection string, assignment string) string {
 	var prompt strings.Builder
-	prompt.Grow(len(localPolicyHeading) + len(policy) + len(hiveAssignmentHeading) + len(assignment) + 8)
-	prompt.WriteString(localPolicyHeading)
-	prompt.WriteString("\n")
-	prompt.WriteString(policy)
-	prompt.WriteString("\n\n")
+	prompt.Grow(len(localPolicyHeading) + len(policy) + len(contractSection) + len(hiveAssignmentHeading) + len(assignment) + 12)
+
+	wroteSection := false
+	if strings.TrimSpace(policy) != "" {
+		prompt.WriteString(localPolicyHeading)
+		prompt.WriteString("\n")
+		prompt.WriteString(policy)
+		wroteSection = true
+	}
+	if strings.TrimSpace(contractSection) != "" {
+		if wroteSection {
+			prompt.WriteString("\n\n")
+		}
+		prompt.WriteString(contractSection)
+		wroteSection = true
+	}
+	if wroteSection {
+		prompt.WriteString("\n\n")
+	}
 	prompt.WriteString(hiveAssignmentHeading)
 	prompt.WriteString("\n")
 	prompt.WriteString(assignment)
@@ -115,6 +127,10 @@ func (g Goose) Run(ctx context.Context, task Task) (Result, error) {
 	if len(bytes.TrimSpace(task.BundledConfig)) == 0 {
 		return Result{}, ErrMissingConfig
 	}
+	documents, err := g.Contract.LoadDocuments(filepath.Clean(task.Workspace))
+	if err != nil {
+		return Result{}, &ExecutionError{Reason: fmt.Sprintf("goose run failed: load agent contract: %v", err)}
+	}
 
 	runner := g.Runner
 	if runner == nil {
@@ -131,7 +147,7 @@ func (g Goose) Run(ctx context.Context, task Task) (Result, error) {
 		return Result{}, err
 	}
 
-	prompt := PrepareTaskPrompt(g.Policy, task.Prompt)
+	prompt := PrepareTaskPrompt(g.Policy, g.Contract.PromptSection(documents), task.Prompt)
 	env := gooseEnvironment(task, homeDir)
 	cmd := Command{
 		Name: binary,

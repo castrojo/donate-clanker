@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/projectbluefin/donate-clanker/internal/contract"
 	"github.com/projectbluefin/donate-clanker/internal/hive"
 	"github.com/projectbluefin/donate-clanker/internal/runner"
 )
@@ -89,15 +91,22 @@ func TestContributorHandlerRetriesWithRefreshedToken(t *testing.T) {
 		}
 	})
 
+	workspace := contributorScratch(t, "workspace")
+	runtimeDir := contributorScratch(t, "runtime")
+	manifest := testContributorContractManifest()
+	writeContributorContractDocuments(t, workspace, manifest)
 	handler := &contributorHandler{
 		baseTask: runner.Task{
-			Workspace:     t.TempDir(),
+			Workspace:     workspace,
 			Provider:      "openai",
 			Model:         "test",
-			RuntimeDir:    t.TempDir(),
+			RuntimeDir:    runtimeDir,
 			BundledConfig: []byte("GOOSE_PROVIDER: openai\n"),
 		},
-		goose: runner.Goose{Runner: commandRunner},
+		goose: runner.Goose{Runner: commandRunner, Contract: manifest},
+	}
+	if got, want := len(handler.goose.Contract.RequiredDocuments), len(manifest.RequiredDocuments); got != want {
+		t.Fatalf("len(handler.goose.Contract.RequiredDocuments) = %d, want %d", got, want)
 	}
 	assignment := hive.Assignment{TaskID: "task-1", GitHubToken: "old-token", Prompt: "do work"}
 
@@ -138,4 +147,44 @@ type runnerFunc func(context.Context, runner.Command) (runner.CommandOutput, err
 
 func (f runnerFunc) Run(ctx context.Context, command runner.Command) (runner.CommandOutput, error) {
 	return f(ctx, command)
+}
+
+func contributorScratch(t *testing.T, name string) string {
+	t.Helper()
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	dir := filepath.Join(root, "cmd", "contributor", ".contributor-test", name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(filepath.Join(root, "cmd", "contributor", ".contributor-test")) })
+	return dir
+}
+
+func testContributorContractManifest() contract.Manifest {
+	return contract.Manifest{
+		Version: 1,
+		RequiredDocuments: []contract.RequiredDocument{
+			{Path: "AGENTS.md", Heading: "Required repository document: AGENTS.md"},
+			{Path: "docs/SKILL.md", Heading: "Required repository document: docs/SKILL.md"},
+		},
+		Rules:              []string{"Read AGENTS.md first, then docs/SKILL.md."},
+		ValidationCommands: []string{"go test ./cmd/contributor"},
+	}
+}
+
+func writeContributorContractDocuments(t *testing.T, workspace string, manifest contract.Manifest) {
+	t.Helper()
+	contents := []string{"Repository contract entrypoint.\n", "Skill router content.\n"}
+	for i, doc := range manifest.RequiredDocuments {
+		path := filepath.Join(workspace, filepath.FromSlash(doc.Path))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("MkdirAll() error = %v", err)
+		}
+		if err := os.WriteFile(path, []byte(contents[i]), 0o644); err != nil {
+			t.Fatalf("WriteFile() error = %v", err)
+		}
+	}
 }
