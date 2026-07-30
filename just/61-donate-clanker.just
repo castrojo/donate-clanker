@@ -120,43 +120,6 @@ ensure_vm_runner() {
     echo "  Install Podman, then re-run donate-clanker." >&2
     return 1
   }
-  ensure_vm_host() {
-    command -v qemu-system-x86_64 &>/dev/null || {
-      echo "ERROR: qemu-system-x86_64 is required for local VM prototyping." >&2
-      return 1
-    }
-    fetch_vm_raw() {
-      local state_dir="$1" version="$2" arch raw url
-      arch="$(uname -m)"
-      case "$arch" in
-        x86_64) ;;
-        aarch64) ;;
-        *) echo "ERROR: unsupported host architecture: $arch" >&2; return 1 ;;
-      esac
-      command -v curl &>/dev/null || { echo "ERROR: curl is required to fetch the VM artifact." >&2; return 1; }
-      raw="${state_dir}/donate-clanker-vm-${version}-${arch}.raw"
-      url="https://github.com/projectbluefin/fsdk-containers/releases/download/v${version}/$(basename "$raw")"
-      mkdir -p "$state_dir"
-      echo "Fetching donate-clanker VM ${version} for ${arch}..."
-      curl -fL --retry 3 --output "${raw}.partial" "$url" || {
-        rm -f "${raw}.partial"
-        echo "ERROR: VM release asset is not published yet: ${url}" >&2
-        return 1
-      }
-      mv "${raw}.partial" "$raw"
-      curl -fL --retry 3 --output "${raw}.sha256" "${url}.sha256"
-      (cd "$state_dir" && sha256sum -c "$(basename "${raw}.sha256")") || {
-        rm -f "$raw" "${raw}.sha256"
-        echo "ERROR: downloaded VM checksum failed." >&2
-        return 1
-      }
-      printf '%s\n' "$raw"
-    }
-    [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]] || {
-      echo "ERROR: /dev/kvm is unavailable or not usable by this user." >&2
-      return 1
-    }
-  }
   command -v python3 &>/dev/null || {
     echo "ERROR: python3 is required to open the one-shot VM bootstrap channel." >&2
     return 1
@@ -166,6 +129,42 @@ ensure_vm_runner() {
     echo "  Enable KVM access, then re-run donate-clanker (see: donate-clanker-doctor)." >&2
     return 1
   }
+}
+ensure_vm_host() {
+  command -v qemu-system-x86_64 &>/dev/null || {
+    echo "ERROR: qemu-system-x86_64 is required for local VM prototyping." >&2
+    return 1
+  }
+  [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]] || {
+    echo "ERROR: /dev/kvm is unavailable or not usable by this user." >&2
+    return 1
+  }
+}
+fetch_vm_raw() {
+  local state_dir="$1" version="$2" arch raw url
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64|aarch64) ;;
+    *) echo "ERROR: unsupported host architecture: $arch" >&2; return 1 ;;
+  esac
+  command -v curl &>/dev/null || { echo "ERROR: curl is required to fetch the VM artifact." >&2; return 1; }
+  raw="${state_dir}/donate-clanker-vm-${version}-${arch}.raw"
+  url="https://github.com/projectbluefin/fsdk-containers/releases/download/v${version}/$(basename "$raw")"
+  mkdir -p "$state_dir"
+  echo "Fetching donate-clanker VM ${version} for ${arch}..."
+  curl -fL --retry 3 --output "${raw}.partial" "$url" || {
+    rm -f "${raw}.partial"
+    echo "ERROR: VM release asset is not published yet: ${url}" >&2
+    return 1
+  }
+  mv "${raw}.partial" "$raw"
+  curl -fL --retry 3 --output "${raw}.sha256" "${url}.sha256"
+  (cd "$state_dir" && sha256sum -c "$(basename "${raw}.sha256")") || {
+    rm -f "$raw" "${raw}.sha256"
+    echo "ERROR: downloaded VM checksum failed." >&2
+    return 1
+  }
+  printf '%s\n' "$raw"
 }
 gum_can_prompt() {
   command -v gum &>/dev/null || return 1
