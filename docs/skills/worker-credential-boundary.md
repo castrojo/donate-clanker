@@ -7,6 +7,7 @@ metadata:
     - /websites/podman_io_en
     - /websites/pkg_go_dev_go1_25_3
     - /lima-vm/lima
+    - /charmbracelet/gum
 ---
 
 # Donate Clanker Worker Credential Boundary
@@ -41,7 +42,10 @@ Do not use this for:
 8. Validate contract manifests at use sites too, not just when decoding bundled JSON. Reject absolute/traversal paths, any symlink-resolved component outside the cleaned workspace, and non-regular document targets; surface failures using only manifest-relative paths.
 9. Preserve redaction on both command output and surfaced errors. Redact `*_TOKEN=...`, YAML-style secret keys, and the full `Authorization:` line value.
 10. For the published compatibility image, mount only `/config` and `/workspace`, source `/config/hive/gh-auth.env` into the upstream process environment, and attach the contributor tmux session to the invoking terminal.
-11. Supported Goose onboarding must rely on validated `~/.config/goose/config.yaml`; launcher-managed model prompts, remembered `AGENT_MODEL` defaults, and secrets-file persistence remain legacy-only behavior for explicit `claude`, `copilot`, and `codex` paths.
+11. Launcher auto-detection considers every ready CLI. Preserve the attended
+    `gum choose` chooser when several are ready and `gum input --value` for
+    remembered Goose provider/model prompts; persist only current nonblank
+    launcher-managed model settings in the mode-`0600` selections state.
 12. Run focused tests for `cmd/contributor`, `internal/app`, `internal/config`, `internal/runner`, and `internal/hive`, then run `go test ./...`.
 
 ## Lima Guest Runtime Boundary
@@ -133,6 +137,10 @@ Lima documents `limactl start --name=<name> template:podman`, named-instance
 reuse, `limactl shell <name> <command>`, and `--mount-only /path` as
 read-only unless the path ends in `:w` (source: Context7 `/lima-vm/lima`).
 
+Gum documents `gum choose` for option selection and `gum input --value`,
+`--placeholder`, and `--header` for prefilled text prompts (source: Context7
+`/charmbracelet/gum`).
+
 ## Common Rationalizations
 
 - “Mounting the GitHub config dir is easier.”
@@ -156,7 +164,8 @@ read-only unless the path ends in `:w` (source: Context7 `/lima-vm/lima`).
 - Hand-built contract manifests can skip validation, follow symlinks outside the workspace, accept non-regular targets, or leak absolute workspace paths in read errors
 - Local observations include task content, credentials, model output, commands, or raw error text
 - Native task execution reuses a Goose process or runtime directory across assignments, restarts an active task after token refresh, or manipulates tmux
-- Supported Goose onboarding reaches a launcher-managed model picker, remembers Goose-specific model defaults, or persists `AGENT_MODEL` for `TOOL=goose`
+- Multiple ready CLIs silently select one, Goose skips its provider/model
+  prompts, or launcher state is not refreshed from the current selection
 - Context7 availability can block assignment execution
 - Local hooks are treated as a substitute for CI
 - Tests only cover success paths and not env/mount exposure or redaction
@@ -179,7 +188,10 @@ read-only unless the path ends in `:w` (source: Context7 `/lima-vm/lima`).
 - [ ] Redaction covers `GH_TOKEN`, `GITHUB_TOKEN`, and full `Authorization:` lines
 - [ ] Local observations use only the documented metadata allowlist and do not affect Hive reporting when stderr fails
 - [ ] Native assignments use one isolated Goose session and task runtime directory, without tmux manipulation
-- [ ] Supported Goose onboarding skips launcher-managed model prompt/persistence, while legacy backends keep deterministic coverage for remembered model overrides without requiring a real TTY
+- [ ] All ready CLI backends participate in auto-detect; multiple candidates
+  invoke the attended `gum` chooser, Goose prompts for provider/model, and
+  remembered selections plus mode-`0600` current-run state have deterministic
+  coverage without requiring a real TTY
 - [ ] Context7 is optional and local hooks are not treated as CI authority
 - [ ] Compatibility image sources `gh-auth.env` and attaches tmux without requiring a host container socket
 - [ ] Missing `limactl` invokes Homebrew only on Bluefin DX, and a present

@@ -1,12 +1,8 @@
 name: validate
 
-# just/61-donate-clanker.just is the ONLY file that ships/installs — it
-# embeds the quadlet unit and every per-tool fragment as inline strings.
-# quadlet/*.conf are human-editable *source references* for maintainers and
-# are never read at runtime, so they can silently drift from what's
-# actually embedded in the Justfile. This workflow catches that drift, plus
-# basic "does it even parse" sanity checks, without needing podman, gh
-# auth, or network access to a real hive hub.
+# just/61-donate-clanker.just is the shipped launcher. This workflow validates
+# its Bash syntax and the mocked attended selection flow without requiring a
+# live Hive account, host container engine, or interactive terminal.
 
 on:
   push:
@@ -223,28 +219,26 @@ jobs:
 
           exit "$fail"
 
-      - name: Supported onboarding docs and shell stay aligned
+      - name: Interactive launcher docs and shell stay aligned
         run: |
           set -euo pipefail
           HIVE_PIN="$(sed -n 's/^hive_commit := "\(.*\)"$/\1/p' just/61-donate-clanker.just)"
           test -n "$HIVE_PIN"
-          grep -Fq 'tool_order := "goose"' just/61-donate-clanker.just
-          grep -Fq 'require_supported_goose()' just/61-donate-clanker.just
-          grep -Fq 'gh auth status --hostname github.com' just/61-donate-clanker.just
+          grep -Fq 'tool_order := "claude copilot goose codex"' just/61-donate-clanker.just
+          grep -Fq 'Multiple AI CLIs are ready — pick one:' just/61-donate-clanker.just
+          grep -Fq 'Goose provider (Esc to leave unset' just/61-donate-clanker.just
+          grep -Fq 'LAST_GOOSE_PROVIDER' just/61-donate-clanker.just
+          grep -Fq 'last-selections.env' just/61-donate-clanker.just
+          grep -Fq 'secrets.env' just/61-donate-clanker.just
           grep -Fq 'fetch --depth 1 origin "$HIVE_COMMIT"' just/61-donate-clanker.just
           grep -Fq 'DONATE_CLANKER_HIVE_COMMIT' just/61-donate-clanker.just
-          grep -Fq 'ERROR: Goose local inference is not configured for the supported path.' just/61-donate-clanker.just
           grep -Fq 'Run: goose configure' just/61-donate-clanker.just
-          grep -Fq 'validate_hive_config_file "${HOME}/.config/hive/contributor.env"' just/61-donate-clanker.just
-          grep -Fq 'validate_goose_config_file "${HOME}/.config/goose/config.yaml"' just/61-donate-clanker.just
           grep -Fq "$HIVE_PIN" README.md
           grep -Fq 'DONATE_CLANKER_HIVE_COMMIT' README.md
-          grep -Fq 'gh auth login --web --hostname github.com --scopes repo,read:org' README.md
-          grep -Fq 'stops at the first unmet prerequisite' README.md
-          if grep -Fq 'anthropic openai google ollama openrouter' just/61-donate-clanker.just; then
-            echo "::error file=just/61-donate-clanker.just::unsupported Goose provider picker was reintroduced"
-            exit 1
-          fi
+          grep -Fq 'detects every ready CLI' README.md
+          grep -Fq 'Goose prompts for its provider and optional model' README.md
+          grep -Fq 'last-selections.env' README.md
+          grep -Fq 'secrets.env' README.md
 
       - name: Compatibility image contract and smoke test
         run: |
@@ -279,13 +273,7 @@ jobs:
           printf '%s\n' "$output" | grep -Fq \
             'definitely-missing-cli CLI not found.'
 
-      # donate-clanker-doctor needs real podman (rootless), a user systemd
-      # instance, and (for full checks) 'gh auth status' — none of which are
-      # available/meaningful on a stock GitHub-hosted runner, and we don't
-      # want this workflow to depend on real auth or network access to a
-      # hive hub. So we don't invoke the recipe here; steps above already
-      # cover what CI *can* meaningfully verify (the Justfile parses, every
-      # recipe body is syntactically valid bash, and the doctor recipe's own
-      # bash is included in that check). Exercising the actual runtime
-      # checks (podman info, gh auth status, systemctl --user) is left to
-      # manual/local testing per the README.
+      # donate-clanker-doctor needs real CLI authentication and a functioning
+      # Lima installation, neither of which is meaningful on a hosted runner.
+      # The mocked onboarding harness covers the launcher's selection and
+      # guest-command construction; local use exercises real readiness.

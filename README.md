@@ -155,70 +155,34 @@ deliberately no separate launcher script.
 
 ## Native launcher onboarding
 
-The native launcher onboarding path is **GitHub + Goose/local
-inference**. `ujust donate-clanker` now fails fast on the host with
-actionable, secret-safe checks instead of relying on filesystem presence or
-deep container logs. It evaluates GitHub auth, Goose
-installation/configuration, and existing Hive configuration in order and
-stops at the first unmet prerequisite:
+`ujust donate-clanker` retains the attended launcher experience while running
+the selected contributor only inside Lima:
 
-1. **GitHub auth is authoritative.** Auto-detect only resolves to
-   `TOOL=goose`, and explicit `TOOL=goose` runs the same ordered readiness
-   gate. Goose is considered ready only when `gh auth status --hostname
-   github.com` succeeds. A `~/.config/gh` directory alone is **never**
-   treated as proof of authentication. If auth is missing or invalid, fix it
-   with:
+1. **Tool selection detects every ready CLI.** In the fixed order `claude`,
+   `copilot`, `goose`, then `codex`, zero ready tools fails with install/auth
+   guidance, one is selected silently, and multiple ready tools open a
+   `gum choose` picker. If prompting is unavailable, pass `TOOL=<name>`
+   explicitly instead. Explicit `TOOL=` always skips auto-detection.
+2. **Provider and model prompts follow the tool picker.** With a terminal and
+   `gum`, Goose prompts for its provider and optional model; the other tools
+   prompt for an optional `AGENT_MODEL` override. Copilot first attempts its
+   live model list and falls back to text input. Environment values
+   (`GOOSE_PROVIDER`, `GOOSE_MODEL`, and `AGENT_MODEL`) skip their respective
+   prompts.
+3. **Selections persist safely.** The next launch preselects values from
+   `~/.config/donate-clanker/last-selections.env`, including intentionally
+   blank choices. `~/.config/donate-clanker/secrets.env` is re-derived from
+   the current run, contains only nonblank launcher-managed model settings,
+   and has mode `0600`. The Lima launch passes those resolved values directly
+   to its guest container; it does not mount the selections file.
+4. **Hive setup remains upstream-owned.** If
+   `~/.config/hive/contributor.env` is missing, the recipe fetches the pinned
+   `kubestellar/hive` revision and runs its interactive
+   `just contribute-setup <tool>` command. Non-interactive runs receive
+   pre-seeding guidance instead of fabricated setup.
 
-   ```sh
-   gh auth login --web --hostname github.com --scopes repo,read:org
-   ```
-
-2. **Goose must be installed and semantically configured.** After GitHub auth
-   passes, the supported path requires a `goose` binary on `PATH` and then
-   validates `~/.config/goose/config.yaml` — not just the existence of
-   `~/.config/goose/`. The file must contain non-empty top-level `provider`,
-   `base_url`, `api_key`, and `model` keys, and the supported production path
-   requires `provider: openai` so Goose talks to a local OpenAI-compatible
-   endpoint. `goose configure` owns that local configuration for the
-   supported path.
-
-3. **Existing Hive setup is reused, then validated.** If
-   `~/.config/hive/contributor.env` is missing, the recipe fetches
-   `kubestellar/hive` into `~/.local/state/donate-clanker/hive-src` at the
-   exact pinned commit
-   `e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e`, verifies
-   `git rev-parse HEAD` matches before execution, and then runs upstream
-   `just contribute-setup goose` with your current terminal attached so the
-   upstream prompts can read stdin normally. `DONATE_CLANKER_HIVE_COMMIT`
-   may override that pin, but it must still be a full 40-character commit
-   SHA — mutable refs like `v2` are rejected. If you set
-   `--non-interactive` or `DONATE_CLANKER_NON_INTERACTIVE=true`, or if
-   stdio is not attached to a terminal, donate-clanker refuses to fake the
-   prompts and instead tells you to pre-seed
-   `~/.config/hive/contributor.env` yourself from that exact pinned
-   checkout. If the file already exists,
-   donate-clanker validates it semantically before starting:
-   `HIVE_REGISTRATION_TOKEN`, `HIVE_HUB`, `CONTRIBUTOR_ID`,
-   `CONTRIBUTOR_USERNAME`, and `AGENT_BACKEND=goose` must all be present,
-   and `HIVE_HUB` must be a `wss://` URL ending in `/contribute`. Errors
-   name the missing or invalid key, never the secret value.
-
-4. **Doctor mirrors the supported checks.** `ujust donate-clanker-doctor` is
-   a read-only preflight for Lima, GitHub auth, Goose local config, and
-   validated upstream Hive setup. It also shows
-   that only Goose participates in supported auto-detect; legacy backends
-   (`claude`, `copilot`, `codex`) remain manual compatibility paths via
-   explicit `TOOL=<name>` and are not part of the production-gated workflow.
-
-Once `TOOL` is resolved, only the legacy/manual backends may prompt for an
-optional `AGENT_MODEL=` override when `gum` + a terminal are available;
-leaving it blank falls back to the tool's own default. The supported Goose
-path does not prompt for provider/model values, because `goose configure`
-owns the local OpenAI-compatible configuration. The launcher remembers
-`TOOL` and legacy model overrides in
-`~/.config/donate-clanker/last-selections.env`. Hive credentials remain in
-the upstream-managed Hive configuration and are mounted read-only into the
-guest container.
+`ujust donate-clanker-doctor` is a read-only preflight that lists every CLI's
+readiness and whether launch would auto-select or ask with `gum`.
 
 ## Design rationale
 

@@ -20,11 +20,10 @@
 # commands. All state this recipe touches lives under $HOME (Lima state,
 # config, workspace) — nothing here needs root or writes elsewhere.
 
-# Production auto-detect only covers the supported backend: GitHub + Goose
-# local inference. Legacy backends remain available only via explicit
-# TOOL=<name> and are not production-gated.
-tool_order := "goose"
-legacy_tool_order := "claude copilot codex"
+# Deterministic detection order for every supported CLI. The launcher selects
+# the only ready tool silently, or asks the user to choose when several are
+# ready.
+tool_order := "claude copilot goose codex"
 
 # TOOL/CLANKER_SRC are read from the environment (like upstream hive's own
 # Justfile does with HIVE_HUB) so 'TOOL=copilot ujust donate-clanker' works
@@ -48,77 +47,6 @@ GITHUB_LOGIN_COMMAND="gh auth login --web --hostname github.com --scopes repo,re
 github_auth_ready() {
   command -v gh &>/dev/null && gh auth status --hostname github.com &>/dev/null
 }
-env_value() {
-  local path="$1" key="$2" line value
-  line="$(grep -E "^${key}=" "$path" | head -n1 || true)"
-  [[ -n "$line" ]] || return 1
-  value="${line#*=}"
-  [[ -n "${value//[[:space:]]/}" ]] || return 1
-  printf '%s\n' "$value"
-}
-validate_hive_config_file() {
-  local path="$1" key hub backend
-  [[ -f "$path" ]] || { echo "missing ${path}" >&2; return 1; }
-  for key in HIVE_REGISTRATION_TOKEN HIVE_HUB CONTRIBUTOR_ID CONTRIBUTOR_USERNAME AGENT_BACKEND; do
-    env_value "$path" "$key" >/dev/null || { echo "missing required ${key} in ${path}" >&2; return 1; }
-  done
-  backend="$(env_value "$path" AGENT_BACKEND)" || return 1
-  [[ "$backend" == "goose" ]] || { echo "AGENT_BACKEND must be goose in ${path}" >&2; return 1; }
-  hub="$(env_value "$path" HIVE_HUB)" || return 1
-  [[ "$hub" =~ ^wss://.+/contribute$ ]] || { echo "HIVE_HUB must be a wss:// URL ending in /contribute in ${path}" >&2; return 1; }
-}
-yaml_value() {
-  local path="$1" key="$2"
-  awk -F':' -v key="$key" '
-    /^[^[:space:]#][^:]*:/ {
-      raw=$1
-      gsub(/[[:space:]]+/, "", raw)
-      if (raw == key) {
-        sub(/^[^:]*:[[:space:]]*/, "", $0)
-        sub(/[[:space:]]*#.*/, "", $0)
-        gsub(/^["'"'"']|["'"'"']$/, "", $0)
-        print $0
-        exit
-      }
-    }
-  ' "$path"
-}
-validate_goose_config_file() {
-  local path="$1" key provider base_url
-  [[ -f "$path" ]] || { echo "missing ${path}" >&2; return 1; }
-  for key in provider base_url api_key model; do
-    [[ -n "$(yaml_value "$path" "$key")" ]] || { echo "missing required ${key} in ${path}" >&2; return 1; }
-  done
-  provider="$(yaml_value "$path" provider)"
-  [[ "$provider" == "openai" ]] || { echo "provider must be openai in ${path} for the supported local-inference path" >&2; return 1; }
-  base_url="$(yaml_value "$path" base_url)"
-  [[ "$base_url" =~ ^https?://[^[:space:]]+$ ]] || { echo "base_url must be a valid http(s) endpoint in ${path}" >&2; return 1; }
-}
-require_supported_goose() {
-  local goose_config hive_config
-  goose_config="${HOME}/.config/goose/config.yaml"
-  hive_config="${HOME}/.config/hive/contributor.env"
-  if ! github_auth_ready; then
-    echo "ERROR: GitHub authentication is required for supported onboarding." >&2
-    echo "  Run: ${GITHUB_LOGIN_COMMAND}" >&2
-    return 1
-  fi
-  if ! command -v goose &>/dev/null; then
-    echo "ERROR: Goose is required for supported onboarding." >&2
-    echo "  $(tool_install_hint goose)" >&2
-    return 1
-  fi
-  if ! validate_goose_config_file "$goose_config" &>/dev/null; then
-    echo "ERROR: Goose local inference is not configured for the supported path." >&2
-    echo "  Run: goose configure   (set provider=openai and your local endpoint, API key, and model)" >&2
-    return 1
-  fi
-  if [[ -f "$hive_config" ]] && ! validate_hive_config_file "$hive_config" &>/dev/null; then
-    echo "ERROR: Hive contributor setup is incomplete for the supported Goose path." >&2
-    echo "  Re-run donate-clanker from an interactive terminal to complete pinned Hive setup." >&2
-    return 1
-  fi
-}
 can_run_attended_hive_setup() {
   [[ "${DONATE_CLANKER_TEST_ATTACH_TTY:-}" == "1" ]] || { [[ -t 0 ]] && [[ -t 1 ]] && [[ -t 2 ]]; }
 }
@@ -140,7 +68,7 @@ tool_authenticated() {
   case "$1" in
     claude)  [[ -d "${HOME}/.claude" || -f "${HOME}/.claude.json" ]] ;;
     copilot) gh auth status --hostname github.com &>/dev/null ;;
-    goose)   github_auth_ready && validate_goose_config_file "${HOME}/.config/goose/config.yaml" &>/dev/null ;;
+    goose)   [[ -n "${GOOSE_PROVIDER:-}" || -f "${HOME}/.config/goose/config.yaml" ]] ;;
     codex)   [[ -n "${OPENAI_API_KEY:-}" || -d "${HOME}/.codex" ]] ;;
     *)       return 1 ;;
   esac
@@ -149,7 +77,7 @@ tool_fixit_hint() {
   case "$1" in
     claude)  echo "Run: claude   (then type /login and follow the prompts)" ;;
     copilot) echo "Run: ${GITHUB_LOGIN_COMMAND}" ;;
-    goose)   echo "Run: goose configure   (set provider=openai and a local base_url, api_key, and model)" ;;
+    goose)   echo "Run: goose configure   (or: export GOOSE_PROVIDER=... GOOSE_MODEL=...)" ;;
     codex)   echo "Run: codex login   (or: export OPENAI_API_KEY=...)" ;;
     *)       echo "Unknown tool: $1" ;;
   esac
@@ -261,12 +189,6 @@ gum_can_prompt() {
   command -v gum &>/dev/null || return 1
   [[ "${DONATE_CLANKER_TEST_GUM_TTY:-}" == "1" ]] || [[ -t 0 ]]
 }
-tool_supports_launcher_model_override() {
-  case "$1" in
-    claude|copilot|codex) return 0 ;;
-    *)                    return 1 ;;
-  esac
-}
 '''
 
 # Start donating clanker cycles to the hive — foreground, Ctrl-C to stop.
@@ -301,24 +223,43 @@ donate-clanker:
     HIVE_COMMIT="${HIVE_COMMIT,,}"
     mkdir -p "${STATE_DIR}" "${CFG_DIR}" "${CLONES_DIR}"
 
-    # Remembers the last TOOL/model choices made through the interactive
+    # Remembers the last TOOL/provider/model choices made through the interactive
     # pickers below, so re-running donate-clanker offers them back as the
     # pre-selected default instead of starting blank every time.
     LAST_FILE="${CFG_DIR}/last-selections.env"
-    LAST_TOOL="" LAST_MODEL_CLAUDE="" LAST_MODEL_COPILOT="" LAST_MODEL_CODEX=""
+    LAST_TOOL="" LAST_MODEL_CLAUDE="" LAST_MODEL_COPILOT="" LAST_MODEL_CODEX="" LAST_GOOSE_PROVIDER="" LAST_GOOSE_MODEL=""
     [[ -f "$LAST_FILE" ]] && source "$LAST_FILE"
 
-    # ── 0. Pick TOOL: the supported Goose path always runs the same
-    #      GitHub -> Goose binary -> Goose config -> existing Hive config
-    #      gate. Auto-detect resolves to Goose only after that gate
-    #      passes. Unsupported backends remain explicit, manual
-    #      compatibility paths and are not production-gated. ──
+    # ── 0. Pick TOOL: auto-detect; if exactly one CLI is ready, use it
+    #      silently; if several are ready, let the user pick with gum.
+    #      An explicit TOOL= always wins and skips detection entirely. ──
     if [[ -z "$TOOL" ]]; then
-      require_supported_goose || exit 1
-      TOOL="goose"
-      echo "TOOL not set — auto-detected supported backend: ${TOOL}"
-    elif [[ "$TOOL" == "goose" ]]; then
-      require_supported_goose || exit 1
+      READY=()
+      for t in ${TOOL_ORDER}; do
+        tool_installed "$t" && tool_authenticated "$t" && READY+=("$t")
+      done
+      case "${#READY[@]}" in
+        0)
+          echo "ERROR: no supported AI CLI is both installed and authenticated." >&2
+          for t in ${TOOL_ORDER}; do echo "  ${t}: $(tool_install_hint "$t")" >&2; done
+          echo "Then re-run, or pass explicitly: TOOL=<name> ujust donate-clanker" >&2
+          exit 1
+          ;;
+        1)
+          TOOL="${READY[0]}"
+          echo "TOOL not set — auto-detected: ${TOOL}"
+          ;;
+        *)
+          if gum_can_prompt; then
+            TOOL="$(printf '%s\n' "${READY[@]}" | gum choose --selected="${LAST_TOOL}" --header "Multiple AI CLIs are ready — pick one:")"
+            [[ -n "$TOOL" ]] || { echo "ERROR: no selection made." >&2; exit 1; }
+          else
+            echo "ERROR: multiple CLIs are ready (${READY[*]}) and 'gum' isn't available to prompt." >&2
+            echo "  Install gum, or pass explicitly: TOOL=<name> ujust donate-clanker" >&2
+            exit 1
+          fi
+          ;;
+      esac
     else
       if ! tool_installed "$TOOL"; then
         echo "ERROR: TOOL=${TOOL} requested but not installed." >&2
@@ -332,27 +273,26 @@ donate-clanker:
       fi
     fi
 
-    # ── 0b. Optional model, only prompted when not already given via env
-    #        and a terminal + gum are available. Blank = use the tool's
-    #        own default. The supported Goose path relies on goose's own
-    #        local config, so only the legacy/manual backends prompt here.
-    #        copilot gets a live model list fetched from the same API the
-    #        Copilot CLI/extensions use, so there's never a model name to
-    #        remember or mistype; other tools keep free-text entry.
-    #        Whatever is chosen (including staying blank) is remembered as
-    #        the next run's default. ──
+    # ── 0b. Optional provider/model, only prompted when not already given
+    #        via env and a terminal + gum are available. Blank = use the
+    #        tool's own default. Copilot gets a live model list fetched
+    #        from the same API its CLI/extensions use. ──
     AGENT_MODEL="${AGENT_MODEL:-}"
+    GOOSE_PROVIDER="${GOOSE_PROVIDER:-}"
+    GOOSE_MODEL="${GOOSE_MODEL:-}"
     LAST_MODEL_FOR_TOOL=""
-    if ! tool_supports_launcher_model_override "$TOOL"; then
-      AGENT_MODEL=""
-    fi
     case "$TOOL" in
       claude)  LAST_MODEL_FOR_TOOL="$LAST_MODEL_CLAUDE" ;;
       copilot) LAST_MODEL_FOR_TOOL="$LAST_MODEL_COPILOT" ;;
       codex)   LAST_MODEL_FOR_TOOL="$LAST_MODEL_CODEX" ;;
     esac
-    if tool_supports_launcher_model_override "$TOOL" && gum_can_prompt; then
-      if [[ "$TOOL" == "copilot" && -z "$AGENT_MODEL" ]]; then
+    if gum_can_prompt; then
+      if [[ "$TOOL" == "goose" && -z "$GOOSE_PROVIDER" ]]; then
+        GOOSE_PROVIDER="$(printf '%s\n' anthropic openai google ollama openrouter | gum choose --selected="${LAST_GOOSE_PROVIDER}" --header "Goose provider (Esc to leave unset — needs 'goose configure' instead):")"
+      fi
+      if [[ "$TOOL" == "goose" ]]; then
+        [[ -z "$GOOSE_MODEL" ]] && GOOSE_MODEL="$(gum input --value "${LAST_GOOSE_MODEL}" --placeholder "e.g. claude-3-5-sonnet — blank for goose's default" --header "Goose model (optional):")"
+      elif [[ "$TOOL" == "copilot" && -z "$AGENT_MODEL" ]]; then
         MODEL_LIST="$(copilot_live_models || true)"
         if [[ -n "$MODEL_LIST" ]]; then
           AGENT_MODEL="$(printf '%s\n' "$MODEL_LIST" | gum choose --selected="${LAST_MODEL_FOR_TOOL}" --header "Model for copilot (Esc to leave unset — use copilot's default):")"
@@ -370,13 +310,30 @@ donate-clanker:
       claude)  LAST_MODEL_CLAUDE="$AGENT_MODEL" ;;
       copilot) LAST_MODEL_COPILOT="$AGENT_MODEL" ;;
       codex)   LAST_MODEL_CODEX="$AGENT_MODEL" ;;
+      goose)   LAST_GOOSE_PROVIDER="$GOOSE_PROVIDER"; LAST_GOOSE_MODEL="$GOOSE_MODEL" ;;
     esac
     {
       printf 'LAST_TOOL=%q\n' "$LAST_TOOL"
       printf 'LAST_MODEL_CLAUDE=%q\n' "$LAST_MODEL_CLAUDE"
       printf 'LAST_MODEL_COPILOT=%q\n' "$LAST_MODEL_COPILOT"
       printf 'LAST_MODEL_CODEX=%q\n' "$LAST_MODEL_CODEX"
+      printf 'LAST_GOOSE_PROVIDER=%q\n' "$LAST_GOOSE_PROVIDER"
+      printf 'LAST_GOOSE_MODEL=%q\n' "$LAST_GOOSE_MODEL"
     } > "$LAST_FILE"
+
+    # Re-derive launcher-managed values from this run instead of retaining
+    # stale choices. The selected values reach the guest only as explicit
+    # container environment variables below.
+    touch "${CFG_DIR}/secrets.env"
+    chmod 600 "${CFG_DIR}/secrets.env"
+    grep -v -E '^(GOOSE_PROVIDER|GOOSE_MODEL|AGENT_MODEL)=' "${CFG_DIR}/secrets.env" > "${CFG_DIR}/secrets.env.tmp" 2>/dev/null || true
+    mv "${CFG_DIR}/secrets.env.tmp" "${CFG_DIR}/secrets.env"
+    [[ -n "$AGENT_MODEL" ]] && echo "AGENT_MODEL=${AGENT_MODEL}" >> "${CFG_DIR}/secrets.env"
+    if [[ "$TOOL" == "goose" ]]; then
+      [[ -n "$GOOSE_PROVIDER" ]] && echo "GOOSE_PROVIDER=${GOOSE_PROVIDER}" >> "${CFG_DIR}/secrets.env"
+      [[ -n "$GOOSE_MODEL" ]] && echo "GOOSE_MODEL=${GOOSE_MODEL}" >> "${CFG_DIR}/secrets.env"
+    fi
+    chmod 600 "${CFG_DIR}/secrets.env"
 
     normalize_git_remote() {
       local value="$1"
@@ -459,12 +416,6 @@ donate-clanker:
       [[ -f "$HIVE_CONTRIBUTOR_ENV" ]] || { echo "ERROR: contribute-setup ran but ${HIVE_CONTRIBUTOR_ENV} still missing." >&2; exit 1; }
       echo "✓ Upstream contribute-setup complete."
     fi
-    if [[ "$TOOL" == "goose" ]] && [[ -f "$HIVE_CONTRIBUTOR_ENV" ]] && ! validate_hive_config_file "$HIVE_CONTRIBUTOR_ENV"; then
-      echo "ERROR: upstream Hive setup is incomplete for the supported Goose path." >&2
-      echo "  Re-run from kubestellar/hive @ ${HIVE_COMMIT}: just contribute-setup goose" >&2
-      exit 1
-    fi
-
     # ── 2. Resolve CLANKER_SRC into a stable workspace symlink ──
     is_git_url() { [[ "$1" =~ ^(https?|ssh|git)://.* || "$1" =~ ^git@.* ]]; }
     if [[ -z "$CLANKER_SRC" ]]; then
@@ -521,8 +472,12 @@ donate-clanker:
     while IFS= read -r mount; do
       [[ -n "$mount" ]] && CONTAINER_ARGS+=(--volume "$mount")
     done < <(tool_container_mounts "$TOOL")
-    if tool_supports_launcher_model_override "$TOOL" && [[ -n "$AGENT_MODEL" ]]; then
+    if [[ -n "$AGENT_MODEL" ]]; then
       CONTAINER_ARGS+=(--env "AGENT_MODEL=${AGENT_MODEL}")
+    fi
+    if [[ "$TOOL" == "goose" ]]; then
+      [[ -n "$GOOSE_PROVIDER" ]] && CONTAINER_ARGS+=(--env "GOOSE_PROVIDER=${GOOSE_PROVIDER}")
+      [[ -n "$GOOSE_MODEL" ]] && CONTAINER_ARGS+=(--env "GOOSE_MODEL=${GOOSE_MODEL}")
     fi
     CONTAINER_ARGS+=("{{compat_image}}")
 
@@ -537,7 +492,6 @@ donate-clanker-doctor:
     set -uo pipefail
     {{shared_functions}}
     TOOL_ORDER="{{tool_order}}"
-    LEGACY_TOOL_ORDER="{{legacy_tool_order}}"
     HIVE_COMMIT="${DONATE_CLANKER_HIVE_COMMIT:-{{hive_commit}}}"
     HIVE_COMMIT="${HIVE_COMMIT,,}"
     INVOKED_DIR="{{invocation_directory()}}"
@@ -559,27 +513,15 @@ donate-clanker-doctor:
       echo "  ✗ limactl is not installed (install Lima, then retry)"
       fail=$((fail+1))
     fi
-    check "gum installed (optional interactive legacy model prompts)" command -v gum
+    check "gum installed (needed to pick between multiple ready CLIs)" command -v gum
     echo ""
 
-    echo "=== Supported production backend: GitHub + Goose ==="
-    check "gh installed" command -v gh
-    check "gh authenticated for github.com" github_auth_ready
-    check "goose installed" command -v goose
-    check "goose local config (~/.config/goose/config.yaml)" validate_goose_config_file "${HOME}/.config/goose/config.yaml"
-    check "contribute-setup completed and valid (~/.config/hive/contributor.env)" validate_hive_config_file "${HOME}/.config/hive/contributor.env"
-    echo "  Fix GitHub auth with: ${GITHUB_LOGIN_COMMAND}"
-    echo "  Fix Goose local config with: goose configure   (provider=openai, local base_url/api_key/model)"
-    echo "  Fix Hive setup by re-running donate-clanker (auto-fetches kubestellar/hive @ ${HIVE_COMMIT}),"
-    echo "    or manually run just contribute-setup goose from that exact commit."
-    echo ""
-
-    echo "=== Supported auto-detect ==="
+    echo "=== AI CLIs (auto-detect candidates) ==="
     ready_tools=()
     for t in ${TOOL_ORDER}; do
       if tool_installed "$t"; then
         if tool_authenticated "$t"; then
-          echo "  ✓ ${t}: installed + GitHub-authenticated + local Goose config valid"
+          echo "  ✓ ${t}: installed + authenticated"
           ready_tools+=("$t")
         else
           echo "  ~ ${t}: installed, NOT ready — $(tool_fixit_hint "$t")"
@@ -591,24 +533,10 @@ donate-clanker-doctor:
     echo ""
 
     case "${#ready_tools[@]}" in
-      0) echo "Goose is not fully ready yet — TOOL auto-detect would fail." ;;
-      1) echo "TOOL would auto-detect to the supported backend: ${ready_tools[0]}" ;;
-      *) echo "Unexpected: multiple supported backends are ready (${ready_tools[*]})." ;;
+      0) echo "No CLI is both installed and authenticated yet — TOOL auto-detect would fail." ;;
+      1) echo "TOOL would auto-detect to: ${ready_tools[0]}" ;;
+      *) echo "Multiple CLIs are ready (${ready_tools[*]}) — you'll be prompted to pick one via gum." ;;
     esac
-    echo ""
-
-    echo "=== Legacy compatibility backends (manual only; unsupported for production) ==="
-    for t in ${LEGACY_TOOL_ORDER}; do
-      if tool_installed "$t"; then
-        if tool_authenticated "$t"; then
-          echo "  ~ ${t}: installed + ready (manual TOOL=${t} only)"
-        else
-          echo "  ~ ${t}: installed, NOT ready — $(tool_fixit_hint "$t")"
-        fi
-      else
-        echo "  ✗ ${t}: not installed — $(tool_install_hint "$t")"
-      fi
-    done
     echo ""
 
     echo "=== Source (CLANKER_SRC) ==="
