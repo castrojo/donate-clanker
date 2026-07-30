@@ -259,7 +259,23 @@ donate-clanker:
     esac
     if gum_can_prompt; then
       if [[ "$TOOL" == "goose" && -z "$GOOSE_PROVIDER" ]]; then
-        GOOSE_PROVIDER="$(printf '%s\n' github_copilot anthropic openai google ollama openrouter | gum choose --selected="${LAST_GOOSE_PROVIDER:-github_copilot}" --header "Goose provider (Esc to leave unset — needs 'goose configure' instead):")"
+        LAST_GOOSE_LABEL="GitHub Copilot"
+        case "$LAST_GOOSE_PROVIDER" in
+          anthropic) LAST_GOOSE_LABEL="Anthropic" ;;
+          openai) LAST_GOOSE_LABEL="OpenAI" ;;
+          google) LAST_GOOSE_LABEL="Google" ;;
+          ollama) LAST_GOOSE_LABEL="Ollama" ;;
+          openrouter) LAST_GOOSE_LABEL="OpenRouter" ;;
+        esac
+        GOOSE_PROVIDER="$(printf '%s\n' 'GitHub Copilot' Anthropic OpenAI Google Ollama OpenRouter | gum choose --selected="$LAST_GOOSE_LABEL" --header "Goose provider (Esc to leave unset — needs 'goose configure' instead):")"
+        case "$GOOSE_PROVIDER" in
+          "GitHub Copilot") GOOSE_PROVIDER="github_copilot" ;;
+          Anthropic) GOOSE_PROVIDER="anthropic" ;;
+          OpenAI) GOOSE_PROVIDER="openai" ;;
+          Google) GOOSE_PROVIDER="google" ;;
+          Ollama) GOOSE_PROVIDER="ollama" ;;
+          OpenRouter) GOOSE_PROVIDER="openrouter" ;;
+        esac
       fi
       [[ "$TOOL" == "goose" && -z "$GOOSE_PROVIDER" ]] && GOOSE_PROVIDER="github_copilot"
       if [[ "$TOOL" == "goose" ]]; then

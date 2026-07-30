@@ -136,7 +136,7 @@ status=$?
 set -e
 test "$status" -ne 0
 assert_file_contains 'choose --selected=claude --header Multiple AI CLIs are ready — pick one:' "$gum_log"
-assert_file_contains 'choose --selected=ollama --header Goose provider' "$gum_log"
+assert_file_contains 'choose --selected=Ollama --header Goose provider' "$gum_log"
 assert_file_contains 'input --value llama3.1' "$gum_log"
 assert_file_contains 'LAST_TOOL=goose' "$cfg_dir/last-selections.env"
 assert_file_contains 'LAST_GOOSE_PROVIDER=openai' "$cfg_dir/last-selections.env"
