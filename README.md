@@ -1,11 +1,18 @@
 # donate-clanker
 
-**Install:** `git clone https://github.com/projectbluefin/donate-clanker ~/.local/share/donate-clanker && echo 'import "'"$HOME"'/.local/share/donate-clanker/just/61-donate-clanker.just"' >> ~/Justfile`
+After completing `just contribute-setup goose` in a clean
+[KubeStellar Hive](https://github.com/kubestellar/hive) checkout, run the
+contributor workload directly:
 
-`ujust donate-clanker` — run the [KubeStellar Hive](https://github.com/kubestellar/hive)
-contributor workload (donate CLI/API tokens to the Bluefin agent swarm) as a
-proper rootless Podman Quadlet, in the foreground, with nothing left running
-when you're not watching it.
+```bash
+podman run --rm -it --userns=keep-id \
+  --env-file="$HOME/.config/hive/contributor.env" \
+  --env-file="$HOME/.config/hive/gh-auth.env" \
+  -v "$HOME/.config/hive:/home/dev/.config/hive:ro,Z" \
+  -v "$HOME/.config/gh:/home/dev/.config/gh:ro,Z" \
+  -v "$PWD:/home/dev/workspace:Z" \
+  ghcr.io/kubestellar/hive-contributor:latest
+```
 
 Source of truth for the contributor workflow this wraps:
 https://hosted-projectbluefin-knuckle-gjvq.hive.kubestellar.io/contribute
