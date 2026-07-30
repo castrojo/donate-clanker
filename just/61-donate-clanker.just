@@ -147,6 +147,31 @@ validate_goose_config_file() {
   base_url="$(yaml_value "$path" base_url)"
   [[ "$base_url" =~ ^https?://[^[:space:]]+$ ]] || { echo "base_url must be a valid http(s) endpoint in ${path}" >&2; return 1; }
 }
+require_supported_goose() {
+  local goose_config hive_config
+  goose_config="${HOME}/.config/goose/config.yaml"
+  hive_config="${HOME}/.config/hive/contributor.env"
+  if ! github_auth_ready; then
+    echo "ERROR: GitHub authentication is required for supported onboarding." >&2
+    echo "  Run: ${GITHUB_LOGIN_COMMAND}" >&2
+    return 1
+  fi
+  if ! command -v goose &>/dev/null; then
+    echo "ERROR: Goose is required for supported onboarding." >&2
+    echo "  $(tool_install_hint goose)" >&2
+    return 1
+  fi
+  if ! validate_goose_config_file "$goose_config" &>/dev/null; then
+    echo "ERROR: Goose local inference is not configured for the supported path." >&2
+    echo "  Run: goose configure   (set provider=openai and your local endpoint, API key, and model)" >&2
+    return 1
+  fi
+  if [[ -f "$hive_config" ]] && ! validate_hive_config_file "$hive_config" &>/dev/null; then
+    echo "ERROR: Hive contributor setup is incomplete for the supported Goose path." >&2
+    echo "  Re-run donate-clanker from an interactive terminal to complete pinned Hive setup." >&2
+    return 1
+  fi
+}
 tool_installed() {
   case "$1" in
     claude)  command -v claude &>/dev/null ;;
@@ -253,9 +278,9 @@ FRAG
 '''
 
 # Start donating clanker cycles to the hive — foreground, Ctrl-C to stop.
-# TOOL defaults to the supported auto-detect path: goose, but only when
-# GitHub auth and the local Goose config are both ready. Legacy backends
-# remain available only via explicit TOOL=<name>.
+# TOOL defaults to the supported auto-detect path: goose, but only when its
+# ordered readiness checks pass. Legacy backends remain available only via
+# explicit TOOL=<name>.
 # Usage: ujust donate-clanker
 #        TOOL=goose ujust donate-clanker
 #        CLANKER_SRC=~/src/some-repo ujust donate-clanker
@@ -289,29 +314,16 @@ donate-clanker:
     # pickers below, so re-running donate-clanker offers them back as the
     # pre-selected default instead of starting blank every time.
     LAST_FILE="${CFG_DIR}/last-selections.env"
-    LAST_TOOL="" LAST_MODEL_CLAUDE="" LAST_MODEL_COPILOT="" LAST_MODEL_CODEX="" LAST_GOOSE_PROVIDER="" LAST_GOOSE_MODEL=""
+    LAST_TOOL="" LAST_MODEL_CLAUDE="" LAST_MODEL_COPILOT="" LAST_MODEL_CODEX=""
     [[ -f "$LAST_FILE" ]] && source "$LAST_FILE"
 
     # ── 0. Pick TOOL: the supported auto-detect path is GitHub + Goose
     #      local inference only. Unsupported backends remain explicit,
     #      manual compatibility paths and are not production-gated. ──
     if [[ -z "$TOOL" ]]; then
-      if tool_installed goose && tool_authenticated goose; then
-        TOOL="goose"
-        echo "TOOL not set — auto-detected supported backend: ${TOOL}"
-      else
-        echo "ERROR: supported onboarding requires GitHub + Goose local inference." >&2
-        command -v gh &>/dev/null || echo "  Install: see https://cli.github.com" >&2
-        github_auth_ready || echo "  Run: ${GITHUB_LOGIN_COMMAND}" >&2
-        if ! command -v goose &>/dev/null; then
-          echo "  $(tool_install_hint goose)" >&2
-        else
-          validate_goose_config_file "${HOME}/.config/goose/config.yaml" || true
-          echo "  Run: goose configure   (set provider=openai and your local endpoint/model)" >&2
-        fi
-        echo "  Legacy compatibility backends stay manual-only: TOOL=claude|copilot|codex" >&2
-        exit 1
-      fi
+      require_supported_goose || exit 1
+      TOOL="goose"
+      echo "TOOL not set — auto-detected supported backend: ${TOOL}"
     else
       if ! tool_installed "$TOOL"; then
         echo "ERROR: TOOL=${TOOL} requested but not installed." >&2
@@ -329,16 +341,16 @@ donate-clanker:
       fi
     fi
 
-    # ── 0b. Optional provider/model, only prompted when not already given
-    #        via env and a terminal + gum are available. Blank = use the
-    #        tool's own default. copilot gets a live model list fetched
-    #        from the same API the Copilot CLI/extensions use, so there's
-    #        never a model name to remember or mistype; other tools keep
-    #        free-text entry. Whatever is chosen (including staying blank)
-    #        is remembered as the next run's default. ──
+    # ── 0b. Optional model, only prompted when not already given via env
+    #        and a terminal + gum are available. Blank = use the tool's
+    #        own default. The supported Goose path relies on goose's own
+    #        local config, so only the legacy/manual backends prompt here.
+    #        copilot gets a live model list fetched from the same API the
+    #        Copilot CLI/extensions use, so there's never a model name to
+    #        remember or mistype; other tools keep free-text entry.
+    #        Whatever is chosen (including staying blank) is remembered as
+    #        the next run's default. ──
     AGENT_MODEL="${AGENT_MODEL:-}"
-    GOOSE_PROVIDER="${GOOSE_PROVIDER:-}"
-    GOOSE_MODEL="${GOOSE_MODEL:-}"
     LAST_MODEL_FOR_TOOL=""
     case "$TOOL" in
       claude)  LAST_MODEL_FOR_TOOL="$LAST_MODEL_CLAUDE" ;;
@@ -369,15 +381,12 @@ donate-clanker:
       claude)  LAST_MODEL_CLAUDE="$AGENT_MODEL" ;;
       copilot) LAST_MODEL_COPILOT="$AGENT_MODEL" ;;
       codex)   LAST_MODEL_CODEX="$AGENT_MODEL" ;;
-      goose)   LAST_GOOSE_PROVIDER="$GOOSE_PROVIDER"; LAST_GOOSE_MODEL="$GOOSE_MODEL" ;;
     esac
     {
       printf 'LAST_TOOL=%q\n' "$LAST_TOOL"
       printf 'LAST_MODEL_CLAUDE=%q\n' "$LAST_MODEL_CLAUDE"
       printf 'LAST_MODEL_COPILOT=%q\n' "$LAST_MODEL_COPILOT"
       printf 'LAST_MODEL_CODEX=%q\n' "$LAST_MODEL_CODEX"
-      printf 'LAST_GOOSE_PROVIDER=%q\n' "$LAST_GOOSE_PROVIDER"
-      printf 'LAST_GOOSE_MODEL=%q\n' "$LAST_GOOSE_MODEL"
     } > "$LAST_FILE"
 
     normalize_git_remote() {
@@ -453,7 +462,7 @@ donate-clanker:
       [[ -f "$HIVE_CONTRIBUTOR_ENV" ]] || { echo "ERROR: contribute-setup ran but ${HIVE_CONTRIBUTOR_ENV} still missing." >&2; exit 1; }
       echo "✓ Upstream contribute-setup complete."
     fi
-    if [[ "$TOOL" == "goose" ]] && ! validate_hive_config_file "$HIVE_CONTRIBUTOR_ENV"; then
+    if [[ "$TOOL" == "goose" ]] && [[ -f "$HIVE_CONTRIBUTOR_ENV" ]] && ! validate_hive_config_file "$HIVE_CONTRIBUTOR_ENV"; then
       echo "ERROR: upstream Hive setup is incomplete for the supported Goose path." >&2
       echo "  Re-run from kubestellar/hive @ ${HIVE_COMMIT}: just contribute-setup goose" >&2
       exit 1
@@ -513,15 +522,11 @@ donate-clanker:
     fi
     touch "${CFG_DIR}/secrets.env"; chmod 600 "${CFG_DIR}/secrets.env"
     # Re-derive secrets.env from this run's choices every time (never
-    # additive) — provider/model selection is meant to be re-visitable on
-    # each foreground run, not silently stuck from a prior one.
+    # additive) so stale launcher-managed overrides do not stick around
+    # from earlier runs.
     grep -v -E '^(GOOSE_PROVIDER|GOOSE_MODEL|AGENT_MODEL|GH_TOKEN)=' "${CFG_DIR}/secrets.env" > "${CFG_DIR}/secrets.env.tmp" 2>/dev/null || true
     mv "${CFG_DIR}/secrets.env.tmp" "${CFG_DIR}/secrets.env"
     [[ -n "$AGENT_MODEL" ]] && echo "AGENT_MODEL=${AGENT_MODEL}" >> "${CFG_DIR}/secrets.env"
-    if [[ "$TOOL" == "goose" ]]; then
-      [[ -n "$GOOSE_PROVIDER" ]] && echo "GOOSE_PROVIDER=${GOOSE_PROVIDER}" >> "${CFG_DIR}/secrets.env"
-      [[ -n "$GOOSE_MODEL" ]] && echo "GOOSE_MODEL=${GOOSE_MODEL}" >> "${CFG_DIR}/secrets.env"
-    fi
     # Upstream contributor-agent.sh needs GH_TOKEN regardless of
     # AGENT_BACKEND — it's the contributor's personal token for the
     # fork+push credential helper, independent of which CLI drives the
@@ -581,7 +586,7 @@ donate-clanker-doctor:
     check "podman rootless works (podman info)" podman info
     check "quadlet generator present" test -x /usr/lib/systemd/system-generators/podman-system-generator
     check "user systemd instance reachable" systemctl --user status
-    check "gum installed (optional interactive Goose model/provider prompts)" command -v gum
+    check "gum installed (optional interactive legacy model prompts)" command -v gum
     echo ""
 
     echo "=== Supported production backend: GitHub + Goose ==="
