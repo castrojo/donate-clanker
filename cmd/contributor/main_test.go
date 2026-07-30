@@ -261,7 +261,6 @@ func TestContributorHandlerCleanupFailureDoesNotChangeSuccessfulResult(t *testin
 	report, err := handler.Handle(context.Background(), hive.Assignment{
 		TaskID:      "task-cleanup-warning",
 		Kind:        "issue",
-		Repo:        "projectbluefin/donate-clanker",
 		Number:      42,
 		GitHubToken: "token",
 		Prompt:      "do work",
@@ -355,7 +354,6 @@ func TestContributorHandlerEmitsObservationBeforeReturningReport(t *testing.T) {
 	report, err := handler.Handle(context.Background(), hive.Assignment{
 		TaskID:      "task-observation",
 		Kind:        "issue",
-		Repo:        "projectbluefin/donate-clanker",
 		Number:      42,
 		Title:       "private title",
 		Prompt:      "private prompt",
@@ -389,7 +387,6 @@ func TestContributorHandlerObservationWriteFailureDoesNotChangeResult(t *testing
 	report, err := handler.Handle(context.Background(), hive.Assignment{
 		TaskID:      "task-observation-failure",
 		Kind:        "issue",
-		Repo:        "projectbluefin/donate-clanker",
 		Number:      42,
 		GitHubToken: "token",
 		Prompt:      "do work",

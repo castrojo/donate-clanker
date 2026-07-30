@@ -16,3 +16,18 @@ Factory-wide policy lives in
 [`projectbluefin/common`](https://github.com/projectbluefin/common). This
 repository links to common policy rather than copying it; local repository
 rules remain authoritative for launcher, worker, and release behavior.
+
+## Approved runtime boundary
+
+The supported product is a disposable, self-contained QEMU microVM launched
+from a pinned containerized runner on Bluefin base or Bluefin DX hosts. The
+guest clones Hive-assigned repositories internally. It receives no host
+workspace, home directory, tool configuration, or container socket mount.
+Lima, guest Podman, `CLANKER_SRC`, and the compatibility image are historical
+migration context only, not current product requirements.
+
+The launcher requires an immutable runner image reference and usable KVM.
+Local inference is an explicit external dependency on a matching signed FSDK
+artifact published by `projectbluefin/fsdk-containers`; this repository does
+not own that artifact. Keep VM, guest-clone, and host-boundary documentation
+consistent with this model without changing skill-boundary documents.

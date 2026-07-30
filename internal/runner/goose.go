@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,6 +32,7 @@ var (
 	ErrMissingRuntimeDir = errors.New("missing Goose runtime directory")
 	ErrMissingTaskID     = errors.New("missing Hive task ID")
 	ErrMissingConfig     = errors.New("missing bundled Goose config")
+	ErrInvalidRepository = errors.New("invalid repository URL")
 )
 
 var (
@@ -81,12 +83,79 @@ type Goose struct {
 	Runner   CommandRunner
 }
 
+// CloneRepository creates a fresh checkout using only the assignment token.
+// The token is passed through the task command environment, never the URL or
+// command arguments.
+func CloneRepository(ctx context.Context, commandRunner CommandRunner, repositoryURL, directory, token string) error {
+	repositoryURL, err := ValidateRepositoryURL(repositoryURL)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(directory) == "" {
+		return ErrMissingWorkspace
+	}
+	if commandRunner == nil {
+		commandRunner = ExecCommandRunner{}
+	}
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return err
+	}
+	env := baseEnvironment()
+	env["GIT_TERMINAL_PROMPT"] = "0"
+	if trimmed := strings.TrimSpace(token); trimmed != "" {
+		env["GIT_ASKPASS"] = os.Args[0]
+		env["DONATE_CLANKER_GIT_ASKPASS"] = trimmed
+	}
+	output, err := commandRunner.Run(ctx, Command{
+		Name: "git",
+		Args: []string{"clone", "--", repositoryURL, filepath.Clean(directory)},
+		Dir:  filepath.Dir(filepath.Clean(directory)),
+		Env:  env,
+	})
+	if err != nil {
+		return &ExecutionError{Reason: "repository clone failed: " + executionReason(err, summarizeOutput(output.Combined)), Err: err}
+	}
+	return nil
+}
+
+// ValidateRepositoryURL accepts canonical GitHub HTTPS repository URLs and
+// owner/repository metadata, rejecting credentials and alternate hosts.
+func ValidateRepositoryURL(repository string) (string, error) {
+	value := strings.TrimSpace(repository)
+	if value == "" {
+		return "", fmt.Errorf("%w: empty repository", ErrInvalidRepository)
+	}
+	if !strings.Contains(value, "://") {
+		parts := strings.Split(strings.TrimSuffix(value, ".git"), "/")
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" || strings.ContainsAny(value, "?#") {
+			return "", fmt.Errorf("%w: %s", ErrInvalidRepository, redactSecrets(value))
+		}
+		return "https://github.com/" + parts[0] + "/" + parts[1] + ".git", nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Host, "github.com") ||
+		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("%w: %s", ErrInvalidRepository, redactSecrets(value))
+	}
+	path := strings.Trim(strings.TrimSuffix(parsed.Path, ".git"), "/")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", fmt.Errorf("%w: %s", ErrInvalidRepository, redactSecrets(value))
+	}
+	return "https://github.com/" + parts[0] + "/" + parts[1] + ".git", nil
+}
+
 type ExecutionError struct {
 	Reason string
+	Err    error
 }
 
 func (e *ExecutionError) Error() string {
 	return e.Reason
+}
+
+func (e *ExecutionError) Unwrap() error {
+	return e.Err
 }
 
 func PrepareTaskPrompt(policy string, contractSection string, assignment string) string {
@@ -131,7 +200,7 @@ func (g Goose) Run(ctx context.Context, task Task) (Result, error) {
 	}
 	documents, err := g.Contract.LoadDocuments(filepath.Clean(task.Workspace))
 	if err != nil {
-		return Result{}, &ExecutionError{Reason: fmt.Sprintf("goose run failed: load agent contract: %v", err)}
+		return Result{}, &ExecutionError{Reason: fmt.Sprintf("goose run failed: load agent contract: %v", err), Err: err}
 	}
 
 	runner := g.Runner
@@ -173,7 +242,7 @@ func (g Goose) Run(ctx context.Context, task Task) (Result, error) {
 
 	if err != nil {
 		reason := executionReason(err, result.Summary)
-		return result, &ExecutionError{Reason: reason}
+		return result, &ExecutionError{Reason: reason, Err: err}
 	}
 
 	if result.Summary == "" {
@@ -236,6 +305,9 @@ func gooseEnvironment(task Task, homeDir string) map[string]string {
 	if trimmed := strings.TrimSpace(task.GitHubToken); trimmed != "" {
 		env["GH_TOKEN"] = trimmed
 		env["GITHUB_TOKEN"] = trimmed
+		env["GIT_ASKPASS"] = os.Args[0]
+		env["GIT_TERMINAL_PROMPT"] = "0"
+		env["DONATE_CLANKER_GIT_ASKPASS"] = trimmed
 	}
 
 	return env

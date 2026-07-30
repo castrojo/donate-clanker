@@ -390,6 +390,57 @@ func TestTaskRuntimeDirRejectsMissingTaskID(t *testing.T) {
 	}
 }
 
+func TestValidateRepositoryURL(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+		ok    bool
+	}{
+		{input: "projectbluefin/donate-clanker", want: "https://github.com/projectbluefin/donate-clanker.git", ok: true},
+		{input: "https://github.com/projectbluefin/donate-clanker", want: "https://github.com/projectbluefin/donate-clanker.git", ok: true},
+		{input: "https://github.com/projectbluefin/donate-clanker.git", want: "https://github.com/projectbluefin/donate-clanker.git", ok: true},
+		{input: "http://github.com/projectbluefin/donate-clanker", ok: false},
+		{input: "https://evil.example/projectbluefin/donate-clanker", ok: false},
+		{input: "https://github.com/projectbluefin/donate-clanker?token=" + "secret", ok: false},
+	}
+	for _, test := range tests {
+		got, err := ValidateRepositoryURL(test.input)
+		if test.ok {
+			if err != nil || got != test.want {
+				t.Errorf("ValidateRepositoryURL(%q) = %q, %v; want %q", test.input, got, err, test.want)
+			}
+			continue
+		}
+		if err == nil {
+			t.Errorf("ValidateRepositoryURL(%q) error = nil, want failure", test.input)
+		}
+	}
+}
+
+func TestCloneRepositoryScopesTokenToCloneCommand(t *testing.T) {
+	fake := &fakeCommandRunner{}
+	directory := repoScratch(t, "clone-target")
+	if err := CloneRepository(context.Background(), fake, "projectbluefin/donate-clanker", directory, "assignment-token"); err != nil {
+		t.Fatalf("CloneRepository() error = %v", err)
+	}
+	if len(fake.calls) != 1 {
+		t.Fatalf("clone command count = %d, want 1", len(fake.calls))
+	}
+	call := fake.calls[0]
+	if call.Name != "git" || call.Args[0] != "clone" {
+		t.Fatalf("clone command = %#v", call)
+	}
+	if strings.Contains(strings.Join(call.Args, " "), "assignment-token") {
+		t.Fatalf("clone args leaked token: %#v", call.Args)
+	}
+	if call.Env["DONATE_CLANKER_GIT_ASKPASS"] != "assignment-token" {
+		t.Fatalf("askpass token = %q", call.Env["DONATE_CLANKER_GIT_ASKPASS"])
+	}
+	if call.Env["GIT_TERMINAL_PROMPT"] != "0" {
+		t.Fatalf("GIT_TERMINAL_PROMPT = %q", call.Env["GIT_TERMINAL_PROMPT"])
+	}
+}
+
 type fakeCommandRunner struct {
 	calls  []Command
 	output CommandOutput

@@ -48,20 +48,24 @@ Do not use this for:
     launcher-managed model settings in the mode-`0600` selections state.
 12. Run focused tests for `cmd/contributor`, `internal/app`, `internal/config`, `internal/runner`, and `internal/hive`, then run `go test ./...`.
 
-## Lima Guest Runtime Boundary
+## Self-Contained VM Boundary
 
-The product launcher runs the published compatibility container entirely in
-the reusable `donate-clanker` Lima VM. It invokes the guest's Podman through
-`limactl shell`, never the host container engine. When `limactl` is absent,
-only Bluefin DX may install Lima with `brew install lima`; all other hosts
-must provide Lima themselves.
+The approved product path is a disposable, bootable QEMU microVM launched from
+a pinned containerized runner on supported Bluefin base/DX hosts. The guest
+clones each Hive-assigned repository internally; it receives no host workspace,
+home directory, container socket, or tool configuration mount. Lima is not part
+of this path, and microagent is not used.
 
-Create the VM from `template:podman` with an explicit writable workspace mount;
-leave `~/.config/hive` and selected tool config mounts unsuffixed so Lima keeps
-them read-only by default. Bind only `/workspace` and `/config` into
-the guest container, with `/config` read-only; selected tool configuration is
-likewise read-only. Keep the container attached to the invoking terminal with
-`podman run --rm -it`, and reuse the VM rather than creating a host service.
+The host sends only a versioned bootstrap envelope over the VM control channel.
+Hive registration values are memory-only; the guest receives each
+assignment-scoped GitHub token only for that clone/task and scrubs it before
+cleanup. The guest uses outbound-only networking, a minimal device set, an
+immutable base, and an ephemeral overlay. QEMU, the runner container, the
+control channel, and the overlay are removed on every exit path.
+
+The former Lima compatibility-image behavior is historical/migration context
+only. Do not add new host workspace-sharing or Lima mounts when changing the
+VM launcher.
 
 ## Local Observation Boundary
 
@@ -133,9 +137,10 @@ Podman `info` exposes the selected OCI runtime in host information and
 supports Go-template formatting (source: Context7
 `/websites/podman_io_en`).
 
-Lima documents `limactl start --name=<name> template:podman`, named-instance
-reuse, `limactl shell <name> <command>`, and `--mount-only /path` as
-read-only unless the path ends in `:w` (source: Context7 `/lima-vm/lima`).
+The VM design in
+`docs/superpowers/specs/2026-07-30-donate-clanker-vm-design.md` defines the
+QEMU runner, one-shot control channel, guest clone lifecycle, and cleanup
+boundary. It supersedes the earlier Lima compatibility path for new work.
 
 Gum documents `gum choose` for option selection and `gum input --value`,
 `--placeholder`, and `--header` for prefilled text prompts (source: Context7
@@ -171,15 +176,15 @@ Gum documents `gum choose` for option selection and `gum input --value`,
 - Tests only cover success paths and not env/mount exposure or redaction
 - A foreground compatibility container starts a detached tmux session but never attaches it to the user's terminal
 - Host Podman, Docker, systemd, or a container socket launches the product
-  contributor instead of `limactl shell`
-- Lima mounts the full home directory writable or the contributor receives
-  more than its workspace, Hive config, and selected tool config
+  contributor outside the pinned QEMU runner
+- The VM exposes a host workspace, home directory, socket, clipboard, GUI, or
+  inbound service
 
 ## Verification
 
-- [ ] `ResolveMounts` returns only workspace and cache mounts
-- [ ] Worker env contains Hive connection values but not host auth paths
-- [ ] `clearWorkerCredentialEnvironment` removes host Hive/GitHub auth env
+- [ ] The VM runner exposes no host workspace, home, or container socket
+- [ ] Bootstrap uses only the versioned control-channel allowlist
+- [ ] Guest state contains no persisted registration or assignment token
 - [ ] Goose receives only assignment-scoped GitHub token values
 - [ ] Missing required repository documents stop native task execution before any Goose command starts
 - [ ] Prompt output preserves verbatim assignment text under a dedicated heading
@@ -193,13 +198,9 @@ Gum documents `gum choose` for option selection and `gum input --value`,
   remembered selections plus mode-`0600` current-run state have deterministic
   coverage without requiring a real TTY
 - [ ] Context7 is optional and local hooks are not treated as CI authority
-- [ ] Compatibility image sources `gh-auth.env` and attaches tmux without requiring a host container socket
-- [ ] Missing `limactl` invokes Homebrew only on Bluefin DX, and a present
-  `limactl` never invokes Homebrew
-- [ ] The named `donate-clanker` VM is created from `template:podman` once
-  and reused thereafter
-- [ ] The guest contributor runs foreground with a read-only `/config` mount,
-  writable `/workspace` mount, and Lima host mounts that use `:w` only for
-  the workspace
+- [ ] QEMU readiness reports boot, control channel, network, Hive, and worker
+  stages without secrets
+- [ ] Each assignment gets a fresh guest clone directory and cleanup
+- [ ] QEMU, runner, channel, and overlay cleanup is idempotent on every exit
 - [ ] `go test ./cmd/contributor ./internal/app ./internal/config ./internal/runner ./internal/hive` passes
 - [ ] `go test ./...` passes

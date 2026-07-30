@@ -21,6 +21,10 @@ import (
 const defaultRuntimeDir = "/var/lib/donate-clanker"
 
 func main() {
+	if token := os.Getenv("DONATE_CLANKER_GIT_ASKPASS"); token != "" {
+		_, _ = io.WriteString(os.Stdout, token+"\n")
+		return
+	}
 	if err := run(os.Args[1:]); err != nil {
 		_, _ = os.Stderr.WriteString(err.Error() + "\n")
 		os.Exit(1)
@@ -31,7 +35,7 @@ func run(args []string) error {
 	fs := flag.NewFlagSet("contributor", flag.ContinueOnError)
 	fs.SetOutput(nil)
 
-	workspace := fs.String("workspace", config.WorkspaceMountPath, "mounted workspace path")
+	workspace := fs.String("workspace", "/run/donate-clanker/workspace", "guest-local workspace fallback")
 	bundledGooseConfig := fs.String("bundled-goose-config", "/etc/donate-clanker/goose.yaml", "bundled Goose config path")
 	policyFile := fs.String("policy-file", "/etc/donate-clanker/local-agent-policy.md", "bundled policy path")
 	hiveConfigDir := fs.String("hive-config-dir", firstNonEmpty(os.Getenv("HIVE_CONFIG_DIR"), config.HiveMountPath), "mounted Hive config directory")
@@ -54,10 +58,6 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(filepath.Clean(*workspace)); err != nil {
-		return err
-	}
-
 	creds, err := hive.LoadCredentials(filepath.Join(filepath.Clean(*hiveConfigDir), "contributor.env"), currentEnvironment())
 	if err != nil {
 		return err
@@ -136,10 +136,25 @@ func (h *contributorHandler) Handle(ctx context.Context, assignment hive.Assignm
 	if err != nil {
 		return hive.TaskReport{}, err
 	}
-	result, err := h.goose.Run(ctx, task)
-	if cleanupErr := os.RemoveAll(task.RuntimeDir); cleanupErr != nil {
-		writeTaskCleanupError(h.observationWriter, cleanupErr)
+	if err := os.RemoveAll(task.RuntimeDir); err != nil {
+		return hive.TaskReport{}, err
 	}
+	cleanup := func() {
+		if cleanupErr := os.RemoveAll(task.RuntimeDir); cleanupErr != nil {
+			writeTaskCleanupError(h.observationWriter, cleanupErr)
+		}
+	}
+	if strings.TrimSpace(assignment.Repo) != "" {
+		cloneDir := filepath.Join(task.RuntimeDir, "repo")
+		if err := runner.CloneRepository(ctx, h.goose.Runner, assignment.Repo, cloneDir, assignment.GitHubToken); err != nil {
+			cleanup()
+			writeTaskObservation(h.observationWriter, assignment, startedAt, now(), ctx, err)
+			return hive.TaskReport{}, err
+		}
+		task.Workspace = cloneDir
+	}
+	result, err := h.goose.Run(ctx, task)
+	cleanup()
 	writeTaskObservation(h.observationWriter, assignment, startedAt, now(), ctx, err)
 
 	return hive.TaskReport{

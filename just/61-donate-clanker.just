@@ -2,7 +2,7 @@
 # /usr/share/ublue-os/just/61-donate-clanker.just (not done yet — see below).
 #
 # This is the ONLY file that ships/installs. Everything donate-clanker needs
-# (Lima lifecycle, host CLI detection) is embedded
+# (VM lifecycle, host CLI detection) is embedded
 # below as private (_-prefixed) recipes and variables, on purpose: a user
 # browsing the image or this repo should find one just-recipe file and the
 # three public commands it exposes, not a scattered bin/ of standalone
@@ -17,25 +17,23 @@
 # For local/personal use right now, run this file directly with plain
 # 'just --justfile', or import it from your own personal Justfile — see
 # README "Installing this into your own setup" for the copy-paste
-# commands. All state this recipe touches lives under $HOME (Lima state,
-# config, workspace) — nothing here needs root or writes elsewhere.
+# commands. Persistent state is limited to launcher configuration; the VM
+# runner receives no host filesystem mounts.
 
 # Deterministic detection order for every supported CLI. The launcher selects
 # the only ready tool silently, or asks the user to choose when several are
 # ready.
 tool_order := "claude copilot goose codex"
 
-# TOOL/CLANKER_SRC are read from the environment (like upstream hive's own
-# Justfile does with HIVE_HUB) so 'TOOL=copilot ujust donate-clanker' works
-# as documented — 'just' recipe parameters are positional, not KEY=VALUE,
-# so these can't be plain recipe params.
+# TOOL is read from the environment so 'TOOL=copilot ujust donate-clanker'
+# works as documented — 'just' recipe parameters are positional, not
+# KEY=VALUE, so it cannot be a plain recipe parameter.
 tool_env := env("TOOL", "")
-clanker_src_env := env("CLANKER_SRC", "")
 hive_repo_url := "https://github.com/kubestellar/hive"
 # origin/v2 via `git ls-remote --heads https://github.com/kubestellar/hive v2`
 # on 2026-07-29.
 hive_commit := "e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e"
-compat_image := "ghcr.io/projectbluefin/donate-clanker:stable"
+vm_runner_image := env("DONATE_CLANKER_VM_RUNNER_IMAGE", "")
 
 # Shared bash, 'eval''d at the top of every recipe script that needs it:
 # host CLI detection + the selected tool's container mounts. Keeping this in
@@ -91,15 +89,6 @@ tool_install_hint() {
     *)       echo "" ;;
   esac
 }
-tool_host_dirs() {
-  case "$1" in
-    claude)  printf '%s\n' "${HOME}/.claude" "${HOME}/.config/claude-code" ;;
-    copilot) ;;
-    goose)   printf '%s\n' "${HOME}/.config/goose" ;;
-    codex)   printf '%s\n' "${HOME}/.codex" ;;
-    *)       return 1 ;;
-  esac
-}
 copilot_live_models() {
   # Queries the same model-listing endpoint the Copilot CLI/extensions use,
   # so the picker always reflects what's actually available to this
@@ -117,73 +106,22 @@ copilot_live_models() {
     https://api.githubcopilot.com/models 2>/dev/null \
     | jq -r '.data[]? | select(.model_picker_enabled == true and .capabilities.type == "chat") | .id' 2>/dev/null
 }
-tool_container_mounts() {
-  case "$1" in
-    claude)
-      printf '%s\n' \
-        "${HOME}/.claude:/home/dev/.claude:ro" \
-        "${HOME}/.config/claude-code:/home/dev/.config/claude-code:ro"
-      ;;
-    copilot)
-      ;;
-    goose)
-      printf '%s\n' "${HOME}/.config/goose:/home/dev/.config/goose:ro"
-      ;;
-    codex)
-      printf '%s\n' "${HOME}/.codex:/home/dev/.codex:ro"
-      ;;
-    *)
-      echo "ERROR: no container mounts for tool '$1'" >&2
-      return 1
-      ;;
-  esac
-}
 is_bluefin_dx() {
   [[ "${DONATE_CLANKER_TEST_BLUEFIN_DX:-}" == "1" ]] && return 0
   [[ -r /usr/share/ublue-os/image-info ]] &&
     grep -Eq '^IMAGE_NAME="?bluefin-dx"?$' /usr/share/ublue-os/image-info
 }
-ensure_lima() {
-  command -v limactl &>/dev/null && return 0
-  if ! is_bluefin_dx; then
-    echo "ERROR: Lima is required to run donate-clanker." >&2
-    echo "  Install Lima, then re-run donate-clanker." >&2
-    return 1
-  fi
-  command -v brew &>/dev/null || {
-    echo "ERROR: Bluefin DX requires Homebrew to install Lima." >&2
+ensure_vm_runner() {
+  command -v podman &>/dev/null || {
+    echo "ERROR: Podman is required to run the pinned QEMU VM runner." >&2
+    echo "  Install Podman, then re-run donate-clanker." >&2
     return 1
   }
-  echo "Lima is not installed; installing it with Homebrew..."
-  brew install lima
-  hash -r
-  command -v limactl &>/dev/null || {
-    echo "ERROR: Homebrew installed Lima but limactl is not on PATH." >&2
+  [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]] || {
+    echo "ERROR: /dev/kvm is unavailable or not usable by this user." >&2
+    echo "  Enable KVM access, then re-run donate-clanker (see: donate-clanker-doctor)." >&2
     return 1
   }
-}
-ensure_lima_vm() {
-  local instance="$1" state_dir="$2" workspace="$3" hive_dir="$4" mount_marker desired_mounts mount
-  local -a lima_args
-  shift 4
-  mount_marker="${state_dir}/lima-mounts"
-  desired_mounts="$(printf '%s\n' "${workspace}:w" "${hive_dir}" "$@")"
-  if limactl list --format '{{.Name}}' | grep -Fxq "$instance"; then
-    if [[ -f "$mount_marker" ]] && printf '%s' "$desired_mounts" | cmp -s - "$mount_marker"; then
-      limactl start "$instance"
-      return
-    fi
-    limactl delete --force "$instance"
-  fi
-  lima_args=(start --name "$instance" --tty=false
-    --mount-only "${workspace}:w"
-    --mount-only "${hive_dir}")
-  for mount in "$@"; do
-    lima_args+=(--mount-only "$mount")
-  done
-  lima_args+=(template:podman)
-  limactl "${lima_args[@]}"
-  printf '%s' "$desired_mounts" > "$mount_marker"
 }
 gum_can_prompt() {
   command -v gum &>/dev/null || return 1
@@ -197,31 +135,20 @@ gum_can_prompt() {
 # explicit TOOL=<name>.
 # Usage: ujust donate-clanker
 #        TOOL=goose ujust donate-clanker
-#        CLANKER_SRC=~/src/some-repo ujust donate-clanker
-#        CLANKER_SRC=https://github.com/org/repo ujust donate-clanker
 donate-clanker:
     #!/usr/bin/env bash
     set -euo pipefail
     {{shared_functions}}
     TOOL_ORDER="{{tool_order}}"
     TOOL="{{tool_env}}"
-    CLANKER_SRC="{{clanker_src_env}}"
-    # NOT $PWD: just changes the recipe's working directory to wherever the
-    # *justfile* lives (e.g. ~ when this is imported from a personal
-    # ~/Justfile), not the directory the user actually ran 'just'/'ujust'
-    # from. invocation_directory() is just's own builtin for that real cwd.
-    INVOKED_DIR="{{invocation_directory()}}"
 
     STATE_DIR="${HOME}/.local/state/donate-clanker"
     CFG_DIR="${HOME}/.config/donate-clanker"
-    WORKSPACE="${STATE_DIR}/workspace"
-    CLONES_DIR="${STATE_DIR}/clones"
     HIVE_SRC_DIR="${STATE_DIR}/hive-src"
-    LIMA_INSTANCE="donate-clanker"
     HIVE_REPO_URL="{{hive_repo_url}}"
     HIVE_COMMIT="${DONATE_CLANKER_HIVE_COMMIT:-{{hive_commit}}}"
     HIVE_COMMIT="${HIVE_COMMIT,,}"
-    mkdir -p "${STATE_DIR}" "${CFG_DIR}" "${CLONES_DIR}"
+    mkdir -p "${STATE_DIR}" "${CFG_DIR}"
 
     # Remembers the last TOOL/provider/model choices made through the interactive
     # pickers below, so re-running donate-clanker offers them back as the
@@ -416,62 +343,22 @@ donate-clanker:
       [[ -f "$HIVE_CONTRIBUTOR_ENV" ]] || { echo "ERROR: contribute-setup ran but ${HIVE_CONTRIBUTOR_ENV} still missing." >&2; exit 1; }
       echo "✓ Upstream contribute-setup complete."
     fi
-    # ── 2. Resolve CLANKER_SRC into a stable workspace symlink ──
-    is_git_url() { [[ "$1" =~ ^(https?|ssh|git)://.* || "$1" =~ ^git@.* ]]; }
-    if [[ -z "$CLANKER_SRC" ]]; then
-      if git -C "$INVOKED_DIR" rev-parse --is-inside-work-tree &>/dev/null; then
-        CLANKER_SRC="$INVOKED_DIR"
-        echo "CLANKER_SRC not set — defaulting to current repo: ${CLANKER_SRC}"
-      elif [[ -L "$WORKSPACE" || -d "$WORKSPACE" ]]; then
-        echo "CLANKER_SRC not set — reusing existing workspace at ${WORKSPACE}"
-      else
-        echo "ERROR: CLANKER_SRC not set and no prior workspace exists." >&2
-        echo "  Run from a git repo, or: CLANKER_SRC=<path-or-git-url> ujust donate-clanker" >&2
-        exit 1
-      fi
-    fi
-    if [[ -n "$CLANKER_SRC" ]]; then
-      if is_git_url "$CLANKER_SRC"; then
-        slug="$(basename "${CLANKER_SRC%.git}")"
-        clone_dir="${CLONES_DIR}/${slug}"
-        if [[ -d "${clone_dir}/.git" ]]; then
-          git -C "$clone_dir" pull --ff-only --quiet || echo "WARNING: pull failed, using existing checkout"
-        else
-          git clone --quiet "$CLANKER_SRC" "$clone_dir"
-        fi
-        target="$clone_dir"
-      else
-        target="$(realpath "$CLANKER_SRC")"
-        [[ -d "$target" ]] || { echo "ERROR: CLANKER_SRC path does not exist: ${target}" >&2; exit 1; }
-      fi
-      rm -f "$WORKSPACE"
-      ln -s "$target" "$WORKSPACE"
-      echo "Workspace -> ${target}"
-    fi
-
-    # ── 3. Create or reuse the isolated Lima guest, then attach directly
-    #        to its foreground contributor container. ──
-    mapfile -t TOOL_HOST_DIRS < <(tool_host_dirs "$TOOL")
-    for d in "${TOOL_HOST_DIRS[@]}"; do
-      [[ -n "$d" ]] && mkdir -p "$d"
-    done
-    WORKSPACE_TARGET="$(realpath "$WORKSPACE")"
-    ensure_lima
-    ensure_lima_vm "$LIMA_INSTANCE" "$STATE_DIR" "$WORKSPACE_TARGET" "${HOME}/.config/hive" \
-      "${TOOL_HOST_DIRS[@]}"
-
+    # ── 2. Run the self-contained QEMU VM in the foreground. The guest
+    #        clones assignments itself; no host path or socket crosses this
+    #        boundary. exec preserves terminal Ctrl-C semantics. ──
+    [[ -n "{{vm_runner_image}}" ]] || {
+      echo "ERROR: donate-clanker VM runner is not configured." >&2
+      echo "  Set DONATE_CLANKER_VM_RUNNER_IMAGE to the signed immutable runner image reference." >&2
+      exit 1
+    }
+    ensure_vm_runner
     CONTAINER_ARGS=(
-      podman run --pull=always --rm --interactive --tty
-      --userns=keep-id
-      --name donate-clanker
-      --workdir /workspace
-      --volume "${HOME}/.config/hive:/config:ro"
-      --volume "${WORKSPACE_TARGET}:/workspace"
+      podman run --rm --interactive --tty --name donate-clanker-vm
+      --device /dev/kvm
+      --env-file "$HIVE_CONTRIBUTOR_ENV"
       --env "AGENT_BACKEND=${TOOL}"
+      --env "DONATE_CLANKER_VM=1"
     )
-    while IFS= read -r mount; do
-      [[ -n "$mount" ]] && CONTAINER_ARGS+=(--volume "$mount")
-    done < <(tool_container_mounts "$TOOL")
     if [[ -n "$AGENT_MODEL" ]]; then
       CONTAINER_ARGS+=(--env "AGENT_MODEL=${AGENT_MODEL}")
     fi
@@ -479,11 +366,10 @@ donate-clanker:
       [[ -n "$GOOSE_PROVIDER" ]] && CONTAINER_ARGS+=(--env "GOOSE_PROVIDER=${GOOSE_PROVIDER}")
       [[ -n "$GOOSE_MODEL" ]] && CONTAINER_ARGS+=(--env "GOOSE_MODEL=${GOOSE_MODEL}")
     fi
-    CONTAINER_ARGS+=("{{compat_image}}")
-
-    echo "✓ donate-clanker is running in Lima VM ${LIMA_INSTANCE}."
+    CONTAINER_ARGS+=("{{vm_runner_image}}")
+    echo "✓ donate-clanker is running in the pinned QEMU VM runner."
     echo "  Stop any time with Ctrl-C, or: ujust donate-clanker-stop"
-    exec limactl shell "$LIMA_INSTANCE" -- "${CONTAINER_ARGS[@]}"
+    exec "${CONTAINER_ARGS[@]}"
 
 # Preflight check: is this machine actually ready for 'ujust donate-clanker'?
 # Never starts the container — read-only diagnostics only.
@@ -502,15 +388,14 @@ donate-clanker-doctor:
       else echo "  ✗ ${label}"; fail=$((fail+1)); fi
     }
 
-    echo "=== Lima runtime ==="
-    if command -v limactl &>/dev/null; then
-      check "limactl installed" command -v limactl
-      check "Lima responds (limactl list)" limactl list
-    elif is_bluefin_dx; then
-      echo "  ✓ Bluefin DX will install Lima with Homebrew on first launch"
+    echo "=== QEMU VM runner ==="
+    check "Podman installed" command -v podman
+    if [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]]; then
+      echo "  ✓ /dev/kvm is available"
       pass=$((pass+1))
     else
-      echo "  ✗ limactl is not installed (install Lima, then retry)"
+      echo "  ✗ /dev/kvm is unavailable or not usable by this user"
+      echo "    Enable KVM access before launching the pinned QEMU VM runner."
       fail=$((fail+1))
     fi
     check "gum installed (needed to pick between multiple ready CLIs)" command -v gum
@@ -539,29 +424,17 @@ donate-clanker-doctor:
     esac
     echo ""
 
-    echo "=== Source (CLANKER_SRC) ==="
-    WORKSPACE="${HOME}/.local/state/donate-clanker/workspace"
-    if [[ -n "${CLANKER_SRC:-}" ]]; then
-      echo "  CLANKER_SRC is set: ${CLANKER_SRC}"
-    elif git -C "$INVOKED_DIR" rev-parse --is-inside-work-tree &>/dev/null; then
-      echo "  CLANKER_SRC not set — current directory is a git repo, would default to: ${INVOKED_DIR}"
-    elif [[ -L "$WORKSPACE" ]]; then
-      echo "  CLANKER_SRC not set — would reuse existing workspace: $(readlink -f "$WORKSPACE" 2>/dev/null || echo "$WORKSPACE")"
-    else
-      echo "  ✗ CLANKER_SRC not set, current directory isn't a git repo, and no prior workspace exists."
-      echo "    First run will fail unless you either 'cd' into the repo you want to donate against,"
-      echo "    or run: CLANKER_SRC=<path-or-git-url> ujust donate-clanker"
-    fi
+    echo "=== Guest repository model ==="
+    echo "  ✓ assigned repositories are cloned inside the disposable VM"
     echo ""
     echo "${pass} checks passed, ${fail} failed."
     [[ "$fail" -eq 0 ]] || exit 1
 
-# Safety net: remove a stale guest container without destroying the reusable
-# Lima VM.
+# Safety net: remove a stale VM runner container.
 donate-clanker-stop:
     #!/usr/bin/env bash
     set -euo pipefail
-    if command -v limactl &>/dev/null && limactl list --format '{{{{.Name}}}}' | grep -Fxq donate-clanker; then
-      limactl shell donate-clanker -- podman rm -f donate-clanker >/dev/null 2>&1 || true
+    if command -v podman &>/dev/null; then
+      podman rm -f donate-clanker-vm >/dev/null 2>&1 || true
     fi
     echo "donate-clanker guest container stopped."
