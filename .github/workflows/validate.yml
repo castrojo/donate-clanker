@@ -24,6 +24,14 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Static hygiene
+        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+
+      - name: Gofmt cleanliness
+        run: |
+          set -euo pipefail
+          test -z "$(gofmt -l .)"
+
       - name: Agent contract manifest stays aligned
         run: |
           set -euo pipefail
@@ -124,6 +132,32 @@ jobs:
           normalize() {
             grep -vE '^[[:space:]]*(#|$)' "$1" | sed -E 's/[[:space:]]+$//'
           }
+
+          # ── quadlet/runtime/runsc.conf vs runsc_runtime_conf variable ──
+          awk "/^runsc_runtime_conf := '''\$/{flag=1;next} flag && /^'''\$/{flag=0} flag" \
+            "$JUSTFILE" > embedded_runsc.conf
+          if [[ ! -s embedded_runsc.conf ]]; then
+            echo "::error::could not extract runsc_runtime_conf from $JUSTFILE — extraction logic may need updating"
+            fail=1
+          elif [[ ! -f quadlet/runtime/runsc.conf ]]; then
+            echo "::error::missing quadlet/runtime/runsc.conf reference fragment"
+            fail=1
+          elif ! diff -u <(normalize quadlet/runtime/runsc.conf) <(normalize embedded_runsc.conf); then
+            echo "::error::quadlet/runtime/runsc.conf has drifted from the embedded runsc_runtime_conf variable in $JUSTFILE"
+            fail=1
+          fi
+          rm -f embedded_runsc.conf
+
+          for want in \
+            "podman --runtime runsc info --format '{{.Host.OCIRuntime.Name}}'" \
+            'rm -f "$RUNTIME_CONF"' \
+            "CLANKER_CONTAINER_RUNTIME" \
+            "CLANKER_STRICT_SANDBOX"; do
+            if ! grep -Fq "$want" "$JUSTFILE"; then
+              echo "::error file=${JUSTFILE}::missing gVisor runtime-selection contract: $want"
+              fail=1
+            fi
+          done
 
           # ── donate_clanker_unit variable vs quadlet/donate-clanker.container ──
           awk "/^donate_clanker_unit := '''\$/{flag=1;next} flag && /^'''\$/{flag=0} flag" \
@@ -256,14 +290,22 @@ jobs:
           HIVE_PIN="$(sed -n 's/^hive_commit := "\(.*\)"$/\1/p' just/61-donate-clanker.just)"
           test -n "$HIVE_PIN"
           grep -Fq 'tool_order := "goose"' just/61-donate-clanker.just
+          grep -Fq 'require_supported_goose()' just/61-donate-clanker.just
           grep -Fq 'gh auth status --hostname github.com' just/61-donate-clanker.just
           grep -Fq 'fetch --depth 1 origin "$HIVE_COMMIT"' just/61-donate-clanker.just
           grep -Fq 'DONATE_CLANKER_HIVE_COMMIT' just/61-donate-clanker.just
+          grep -Fq 'ERROR: Goose local inference is not configured for the supported path.' just/61-donate-clanker.just
+          grep -Fq 'Run: goose configure' just/61-donate-clanker.just
           grep -Fq 'validate_hive_config_file "${HOME}/.config/hive/contributor.env"' just/61-donate-clanker.just
           grep -Fq 'validate_goose_config_file "${HOME}/.config/goose/config.yaml"' just/61-donate-clanker.just
           grep -Fq "$HIVE_PIN" README.md
           grep -Fq 'DONATE_CLANKER_HIVE_COMMIT' README.md
           grep -Fq 'gh auth login --web --hostname github.com --scopes repo,read:org' README.md
+          grep -Fq 'stops at the first unmet prerequisite' README.md
+          if grep -Fq 'anthropic openai google ollama openrouter' just/61-donate-clanker.just; then
+            echo "::error file=just/61-donate-clanker.just::unsupported Goose provider picker was reintroduced"
+            exit 1
+          fi
 
       - name: Compatibility image contract and smoke test
         run: |
