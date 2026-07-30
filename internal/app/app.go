@@ -33,7 +33,6 @@ type podHandle interface {
 
 type dependencies struct {
 	detectEngine       func(context.Context, engine.Preference) (engine.Engine, error)
-	resolveRuntime     func(context.Context, engine.Engine, string, bool) (string, string, error)
 	checkGitHubAuth    func(context.Context, setup.CommandRunner) error
 	checkGooseConfig   func(string) error
 	ensureHiveSetup    func(context.Context, setup.SetupOptions) error
@@ -59,7 +58,6 @@ func defaultDependencies() dependencies {
 		detectEngine: func(ctx context.Context, preference engine.Preference) (engine.Engine, error) {
 			return engine.Detect(ctx, preference)
 		},
-		resolveRuntime:   engine.ResolveRuntime,
 		checkGitHubAuth:  setup.CheckGitHubAuth,
 		checkGooseConfig: setup.CheckGooseLocalConfig,
 		ensureHiveSetup:  setup.EnsureHiveSetup,
@@ -112,14 +110,6 @@ func run(ctx context.Context, opts config.Options, deps dependencies) error {
 	if err != nil {
 		return err
 	}
-	runtime, warning, err := deps.resolveRuntime(signalCtx, eng, opts.ContainerRuntime, opts.StrictSandbox)
-	if err != nil {
-		return err
-	}
-	if warning != "" {
-		_, _ = fmt.Fprintln(deps.stdout, warning)
-	}
-
 	if err := deps.checkGitHubAuth(signalCtx, deps.commandRunner); err != nil {
 		return err
 	}
@@ -159,7 +149,6 @@ func run(ctx context.Context, opts config.Options, deps dependencies) error {
 		NamePrefix:    fmt.Sprintf("donate-clanker-%d", deps.now().UnixNano()),
 		ModelHostPort: 0,
 		ContainerPort: opts.ModelContainerPort,
-		Runtime:       runtime,
 		Labels: map[string]string{
 			"app.kubernetes.io/name": "donate-clanker",
 		},
@@ -175,7 +164,6 @@ func run(ctx context.Context, opts config.Options, deps dependencies) error {
 
 	helperMounts, workerMounts := splitMounts(mounts)
 	modelSpec.Mounts = helperMounts
-	modelSpec.Runtime = runtime
 	if err := deps.startModel(signalCtx, handle, modelSpec); err != nil {
 		return err
 	}
@@ -187,7 +175,6 @@ func run(ctx context.Context, opts config.Options, deps dependencies) error {
 		Env:     workerEnv,
 		Mounts:  workerMounts,
 		WorkDir: config.WorkspaceMountPath,
-		Runtime: runtime,
 	})
 	if err != nil {
 		return err

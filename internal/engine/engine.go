@@ -51,7 +51,6 @@ type Engine interface {
 
 type PodSpec struct {
 	Name          string
-	Runtime       string
 	Labels        map[string]string
 	HostPort      int
 	ContainerPort int
@@ -63,7 +62,6 @@ type RunSpec struct {
 	PodName       string
 	JoinContainer string
 	Detach        bool
-	Runtime       string
 	WorkDir       string
 	Command       []string
 	Env           map[string]string

@@ -6,6 +6,7 @@ metadata:
     - /containers/ramalama
     - /websites/podman_io_en
     - /websites/pkg_go_dev_go1_25_3
+    - /lima-vm/lima
 ---
 
 # Donate Clanker Worker Credential Boundary
@@ -43,23 +44,19 @@ Do not use this for:
 11. Supported Goose onboarding must rely on validated `~/.config/goose/config.yaml`; launcher-managed model prompts, remembered `AGENT_MODEL` defaults, and secrets-file persistence remain legacy-only behavior for explicit `claude`, `copilot`, and `codex` paths.
 12. Run focused tests for `cmd/contributor`, `internal/app`, `internal/config`, `internal/runner`, and `internal/hive`, then run `go test ./...`.
 
-## Sandbox Runtime Boundary
+## Lima Guest Runtime Boundary
 
-`CLANKER_CONTAINER_RUNTIME=auto` prefers `runsc` only after the caller's
-rootless Podman context verifies it with
-`podman --runtime runsc info --format '{{.Host.OCIRuntime.Name}}'`. An
-explicit native runtime is likewise probed before use; the Quadlet
-compatibility path supports only `auto` and explicit `runsc`. An unavailable
-runtime warns and falls back to Podman's default for `auto`, while
-`CLANKER_STRICT_SANDBOX=1` fails before container or pod creation. Operators,
-not this repository, install and register `runsc` for Podman.
+The product launcher runs the published compatibility container entirely in
+the reusable `donate-clanker` Lima VM. It invokes the guest's Podman through
+`limactl shell`, never the host container engine. When `limactl` is absent,
+only Bluefin DX may install Lima with `brew install lima`; all other hosts
+must provide Lima themselves.
 
-Runtime selection is not a reason to loosen the credential boundary. Native
-workers still receive only the workspace mount and helpers only the writable
-model cache; the compatibility image keeps `/config/hive` and
-`/config/github` read-only. The contributor still requires its existing
-network access and writable workspace/cache. Do not present Docker-specific
-gVisor setup commands as a Podman configuration guarantee.
+Create the VM from `template:podman` with explicit writable workspace and
+read-only `~/.config/hive` mounts. Bind only `/workspace` and `/config` into
+the guest container, with `/config` read-only; selected tool configuration is
+likewise read-only. Keep the container attached to the invoking terminal with
+`podman run --rm -it`, and reuse the VM rather than creating a host service.
 
 ## Local Observation Boundary
 
@@ -131,6 +128,10 @@ Podman `info` exposes the selected OCI runtime in host information and
 supports Go-template formatting (source: Context7
 `/websites/podman_io_en`).
 
+Lima documents `limactl start --name=<name> template:podman`, named-instance
+reuse, `limactl shell <name> <command>`, and explicit read-only or writable
+mounts (source: Context7 `/lima-vm/lima`).
+
 ## Common Rationalizations
 
 - “Mounting the GitHub config dir is easier.”
@@ -159,8 +160,10 @@ supports Go-template formatting (source: Context7
 - Local hooks are treated as a substitute for CI
 - Tests only cover success paths and not env/mount exposure or redaction
 - A foreground compatibility container starts a detached tmux session but never attaches it to the user's terminal
-- Sandbox selection makes credential mounts writable, disables the existing network, or removes workspace/cache write access
-- Docker-specific gVisor installation directions are presented as sufficient Podman setup
+- Host Podman, Docker, systemd, or a container socket launches the product
+  contributor instead of `limactl shell`
+- Lima mounts the full home directory writable or the contributor receives
+  more than its workspace, Hive config, and selected tool config
 
 ## Verification
 
@@ -178,7 +181,11 @@ supports Go-template formatting (source: Context7
 - [ ] Supported Goose onboarding skips launcher-managed model prompt/persistence, while legacy backends keep deterministic coverage for remembered model overrides without requiring a real TTY
 - [ ] Context7 is optional and local hooks are not treated as CI authority
 - [ ] Compatibility image sources `gh-auth.env` and attaches tmux without requiring a host container socket
-- [ ] `auto` warns and uses Podman's default runtime when rootless `runsc` probing fails; strict mode fails before start
-- [ ] Credential mounts remain read-only and required network/workspace/cache access remains intact after runtime selection
+- [ ] Missing `limactl` invokes Homebrew only on Bluefin DX, and a present
+  `limactl` never invokes Homebrew
+- [ ] The named `donate-clanker` VM is created from `template:podman` once
+  and reused thereafter
+- [ ] The guest contributor runs foreground with an explicit read-only
+  `/config` mount and writable `/workspace` mount
 - [ ] `go test ./cmd/contributor ./internal/app ./internal/config ./internal/runner ./internal/hive` passes
 - [ ] `go test ./...` passes

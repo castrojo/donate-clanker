@@ -19,12 +19,6 @@ func TestParseDefaults(t *testing.T) {
 	if opts.Engine != EngineAuto {
 		t.Fatalf("Parse() engine = %q, want %q", opts.Engine, EngineAuto)
 	}
-	if opts.ContainerRuntime != "auto" {
-		t.Fatalf("Parse() container runtime = %q, want auto", opts.ContainerRuntime)
-	}
-	if opts.StrictSandbox {
-		t.Fatal("Parse() strict sandbox = true, want false")
-	}
 	if opts.Workspace != filepath.Clean("/work/repo") {
 		t.Fatalf("Parse() workspace = %q, want /work/repo", opts.Workspace)
 	}
@@ -34,47 +28,6 @@ func TestParseDefaults(t *testing.T) {
 	}
 	if opts.GooseConfigPath != filepath.Clean("/home/tester/.config/goose/config.yaml") {
 		t.Fatalf("Parse() goose_config = %q", opts.GooseConfigPath)
-	}
-}
-
-func TestParseRuntimePolicy(t *testing.T) {
-	opts, err := Parse(nil, map[string]string{
-		"HOME":                      "/home/tester",
-		"PWD":                       "/work/repo",
-		"CLANKER_CONTAINER_RUNTIME": "runsc",
-		"CLANKER_STRICT_SANDBOX":    "1",
-	})
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-	if opts.ContainerRuntime != "runsc" {
-		t.Fatalf("Parse() container runtime = %q, want runsc", opts.ContainerRuntime)
-	}
-	if !opts.StrictSandbox {
-		t.Fatal("Parse() strict sandbox = false, want true")
-	}
-
-	opts, err = Parse(nil, map[string]string{
-		"HOME":                   "/home/tester",
-		"PWD":                    "/work/repo",
-		"CLANKER_STRICT_SANDBOX": "true",
-	})
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-	if opts.StrictSandbox {
-		t.Fatal("Parse() strict sandbox = true for non-1 value")
-	}
-}
-
-func TestParseRejectsMalformedContainerRuntime(t *testing.T) {
-	_, err := Parse(nil, map[string]string{
-		"HOME":                      "/home/tester",
-		"PWD":                       "/work/repo",
-		"CLANKER_CONTAINER_RUNTIME": "runsc unsafe",
-	})
-	if !errors.Is(err, ErrInvalidRuntime) {
-		t.Fatalf("Parse() error = %v, want ErrInvalidRuntime", err)
 	}
 }
 

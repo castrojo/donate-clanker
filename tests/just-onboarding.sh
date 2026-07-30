@@ -10,6 +10,8 @@ cfg_dir="$home/.config/donate-clanker"
 gum_log="$scratch/gum.log"
 git_log="$scratch/git.log"
 inner_just_log="$scratch/inner-just.log"
+lima_log="$scratch/lima.log"
+brew_log="$scratch/brew.log"
 real_just="$(command -v just)"
 mkdir -p "$fake_bin" "$home/.config/goose" "$home/.config/hive" "$cfg_dir"
 
@@ -40,16 +42,33 @@ case "${1:-}" in
   *) exit 1 ;;
 esac
 EOF
-cat >"$fake_bin/systemctl" <<'EOF'
-#!/usr/bin/env bash
-exit 1
-EOF
 cat >"$fake_bin/just" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${INNER_JUST_LOG:?}"
 exit 98
 EOF
-chmod +x "$fake_bin/gh" "$fake_bin/claude" "$fake_bin/goose" "$fake_bin/git" "$fake_bin/gum" "$fake_bin/systemctl" "$fake_bin/just"
+cat >"$fake_bin/limactl-template" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${LIMA_LOG:?}"
+case "${1:-}" in
+  list)
+    [[ "${LIMA_INSTANCE_EXISTS:-}" == "1" ]] && printf '%s\n' donate-clanker
+    ;;
+  shell) exit 97 ;;
+esac
+EOF
+cp "$fake_bin/limactl-template" "$fake_bin/limactl"
+cat >"$fake_bin/brew" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${BREW_LOG:?}"
+if [[ "${1:-}" == "install" && "${2:-}" == "lima" ]]; then
+  cp "${FAKE_BIN:?}/limactl-template" "${FAKE_BIN}/limactl"
+  chmod +x "${FAKE_BIN}/limactl"
+fi
+EOF
+chmod +x "$fake_bin/gh" "$fake_bin/claude" "$fake_bin/goose" "$fake_bin/git" "$fake_bin/gum" "$fake_bin/just" "$fake_bin/limactl-template" "$fake_bin/limactl" "$fake_bin/brew"
 
 run_launcher() {
   env \
@@ -59,13 +78,14 @@ run_launcher() {
     -u AGENT_MODEL \
     -u GOOSE_PROVIDER \
     -u GOOSE_MODEL \
-    -u CLANKER_CONTAINER_RUNTIME \
-    -u CLANKER_STRICT_SANDBOX \
     HOME="$home" \
     PATH="$fake_bin:$PATH" \
     GUM_LOG="$gum_log" \
     GIT_LOG="$git_log" \
     INNER_JUST_LOG="$inner_just_log" \
+    LIMA_LOG="$lima_log" \
+    BREW_LOG="$brew_log" \
+    FAKE_BIN="$fake_bin" \
     "$@" \
     "$real_just" --justfile "$repo_root/just/61-donate-clanker.just" donate-clanker
 }
@@ -199,8 +219,19 @@ set -e
 test "$status" -ne 0
 assert_file_not_contains 'LAST_GOOSE_PROVIDER=' "$cfg_dir/last-selections.env"
 assert_file_not_contains 'LAST_GOOSE_MODEL=' "$cfg_dir/last-selections.env"
-assert_not_contains 'GOOSE_PROVIDER=' "$(cat "$cfg_dir/secrets.env")"
-assert_not_contains 'GOOSE_MODEL=' "$(cat "$cfg_dir/secrets.env")"
+assert_file_contains "start --name donate-clanker --tty=false --mount-only ${repo_root}:w --mount-only ${home}/.config/hive:r --mount-only ${home}/.config/goose:r template:podman" "$lima_log"
+assert_file_contains "shell donate-clanker -- podman run --pull=always --rm --interactive --tty --userns=keep-id --name donate-clanker --workdir /workspace --volume ${home}/.config/hive:/config:ro --volume ${repo_root}:/workspace --env AGENT_BACKEND=goose --volume ${home}/.config/goose:/home/dev/.config/goose:ro ghcr.io/projectbluefin/donate-clanker:stable" "$lima_log"
+test ! -s "$brew_log"
+
+: >"$lima_log"
+set +e
+reused_vm="$(run_launcher GH_READY=1 CLANKER_SRC="$repo_root" LIMA_INSTANCE_EXISTS=1 2>&1)"
+status=$?
+set -e
+test "$status" -ne 0
+assert_file_contains 'list --format {{.Name}}' "$lima_log"
+assert_file_contains 'start donate-clanker' "$lima_log"
+assert_file_not_contains 'template:podman' "$lima_log"
 
 mkdir -p "$home/.claude"
 : >"$gum_log"
@@ -209,10 +240,8 @@ legacy_prompt="$(run_launcher TOOL=claude DONATE_CLANKER_TEST_GUM_TTY=1 GUM_INPU
 status=$?
 set -e
 test "$status" -ne 0
-assert_contains 'WARNING: no GH_TOKEN available' "$legacy_prompt"
 assert_file_contains 'input' "$gum_log"
 assert_file_contains 'LAST_MODEL_CLAUDE=claude-sonnet-test' "$cfg_dir/last-selections.env"
-assert_file_contains 'AGENT_MODEL=claude-sonnet-test' "$cfg_dir/secrets.env"
 
 : >"$gum_log"
 set +e
@@ -222,4 +251,15 @@ set -e
 test "$status" -ne 0
 test ! -s "$gum_log"
 assert_file_contains 'LAST_MODEL_CLAUDE=claude-sonnet-test' "$cfg_dir/last-selections.env"
-assert_not_contains 'AGENT_MODEL=' "$(cat "$cfg_dir/secrets.env")"
+
+rm -f "$fake_bin/limactl"
+: >"$lima_log"
+: >"$brew_log"
+set +e
+bluefin_dx_install="$(run_launcher GH_READY=1 CLANKER_SRC="$repo_root" DONATE_CLANKER_TEST_BLUEFIN_DX=1 PATH="$fake_bin:/usr/bin:/bin" 2>&1)"
+status=$?
+set -e
+test "$status" -ne 0
+assert_contains 'Lima is not installed; installing it with Homebrew...' "$bluefin_dx_install"
+assert_file_contains 'install lima' "$brew_log"
+assert_file_contains 'start --name donate-clanker' "$lima_log"

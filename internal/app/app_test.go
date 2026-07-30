@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -31,7 +30,7 @@ func TestRunOrdersFoundationSteps(t *testing.T) {
 		t.Fatalf("run() error = %v", err)
 	}
 
-	want := []string{"detect", "runtime", "github", "goose", "hive", "creds", "mounts", "create-pod", "start-model", "start-worker", "wait", "close"}
+	want := []string{"detect", "github", "goose", "hive", "creds", "mounts", "create-pod", "start-model", "start-worker", "wait", "close"}
 	if !reflect.DeepEqual(calls, want) {
 		t.Fatalf("run() calls = %#v, want %#v", calls, want)
 	}
@@ -49,7 +48,7 @@ func TestRunStopsOnSetupFailure(t *testing.T) {
 	if err == nil || err.Error() != "setup failed" {
 		t.Fatalf("run() error = %v, want setup failed", err)
 	}
-	if want := []string{"detect", "runtime", "github", "goose", "hive"}; !reflect.DeepEqual(calls, want) {
+	if want := []string{"detect", "github", "goose", "hive"}; !reflect.DeepEqual(calls, want) {
 		t.Fatalf("run() calls = %#v, want %#v", calls, want)
 	}
 }
@@ -106,7 +105,7 @@ func TestRunCleansUpWhenWorkerStartFails(t *testing.T) {
 	if err == nil || err.Error() != "worker failed" {
 		t.Fatalf("run() error = %v, want worker failed", err)
 	}
-	if want := []string{"detect", "runtime", "github", "goose", "hive", "creds", "mounts", "create-pod", "start-model", "start-worker", "close"}; !reflect.DeepEqual(calls, want) {
+	if want := []string{"detect", "github", "goose", "hive", "creds", "mounts", "create-pod", "start-model", "start-worker", "close"}; !reflect.DeepEqual(calls, want) {
 		t.Fatalf("run() calls = %#v, want %#v", calls, want)
 	}
 }
@@ -138,7 +137,7 @@ func TestRunSignalsWorkerOnInterrupt(t *testing.T) {
 	if !process.signaled {
 		t.Fatal("run() did not signal worker on interrupt")
 	}
-	if want := []string{"detect", "runtime", "github", "goose", "hive", "creds", "mounts", "create-pod", "start-model", "start-worker", "signal", "close"}; !reflect.DeepEqual(calls, want) {
+	if want := []string{"detect", "github", "goose", "hive", "creds", "mounts", "create-pod", "start-model", "start-worker", "signal", "close"}; !reflect.DeepEqual(calls, want) {
 		t.Fatalf("run() calls = %#v, want %#v", calls, want)
 	}
 }
@@ -209,7 +208,6 @@ func TestRunClosesWorkerOutputBeforeReturningOnInterrupt(t *testing.T) {
 func TestRunScopesWorkerMountsAndEnv(t *testing.T) {
 	var calls []string
 	deps := testDependencies(&calls)
-	var podSpec pod.Spec
 	var modelSpec pod.ModelSpec
 	var workerSpec pod.WorkerSpec
 	deps.loadCredentials = func(string) (hive.Credentials, error) {
@@ -218,7 +216,6 @@ func TestRunScopesWorkerMountsAndEnv(t *testing.T) {
 	}
 	deps.createPod = func(_ context.Context, _ engine.Engine, spec pod.Spec) (podHandle, error) {
 		calls = append(calls, "create-pod")
-		podSpec = spec
 		return &fakeHandle{calls: &calls}, nil
 	}
 	deps.startModel = func(_ context.Context, _ podHandle, spec pod.ModelSpec) error {
@@ -238,12 +235,6 @@ func TestRunScopesWorkerMountsAndEnv(t *testing.T) {
 
 	if len(modelSpec.Mounts) != 1 || modelSpec.Mounts[0].ContainerPath != config.CacheMountPath {
 		t.Fatalf("startModel mounts = %#v, want only cache", modelSpec.Mounts)
-	}
-	if podSpec.Runtime != "runsc" {
-		t.Fatalf("createPod runtime = %q, want runsc", podSpec.Runtime)
-	}
-	if modelSpec.Runtime != "runsc" || workerSpec.Runtime != "runsc" {
-		t.Fatalf("container runtimes = (%q, %q), want runsc for both", modelSpec.Runtime, workerSpec.Runtime)
 	}
 	if len(workerSpec.Mounts) != 1 || workerSpec.Mounts[0].ContainerPath != config.WorkspaceMountPath {
 		t.Fatalf("startWorker mounts = %#v, want only workspace", workerSpec.Mounts)
@@ -277,7 +268,7 @@ func TestRunRejectsProfileWithoutHelperLaunchContract(t *testing.T) {
 	if !errors.Is(err, ErrHelperProfileContract) {
 		t.Fatalf("run() error = %v, want ErrHelperProfileContract", err)
 	}
-	if want := []string{"detect", "runtime", "github", "goose", "hive", "catalog"}; !reflect.DeepEqual(calls, want) {
+	if want := []string{"detect", "github", "goose", "hive", "catalog"}; !reflect.DeepEqual(calls, want) {
 		t.Fatalf("run() calls = %#v, want %#v", calls, want)
 	}
 }
@@ -287,10 +278,6 @@ func testDependencies(calls *[]string) dependencies {
 		detectEngine: func(context.Context, engine.Preference) (engine.Engine, error) {
 			*calls = append(*calls, "detect")
 			return fakeEngine{}, nil
-		},
-		resolveRuntime: func(context.Context, engine.Engine, string, bool) (string, string, error) {
-			*calls = append(*calls, "runtime")
-			return "runsc", "", nil
 		},
 		checkGitHubAuth: func(context.Context, setup.CommandRunner) error {
 			*calls = append(*calls, "github")
@@ -351,43 +338,6 @@ func testDependencies(calls *[]string) dependencies {
 		now:           func() time.Time { return time.Unix(1, 0) },
 	}
 
-}
-
-func TestRunStrictSandboxStopsBeforePodCreation(t *testing.T) {
-	var calls []string
-	deps := testDependencies(&calls)
-	deps.resolveRuntime = func(context.Context, engine.Engine, string, bool) (string, string, error) {
-		calls = append(calls, "runtime")
-		return "", "", engine.ErrRuntimeUnavailable
-	}
-
-	opts := testOptions()
-	opts.StrictSandbox = true
-	err := run(context.Background(), opts, deps)
-	if !errors.Is(err, engine.ErrRuntimeUnavailable) {
-		t.Fatalf("run() error = %v, want ErrRuntimeUnavailable", err)
-	}
-	if want := []string{"detect", "runtime"}; !reflect.DeepEqual(calls, want) {
-		t.Fatalf("run() calls = %#v, want %#v", calls, want)
-	}
-}
-
-func TestRunWritesRuntimeFallbackWarning(t *testing.T) {
-	var calls []string
-	deps := testDependencies(&calls)
-	var output bytes.Buffer
-	deps.stdout = &output
-	deps.resolveRuntime = func(context.Context, engine.Engine, string, bool) (string, string, error) {
-		calls = append(calls, "runtime")
-		return "", "warning: using the default runtime", nil
-	}
-
-	if err := run(context.Background(), testOptions(), deps); err != nil {
-		t.Fatalf("run() error = %v", err)
-	}
-	if !strings.Contains(output.String(), "warning: using the default runtime") {
-		t.Fatalf("run() output = %q, want runtime fallback warning", output.String())
-	}
 }
 
 func TestRunWaitsForWorkerOutputBeforeReturning(t *testing.T) {

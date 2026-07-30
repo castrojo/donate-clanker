@@ -2,24 +2,23 @@
 
 ## Run it
 
-Complete the one-time GitHub/Hive setup from a clean
-[KubeStellar Hive](https://github.com/kubestellar/hive) checkout first. It
-creates the local credentials listed below. Then, from the repository you want
-the agent to work on, run this single command:
+From the repository you want the agent to work on, run:
 
 ```bash
-podman run --pull=always --rm -it --userns=keep-id -v "$HOME/.config/hive:/config:ro,Z" -v "$PWD:/workspace:Z" ghcr.io/projectbluefin/donate-clanker:stable
+just --justfile just/61-donate-clanker.just donate-clanker
 ```
 
-The command expects these files from the setup step:
+The launcher verifies GitHub, Goose, and Hive setup in order. If Hive setup is
+missing, it runs the pinned upstream interactive setup. It creates or reuses
+the `donate-clanker` Lima VM, then attaches its contributor container to this
+terminal. Press `Ctrl-C` to stop the foreground container; the VM remains for
+the next run. `donate-clanker-stop` removes a stale guest container.
 
-- `$HOME/.config/hive/contributor.env`
-- `$HOME/.config/hive/gh-auth.env`
+On Bluefin DX, a missing `limactl` is installed with `brew install lima`.
+Other hosts must install Lima themselves. A present `limactl` is always used
+directly and never triggers Homebrew.
 
-The command opens the live Copilot interface directly; press `Ctrl-C` to stop
-the contributor and container together.
-
-`ghcr.io/projectbluefin/donate-clanker` is compatibility mode: it is a
+Inside the Lima guest, `ghcr.io/projectbluefin/donate-clanker` is compatibility mode: it is a
 small, digest-pinned wrapper around the verified
 `ghcr.io/kubestellar/hive-contributor` runtime. It maps `/config` and
 `/workspace` to the upstream `/home/dev` paths, runs in the foreground as the
@@ -30,12 +29,6 @@ helper. Releases always publish immutable `sha-<commit>` and version tags;
 the `stable` alias is published only when the repository's explicit stable
 channel policy enables it.
 
-On this Bluefin machine, `ujust donate-clanker` is configured as a local
-shortcut for the same published-image command. It defaults to the authenticated
-Copilot backend, refreshes the `stable` image before starting, and attaches the
-interactive UI. Use `ujust donate-clanker-stop` only to clean up a stale
-process; normal shutdown is `Ctrl-C`.
-
 Source of truth for the contributor workflow this wraps:
 https://hosted-projectbluefin-knuckle-gjvq.hive.kubestellar.io/contribute
 (and the `contribute-setup` / `contribute-hive` recipes in
@@ -44,9 +37,8 @@ https://hosted-projectbluefin-knuckle-gjvq.hive.kubestellar.io/contribute
 ## Scope
 
 This repo covers the published compatibility image and the optional native
-launcher integration. The direct Podman command is the portable path; the
-self-contained `just` recipe remains available for hosts that want Quadlet
-management and explicit tool selection.
+launcher integration. The self-contained `just` recipe is the product launch
+path and keeps the compatibility container inside Lima.
 
 ## Native contributor runtime (not compatibility mode)
 
@@ -66,34 +58,13 @@ owned by that upstream runtime.
 The native path retains bundled Goose/RamaLama configuration under
 `image/config/`. It is not configuration for the compatibility image.
 
-### gVisor runtime selection
+### Lima guest boundary
 
-The native launcher and Quadlet compatibility path prefer gVisor's `runsc`
-when the caller's **rootless Podman** context supports it.
-`CLANKER_CONTAINER_RUNTIME` defaults to `auto`: native mode probes `runsc`
-and uses it when available; an explicit native value selects that OCI runtime
-only after its probe succeeds. The Quadlet compatibility path supports
-`auto` and the explicit `runsc` override.
-
-Both paths verify the selected runtime with Podman, for example:
-
-```sh
-podman --runtime runsc info --format '{{.Host.OCIRuntime.Name}}'
-```
-
-If the rootless probe cannot select `runsc`, `auto` removes any Quadlet
-runtime drop-in (or leaves the native runtime unset), emits a warning, and
-continues with Podman's default runtime. Set `CLANKER_STRICT_SANDBOX=1` to
-fail before starting a container or pod instead; compatibility mode also
-fails for an unavailable explicit `CLANKER_CONTAINER_RUNTIME=runsc`.
-
-Installing and registering `runsc` with Podman is the host operator's
-responsibility. This repository does not provide Docker-specific gVisor
-installation instructions as a guarantee that a Podman host is configured.
-gVisor changes the OCI runtime; it does not change the workload boundary:
-the contributor still needs its existing outbound network access, a writable
-workspace, and (for the native helper) a writable model cache. Compatibility
-credential mounts remain read-only (`/config/hive` and `/config/github`).
+The product container runs only through `limactl shell donate-clanker`, using
+Podman installed in the named guest VM rather than a host engine or socket.
+Lima receives a writable workspace mount and a read-only Hive configuration
+mount. The guest container gets explicit mounts for `/workspace`, `/config`
+(read-only), and only its selected tool configuration (read-only).
 
 ### Context7 (optional, no credential required)
 
@@ -168,27 +139,19 @@ Per the contribute page and the hive `Justfile`:
    portable paths to the upstream runtime's `/home/dev` paths and keeps the
    upstream process attached to the invoking terminal.
 
-This repo replaces step 2's ad-hoc `podman run` with a quadlet-managed
-systemd user unit, adds a tool-swap mechanism and workspace source
-flexibility on top, and keeps step 1 untouched.
+This repo runs step 2 through the named Lima guest, retains explicit
+workspace/config mounts, and keeps step 1 untouched.
 
 ## Layout
 
 ```
 just/61-donate-clanker.just   # the ONLY file that ships/installs — recipes:
                                #   donate-clanker, donate-clanker-doctor, donate-clanker-stop
-quadlet/*.conf                # human-editable *source* for the strings embedded
-                               # in the Justfile above; not read at runtime (see
-                               # the note at the top of 61-donate-clanker.just)
 ```
 
-Everything donate-clanker needs — the quadlet unit content, per-tool
-fragments, and host CLI detection — is embedded directly in
-`61-donate-clanker.just` as private (`_`-prefixed style, via `[private]`-like
-convention) variables and inline bash, generated to disk on each run. There
-is deliberately no separate `bin/` of standalone scripts: a user browsing
-the image or this repo only ever finds one file and the three commands it
-exposes, not scripts they might run out of context.
+Everything donate-clanker needs — Lima lifecycle, tool selection, and host
+CLI detection — is embedded directly in `61-donate-clanker.just`. There is
+deliberately no separate launcher script.
 
 ## Native launcher onboarding
 
@@ -241,8 +204,8 @@ stops at the first unmet prerequisite:
    name the missing or invalid key, never the secret value.
 
 4. **Doctor mirrors the supported checks.** `ujust donate-clanker-doctor` is
-   a read-only preflight for rootless podman, the quadlet generator, GitHub
-   auth, Goose local config, and validated upstream Hive setup. It also shows
+   a read-only preflight for Lima, GitHub auth, Goose local config, and
+   validated upstream Hive setup. It also shows
    that only Goose participates in supported auto-detect; legacy backends
    (`claude`, `copilot`, `codex`) remain manual compatibility paths via
    explicit `TOOL=<name>` and are not part of the production-gated workflow.
@@ -253,43 +216,19 @@ leaving it blank falls back to the tool's own default. The supported Goose
 path does not prompt for provider/model values, because `goose configure`
 owns the local OpenAI-compatible configuration. The launcher remembers
 `TOOL` and legacy model overrides in
-`~/.config/donate-clanker/last-selections.env` and rewrites
-`~/.config/donate-clanker/secrets.env` (`chmod 600`) from scratch on every
-run rather than accumulating old values.
+`~/.config/donate-clanker/last-selections.env`. Hive credentials remain in
+the upstream-managed Hive configuration and are mounted read-only into the
+guest container.
 
 ## Design rationale
 
-### Foreground-only, never a lingering background service
+### Foreground-only
 
-The `[Install]` section a normal quadlet would have (`WantedBy=default.target`,
-to auto-start at boot/login) is **deliberately omitted** from
-`donate-clanker.container` — see the comment at the bottom of that file.
-Without it, `systemctl --user enable` has nothing to attach to a target, and
-nothing ever starts this unit except an explicit `systemctl --user start`
-from the `ujust donate-clanker` recipe.
-
-The recipe itself is the foreground layer: it starts the unit, `trap`s
-`EXIT`/`INT`/`TERM` to stop it again, and follows `journalctl --user -u
-donate-clanker.service -f` in the invoking terminal so it's visually obvious
-the workload is live and burning tokens for as long as that terminal is
-open. Ctrl-C, closing the terminal, or the script exiting for any other
-reason all run the same `systemctl --user stop`.
-
-**If the terminal is killed out-of-band** (e.g. `kill -9` on the shell, a
-crashed terminal emulator) the `trap` never fires, and the unit — with no
-linger enabled — keeps running only until the user's systemd instance itself
-is torn down (normally at logout), not indefinitely. `ujust
-donate-clanker-stop` is the recovery path: it stops the service, resets any
-failed state, and force-removes the container by its deterministic name
-(`donate-clanker`) even if systemd's bookkeeping got confused, so you're
-never stuck without a way back to a clean state.
-
-`loginctl enable-linger` is intentionally **not** configured for this
-workload. Linger keeps a user's systemd instance (and anything in it)
-running across logout — exactly what would let this unit survive an
-unattended session. We rely on the *lack* of linger as an extra backstop:
-even in the out-of-band-kill scenario above, logging out fully tears the
-unit down.
+The recipe `exec`s `limactl shell donate-clanker -- podman run --rm -it`.
+The terminal therefore owns the entire contributor lifecycle: Ctrl-C ends the
+container, and `--rm` removes it. No host service, socket, or detached
+process is created. `donate-clanker-stop` is only a recovery path for a
+container left behind by an interrupted terminal.
 
 ### Source flexibility: `CLANKER_SRC`
 
@@ -304,42 +243,21 @@ runs:
 - **Unset**: default to `$PWD` if it's a git repo, else reuse whatever
   `workspace` already points at from a previous run.
 
-The quadlet's `Volume=` line never changes — it always mounts
-`~/.local/state/donate-clanker/workspace`. Podman resolves host-side
-symlinks at mount time, so swapping the symlink target is enough to change
-what the container sees on every run without touching the unit file.
+The recipe uses the symlink target as the VM's one writable workspace mount,
+so the contributor receives no sibling state paths. It recreates the named VM
+only when that target or the selected tool configuration changes.
 
 **Adding a third source type** would follow the same pattern: extend the
 `is_git_url()`/dispatch logic in the `donate-clanker` recipe with a new branch
 (e.g. an OCI artifact reference), resolve it to a real host directory, and
-point the same `workspace` symlink at it. No quadlet or `just` recipe
-changes required.
+point the same `workspace` symlink at it. No VM recreation is required.
 
 ### Tool-agnostic editor/agent layer: `TOOL=`
 
-Per-tool credentials/env are never hardcoded in the base unit. Each
-supported tool has its own quadlet drop-in fragment in `quadlet/tools/`
-(`claude.conf`, `copilot.conf`, `goose.conf`, `codex.conf` — extend with more as needed, matching the
-`CLI_MOUNTS` cases in the hive `Justfile`). The recipe copies
-*exactly one* of these into
-`~/.config/containers/systemd/donate-clanker.container.d/10-tool.conf`,
-deleting any previous selection first — this avoids the standard
-systemd-drop-in gotcha where multiple `*.conf` files in the same `.d/`
-directory would all merge together and mount every tool's credentials at
-once.
-
-**Adding another tool**: the `.conf` files are the human-editable
-*reference* for what to add — they aren't read at runtime (see "Layout"
-above). To actually add a tool, edit `just/61-donate-clanker.just`'s
-`shared_functions` variable: add a case arm for the new tool name in
-`tool_installed`/`tool_authenticated`/`tool_fixit_hint`/`tool_install_hint`
-and in `tool_fragment_conf` (the `[Container]` fragment — usually just
-`Environment=AGENT_BACKEND=<name>` plus whatever `Volume=` lines that CLI
-needs). Only add the name to `tool_order` if it becomes part of the
-supported production auto-detect path; otherwise keep it manual-only behind
-explicit `TOOL=<name>`. Then copy the same fragment text into a new
-`quadlet/tools/<name>.conf` for reference. Run `TOOL=<name> ujust
-donate-clanker` to try it.
+The launcher passes the selected backend as `AGENT_BACKEND` and adds only that
+tool's read-only configuration mount to the guest container. Adding a tool
+means updating the matching validation and `tool_container_mounts` case in
+`just/61-donate-clanker.just`; do not mount every tool configuration at once.
 
 ## Installing this into your own setup
 
@@ -385,18 +303,12 @@ repo intentionally only documents the no-rebuild, per-user path.
 ## Verify it locally
 
 ```sh
-# 1. Confirm the quadlet generator understood the unit + drop-in:
-/usr/lib/systemd/system-generators/podman-system-generator --user --dryrun
+# Confirm the named VM exists and check its guest container:
+limactl list donate-clanker
+limactl shell donate-clanker -- podman ps -a --filter name=donate-clanker
 
-# 2. After starting it via `ujust donate-clanker` (in another terminal):
-systemctl --user daemon-reload
-systemctl --user status donate-clanker.service
-podman ps --filter name=donate-clanker
-journalctl --user -u donate-clanker.service -n 100 --no-pager
-
-# 3. Confirm it's really gone after Ctrl-C or `ujust donate-clanker-stop`:
-systemctl --user is-active donate-clanker.service   # should print "inactive"/"failed", never "active"
-podman ps -a --filter name=donate-clanker           # should show no running container
+# After Ctrl-C, the foreground container is removed:
+limactl shell donate-clanker -- podman ps -a --filter name=donate-clanker
 ```
 
 ## Troubleshooting
@@ -435,7 +347,6 @@ one has to be done by hand in the dashboard.
 
 ## Compatibility image boundary
 
-The wrapper deliberately keeps the rootless network default and maps the
-portable `/config` and `/workspace` mounts to the upstream `/home/dev`
-locations. It does not add a native launcher, local inference service, or
-container-engine socket.
+The wrapper maps the explicit `/config` and `/workspace` mounts to the
+upstream `/home/dev` locations. It does not add a native launcher, local
+inference service, or container-engine socket.

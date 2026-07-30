@@ -23,14 +23,11 @@ const (
 var (
 	ErrMissingWorkspace   = errors.New("missing workspace")
 	ErrInvalidEngine      = errors.New("invalid engine")
-	ErrInvalidRuntime     = errors.New("invalid container runtime")
 	ErrProfileUnsupported = errors.New("profile selection is unavailable until the FSDK helper launch contract is published")
 )
 
 type Options struct {
 	Engine                 EnginePreference
-	ContainerRuntime       string
-	StrictSandbox          bool
 	Workspace              string
 	Profile                string
 	Model                  string
@@ -94,8 +91,6 @@ func Parse(args []string, env map[string]string) (Options, error) {
 
 	return Options{
 		Engine:                 normalizedEngine,
-		ContainerRuntime:       defaults.ContainerRuntime,
-		StrictSandbox:          defaults.StrictSandbox,
 		Workspace:              normalizePath(*workspace),
 		Profile:                strings.TrimSpace(*profile),
 		Model:                  strings.TrimSpace(*model),
@@ -135,15 +130,8 @@ func defaultOptions(env map[string]string) (Options, error) {
 		model = strings.TrimSpace(env["GOOSE_MODEL"])
 	}
 
-	containerRuntime, err := parseContainerRuntime(env["CLANKER_CONTAINER_RUNTIME"])
-	if err != nil {
-		return Options{}, err
-	}
-
 	return Options{
 		Engine:             EngineAuto,
-		ContainerRuntime:   containerRuntime,
-		StrictSandbox:      strings.TrimSpace(env["CLANKER_STRICT_SANDBOX"]) == "1",
 		Workspace:          workspace,
 		Profile:            profile,
 		Model:              model,
@@ -158,17 +146,6 @@ func defaultOptions(env map[string]string) (Options, error) {
 		NonInteractive:     strings.EqualFold(strings.TrimSpace(env["DONATE_CLANKER_NON_INTERACTIVE"]), "true"),
 		ReadinessTimeout:   defaultReadinessTimeout,
 	}, nil
-}
-
-func parseContainerRuntime(raw string) (string, error) {
-	runtime := strings.TrimSpace(raw)
-	if runtime == "" {
-		return "auto", nil
-	}
-	if strings.ContainsAny(runtime, " \t\r\n\x00") {
-		return "", fmt.Errorf("%w: %q", ErrInvalidRuntime, raw)
-	}
-	return runtime, nil
 }
 
 func parseEnginePreference(raw string) (EnginePreference, error) {

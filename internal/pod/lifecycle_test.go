@@ -29,7 +29,6 @@ func TestCreateStartModelStartWorkerAndClose(t *testing.T) {
 		NamePrefix:    "test",
 		ModelHostPort: listener.Addr().(*net.TCPAddr).Port,
 		ContainerPort: containerPort,
-		Runtime:       "runsc",
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -43,15 +42,13 @@ func TestCreateStartModelStartWorkerAndClose(t *testing.T) {
 		Image:            "helper@sha256:abc",
 		Mounts:           []config.Mount{{HostPath: "/cache", ContainerPath: config.CacheMountPath}},
 		ReadinessTimeout: time.Second,
-		Runtime:          "runsc",
 	}); err != nil {
 		t.Fatalf("StartModel() error = %v", err)
 	}
 
 	process, err := StartWorker(context.Background(), handle, WorkerSpec{
-		Image:   "worker:dev",
-		Mounts:  []config.Mount{{HostPath: "/workspace", ContainerPath: config.WorkspaceMountPath}},
-		Runtime: "runsc",
+		Image:  "worker:dev",
+		Mounts: []config.Mount{{HostPath: "/workspace", ContainerPath: config.WorkspaceMountPath}},
 	})
 	if err != nil {
 		t.Fatalf("StartWorker() error = %v", err)
@@ -80,16 +77,8 @@ func TestCreateStartModelStartWorkerAndClose(t *testing.T) {
 	if got, want := fakeEngine.podSpecs[0].ContainerPort, containerPort; got != want {
 		t.Fatalf("pod container port = %d, want %d", got, want)
 	}
-	if got := fakeEngine.podSpecs[0].Runtime; got != "runsc" {
-		t.Fatalf("pod runtime = %q, want runsc", got)
-	}
 	if got, want := fakeEngine.runSpecs[0].ContainerPort, containerPort; got != want {
 		t.Fatalf("helper container port = %d, want %d", got, want)
-	}
-	for _, spec := range fakeEngine.runSpecs {
-		if spec.Runtime != "runsc" {
-			t.Fatalf("run runtime = %q, want runsc", spec.Runtime)
-		}
 	}
 }
 
