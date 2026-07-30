@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "required_documents": [
+    {
+      "path": "AGENTS.md",
+      "heading": "Required repository document: AGENTS.md"
+    },
+    {
+      "path": "docs/SKILL.md",
+      "heading": "Required repository document: docs/SKILL.md"
+    },
+    {
+      "path": "docs/skills/skill-improvement.md",
+      "heading": "Required repository document: docs/skills/skill-improvement.md"
+    }
+  ],
+  "rules": [
+    "Read AGENTS.md first, then docs/SKILL.md.",
+    "If you discover a durable workaround, pattern, or convention, update the nearest docs/skills/*.md file in the same change.",
+    "Use the repository validation command family: go test ./..., git diff --check, gofmt -l ., just --justfile just/61-donate-clanker.just --list."
+  ],
+  "validation_commands": [
+    "go test ./...",
+    "git diff --check",
+    "gofmt -l .",
+    "just --justfile just/61-donate-clanker.just --list"
+  ]
+}
