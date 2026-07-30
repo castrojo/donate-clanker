@@ -68,7 +68,7 @@ tool_authenticated() {
   case "$1" in
     claude)  [[ -d "${HOME}/.claude" || -f "${HOME}/.claude.json" ]] ;;
     copilot) gh auth status --hostname github.com &>/dev/null ;;
-    goose)   [[ -n "${GOOSE_PROVIDER:-}" || -f "${HOME}/.config/goose/config.yaml" ]] ;;
+    goose)   [[ -n "${GOOSE_PROVIDER:-}" || -f "${HOME}/.config/goose/config.yaml" ]] || { command -v gh &>/dev/null && gh auth status --hostname github.com &>/dev/null; } ;;
     codex)   [[ -n "${OPENAI_API_KEY:-}" || -d "${HOME}/.codex" ]] ;;
     *)       return 1 ;;
   esac
@@ -77,7 +77,7 @@ tool_fixit_hint() {
   case "$1" in
     claude)  echo "Run: claude   (then type /login and follow the prompts)" ;;
     copilot) echo "Run: ${GITHUB_LOGIN_COMMAND}" ;;
-    goose)   echo "Run: goose configure   (or: export GOOSE_PROVIDER=... GOOSE_MODEL=...)" ;;
+    goose)   echo "Run: goose configure, select GitHub Copilot, and complete the device flow." ;;
     codex)   echo "Run: codex login   (or: export OPENAI_API_KEY=...)" ;;
     *)       echo "Unknown tool: $1" ;;
   esac
@@ -231,8 +231,9 @@ donate-clanker:
     esac
     if gum_can_prompt; then
       if [[ "$TOOL" == "goose" && -z "$GOOSE_PROVIDER" ]]; then
-        GOOSE_PROVIDER="$(printf '%s\n' anthropic openai google ollama openrouter | gum choose --selected="${LAST_GOOSE_PROVIDER}" --header "Goose provider (Esc to leave unset — needs 'goose configure' instead):")"
+        GOOSE_PROVIDER="$(printf '%s\n' github_copilot anthropic openai google ollama openrouter | gum choose --selected="${LAST_GOOSE_PROVIDER:-github_copilot}" --header "Goose provider (Esc to leave unset — needs 'goose configure' instead):")"
       fi
+      [[ "$TOOL" == "goose" && -z "$GOOSE_PROVIDER" ]] && GOOSE_PROVIDER="github_copilot"
       if [[ "$TOOL" == "goose" ]]; then
         [[ -z "$GOOSE_MODEL" ]] && GOOSE_MODEL="$(gum input --value "${LAST_GOOSE_MODEL}" --placeholder "e.g. claude-3-5-sonnet — blank for goose's default" --header "Goose model (optional):")"
       elif [[ "$TOOL" == "copilot" && -z "$AGENT_MODEL" ]]; then
@@ -246,6 +247,7 @@ donate-clanker:
         [[ -z "$AGENT_MODEL" ]] && AGENT_MODEL="$(gum input --value "${LAST_MODEL_FOR_TOOL}" --placeholder "e.g. claude-sonnet-4-6 — blank for ${TOOL}'s default" --header "Model override for ${TOOL} (optional):")"
       fi
     fi
+    [[ "$TOOL" == "goose" && -z "$GOOSE_PROVIDER" ]] && GOOSE_PROVIDER="github_copilot"
 
     # Persist this run's resolved choices as next run's defaults.
     LAST_TOOL="$TOOL"

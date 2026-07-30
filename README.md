@@ -60,6 +60,10 @@ This boots the raw FSDK disk directly with host QEMU/KVM using 4 vCPUs and
 8 GiB RAM. The default remote-agent profile is 2 vCPUs/4 GiB; local inference
 memory belongs to the host model runtime, not this worker VM.
 
+For Goose with a Copilot subscription, run `goose configure`, select **GitHub
+Copilot**, and complete Goose's device-flow login. The launcher defaults Goose
+to provider `github_copilot`; no API key or host Goose config mount is needed.
+
 Use the read-only preflight before launching:
 
 ```bash
