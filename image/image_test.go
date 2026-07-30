@@ -53,7 +53,10 @@ func TestCompatibilityEntrypointMapsPortableMounts(t *testing.T) {
 		`auth_env="$hive_config/gh-auth.env"`,
 		`. "$auth_env"`,
 		`ln -s "$workspace" "$HOME/workspace"`,
-		`exec /usr/local/bin/contributor-agent.sh "$@"`,
+		`/usr/local/bin/contributor-agent.sh "$@" &`,
+		`tmux has-session -t contributor`,
+		`tmux attach-session -t contributor`,
+		`tmux kill-session -t contributor`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("entrypoint missing %q", want)
