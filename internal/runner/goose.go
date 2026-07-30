@@ -5,8 +5,8 @@ import "strings"
 const hiveAssignmentHeading = "Hive assignment (verbatim):"
 
 func PrepareTaskPrompt(policy string, assignment string) string {
-	policy = strings.TrimSpace(policy)
-	if policy == "" {
+	trimmedPolicy := strings.TrimSpace(policy)
+	if trimmedPolicy == "" {
 		return assignment
 	}
 

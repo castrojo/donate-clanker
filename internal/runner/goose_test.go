@@ -1,23 +1,23 @@
 package runner
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
 
-func TestPrepareTaskPromptPrependsPolicyWithoutChangingAssignment(t *testing.T) {
-	policy := "inspect local repository evidence first.\nUse Context7 opportunistically."
+func TestPrepareTaskPromptPreservesPolicyWhitespace(t *testing.T) {
+	policy := "  inspect local repository evidence first.\nUse Context7 opportunistically.  \n"
 	assignment := "Task ID: hive-123\nTitle: Fix the bug\n\nFollow the original assignment exactly."
 
 	prompt := PrepareTaskPrompt(policy, assignment)
 
-	if !strings.HasPrefix(prompt, policy) {
-		t.Fatalf("PrepareTaskPrompt() prefix = %q, want policy prefix %q", prompt, policy)
+	want := policy + "\n\n" + hiveAssignmentHeading + "\n" + assignment
+	if prompt != want {
+		t.Fatalf("PrepareTaskPrompt() = %q, want %q", prompt, want)
 	}
-	if !strings.Contains(prompt, "\n\nHive assignment (verbatim):\n") {
-		t.Fatalf("PrepareTaskPrompt() missing assignment separator in %q", prompt)
-	}
-	if !strings.HasSuffix(prompt, assignment) {
-		t.Fatalf("PrepareTaskPrompt() suffix = %q, want assignment suffix %q", prompt, assignment)
+}
+
+func TestPrepareTaskPromptReturnsAssignmentWhenPolicyEmpty(t *testing.T) {
+	assignment := "Task ID: hive-123\nTitle: Fix the bug"
+
+	if got := PrepareTaskPrompt("\n \t", assignment); got != assignment {
+		t.Fatalf("PrepareTaskPrompt() = %q, want %q", got, assignment)
 	}
 }
