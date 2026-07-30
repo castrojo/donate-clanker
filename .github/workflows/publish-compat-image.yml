@@ -41,19 +41,19 @@ jobs:
               echo 'version='
               echo 'version_tag='
             fi
+            if [[ "${GITHUB_REF}" == refs/tags/v* && "${STABLE_POLICY,,}" == true ]]; then
+              echo 'stable=true'
+            else
+              echo 'stable=false'
+            fi
             echo "tags<<EOF"
             echo "${IMAGE}:sha-${GITHUB_SHA}"
             if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
               echo "${IMAGE}:$version"
               echo "${IMAGE}:$GITHUB_REF_NAME"
               if [[ "${STABLE_POLICY,,}" == true ]]; then
-                echo 'stable=true'
                 echo "${IMAGE}:stable"
-              else
-                echo 'stable=false'
               fi
-            else
-              echo 'stable=false'
             fi
             echo EOF
           } >> "$GITHUB_OUTPUT"
