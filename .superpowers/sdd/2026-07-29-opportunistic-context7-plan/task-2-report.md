@@ -19,4 +19,14 @@
 - Model IDs are stored as checked-in catalog keys only; later runner work may need to attach richer selection metadata.
 
 ## Commit
-- `3e5d28f67a47b46e267762b755fc883ddc7eb2ce`
+- `b2ac310bd5ddccfc41bba80a7b1053d5e9707546`
+
+## Follow-up fixes
+- Switched catalog decoding to a raw profile shape with `*bool` thinking so `Load` rejects omitted `thinking` keys and still returns safe `Profile{Thinking bool}` values.
+- Tightened RamaLama validation to check the final effective `--thinking` value, rejecting contradictory later flags that re-enable thinking.
+- Added regression coverage proving `models.json` explicitly serializes `"thinking": false`, plus fixtures for omitted thinking and contradictory runtime args.
+- Simplified profile fixture setup with `loadScratchCatalog(...)` to trim duplicate scratch-file plumbing in the catalog tests.
+
+## Follow-up tests
+- `go test ./internal/profile -run 'Thinking|RuntimeArgs'` → pass
+- `go test ./internal/profile` → pass

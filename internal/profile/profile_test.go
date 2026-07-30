@@ -1,12 +1,46 @@
 package profile
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 )
+
+func TestCatalogJSONDeclaresThinkingFalse(t *testing.T) {
+	data, err := os.ReadFile(repoFile(t, "image", "config", "models.json"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	var raw map[string]map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+
+	for _, id := range []string{
+		"Qwen3.5-4B",
+		"Qwen3.5-9B",
+		"Qwen3-Coder-30B-A3B",
+		"Qwen3.6-35B-A3B",
+	} {
+		profile, ok := raw[id]
+		if !ok {
+			t.Fatalf("models.json missing profile %q", id)
+		}
+
+		value, ok := profile["thinking"]
+		if !ok {
+			t.Fatalf("models.json profile %q omits thinking", id)
+		}
+		thinking, ok := value.(bool)
+		if !ok || thinking {
+			t.Fatalf("models.json profile %q thinking = %#v, want false", id, value)
+		}
+	}
+}
 
 func TestLoadCatalogProfiles(t *testing.T) {
 	catalog, err := Load(repoFile(t, "image", "config", "models.json"))
@@ -48,31 +82,52 @@ func TestLoadCatalogProfiles(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsMissingExplicitThinking(t *testing.T) {
+	_, err := loadScratchCatalog(t, "missing-thinking.json", `{
+		"bad": {
+			"context_size": 32768,
+			"runtime_args": ["--thinking", "false"]
+		}
+	}`)
+	if !errors.Is(err, ErrThinkingRequired) {
+		t.Fatalf("Load() error = %v, want ErrThinkingRequired", err)
+	}
+}
+
 func TestLoadRejectsThinkingEnabledProfile(t *testing.T) {
-	path := writeScratchFile(t, "thinking.json", []byte(`{
+	_, err := loadScratchCatalog(t, "thinking.json", `{
 		"bad": {
 			"context_size": 32768,
 			"thinking": true,
 			"runtime_args": ["--thinking", "false"]
 		}
-	}`))
-
-	_, err := Load(path)
+	}`)
 	if !errors.Is(err, ErrThinkingEnabled) {
 		t.Fatalf("Load() error = %v, want ErrThinkingEnabled", err)
 	}
 }
 
 func TestLoadRejectsMissingServerDisable(t *testing.T) {
-	path := writeScratchFile(t, "missing-disable.json", []byte(`{
+	_, err := loadScratchCatalog(t, "missing-disable.json", `{
 		"bad": {
 			"context_size": 32768,
 			"thinking": false,
 			"runtime_args": ["--context-size", "32768"]
 		}
-	}`))
+	}`)
+	if !errors.Is(err, ErrMissingServerDisable) {
+		t.Fatalf("Load() error = %v, want ErrMissingServerDisable", err)
+	}
+}
 
-	_, err := Load(path)
+func TestLoadRejectsContradictoryThinkingArgs(t *testing.T) {
+	_, err := loadScratchCatalog(t, "contradictory-thinking.json", `{
+		"bad": {
+			"context_size": 32768,
+			"thinking": false,
+			"runtime_args": ["--thinking", "false", "--thinking", "true"]
+		}
+	}`)
 	if !errors.Is(err, ErrMissingServerDisable) {
 		t.Fatalf("Load() error = %v, want ErrMissingServerDisable", err)
 	}
@@ -116,6 +171,11 @@ func writeScratchFile(t *testing.T, name string, data []byte) string {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	return path
+}
+
+func loadScratchCatalog(t *testing.T, name, data string) (Catalog, error) {
+	t.Helper()
+	return Load(writeScratchFile(t, name, []byte(data)))
 }
 
 func repoRoot(t *testing.T) string {
