@@ -2,17 +2,24 @@
 
 After completing `just contribute-setup goose` in a clean
 [KubeStellar Hive](https://github.com/kubestellar/hive) checkout, run the
-contributor workload directly:
+portable compatibility image:
 
 ```bash
 podman run --rm -it --userns=keep-id \
-  --env-file="$HOME/.config/hive/contributor.env" \
-  --env-file="$HOME/.config/hive/gh-auth.env" \
-  -v "$HOME/.config/hive:/home/dev/.config/hive:ro,Z" \
-  -v "$HOME/.config/gh:/home/dev/.config/gh:ro,Z" \
-  -v "$PWD:/home/dev/workspace:Z" \
-  ghcr.io/kubestellar/hive-contributor:latest
+  -v "$HOME/.config/hive:/config:ro,Z" \
+  -v "$PWD:/workspace:Z" \
+  ghcr.io/projectbluefin/donate-clanker:stable
 ```
+
+`ghcr.io/projectbluefin/donate-clanker` is compatibility mode: it is a
+small, digest-pinned wrapper around the verified
+`ghcr.io/kubestellar/hive-contributor` runtime. It maps `/config` and
+`/workspace` to the upstream `/home/dev` paths, runs in the foreground as the
+upstream non-root `dev` user, and needs no host container socket. It does **not**
+include donate-clanker's native Goose/RamaLama launcher or local inference
+helper. Releases always publish immutable `sha-<commit>` and version tags;
+the `stable` alias is published only when the repository's explicit stable
+channel policy enables it.
 
 Source of truth for the contributor workflow this wraps:
 https://hosted-projectbluefin-knuckle-gjvq.hive.kubestellar.io/contribute
@@ -27,11 +34,12 @@ self-contained `just` recipe file that installs the quadlet unit into
 (CI, `sync-templates`-style propagation, etc.) is future work and
 deliberately out of scope here.
 
-## Local-model inference: Context7 and non-thinking defaults
+## Native launcher configuration (not compatibility mode)
 
-When the workload runs with `TOOL=goose`, the container ships a bundled Goose
-configuration (`image/config/goose.yaml`) that includes two inference-quality
-defaults:
+The repository retains bundled Goose/RamaLama configuration under
+`image/config/` for native launcher integrations. The published
+`ghcr.io/projectbluefin/donate-clanker` compatibility image does not copy or
+use these files; it delegates to the upstream Hive contributor runtime.
 
 ### Context7 (optional, no credential required)
 
@@ -82,11 +90,11 @@ Per the contribute page and the hive `Justfile`:
    you intentionally need a different immutable upstream revision, set
    `DONATE_CLANKER_HIVE_COMMIT=<40-hex sha>` first; branch names are
    rejected.
-2. **Containerized run** (`just contribute-hive`): `docker`/`podman run -d
-   --rm` of `ghcr.io/kubestellar/hive-contributor:latest`, mounting the
-   config above (read-only) plus CLI-specific credential dirs (e.g.
-   `~/.claude`, `~/.copilot`), then blocking the invoking terminal on
-   `podman logs -f` until Ctrl-C.
+2. **Containerized run** (`just contribute-hive`): `docker`/`podman run
+   --rm -it` of the published compatibility image, mounting `/config`
+   read-only and `/workspace` read/write. The wrapper translates those
+   portable paths to the upstream runtime's `/home/dev` paths and keeps the
+   upstream process attached to the invoking terminal.
 
 This repo replaces step 2's ad-hoc `podman run` with a quadlet-managed
 systemd user unit, adds a tool-swap mechanism and workspace source
@@ -352,12 +360,9 @@ logged-in GitHub session for every request (bearer tokens and `?token=`
 query params are rejected there before they ever reach the app), so this
 one has to be done by hand in the dashboard.
 
-## Assumptions flagged for correction
+## Compatibility image boundary
 
-- Defaulting the quadlet's `Network=` to the sandboxed rootless network
-  instead of upstream's `--network host` (commented alternative left in the
-  unit file) — the Justfile doesn't explain why host networking is needed
-  for an outbound-only WebSocket relay.
-- The `CLANKER_SRC`/workspace mount is a convenience addition with no
-  upstream equivalent; the hive-contributor image's actual handling of a
-  pre-seeded `/home/dev/workspace` is unverified.
+The wrapper deliberately keeps the rootless network default and maps the
+portable `/config` and `/workspace` mounts to the upstream `/home/dev`
+locations. It does not add a native launcher, local inference service, or
+container-engine socket.

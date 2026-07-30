@@ -1,5 +1,5 @@
 # donate-clanker.container — Podman Quadlet for the KubeStellar Hive
-# contributor workload (`ghcr.io/kubestellar/hive-contributor:latest`).
+# compatibility workload (`ghcr.io/projectbluefin/donate-clanker`).
 #
 # Installed to: ~/.config/containers/systemd/donate-clanker.container
 # Managed by:   podman-systemd.unit(5) via the user systemd instance
@@ -14,7 +14,7 @@ Description=Donate a Clanker — Hive contributor workload (foreground only)
 # normal boot/login target. It only exists while explicitly started.
 
 [Container]
-Image=ghcr.io/kubestellar/hive-contributor:latest
+Image=ghcr.io/projectbluefin/donate-clanker:stable
 ContainerName=donate-clanker
 
 # Rootless UID mapping so the container's `dev` user can read the mounted
@@ -39,11 +39,11 @@ UserNS=keep-id
 # donate-clanker's supported onboarding path validates the contents
 # semantically before start; the mount existing on disk is not treated as
 # proof that setup completed correctly.
-Volume=%h/.config/hive:/home/dev/.config/hive:ro,Z
+Volume=%h/.config/hive:/config/hive:ro,Z
 # Read-only GitHub CLI state. The supported path verifies `gh auth status
 # --hostname github.com` on the host before the unit is started; the
 # presence of this directory alone is never considered authentication.
-Volume=%h/.config/gh:/home/dev/.config/gh:ro,Z
+Volume=%h/.config/gh:/config/github:ro,Z
 
 # Workspace: always a single, stable host path. The bootstrap script
 # (bin/donate-clanker-bootstrap.sh) resolves CLANKER_SRC into this path on
@@ -51,15 +51,9 @@ Volume=%h/.config/gh:/home/dev/.config/gh:ro,Z
 # of a Git URL. Podman resolves host-side symlinks at mount time, so this
 # works for both cases without changing the unit file.
 #
-# ASSUMPTION: the upstream hive-contributor image doesn't define a
-# "workspace" concept of its own — the hub assigns tasks/repos dynamically
-# over the WebSocket relay, and the contributor container clones whatever
-# it's told to. This mount is a convenience scratch/pre-seeded workspace for
-# local testing per your requirements, not something the reference
-# instructions describe. Confirm the container actually uses
-# /home/dev/workspace before relying on it; adjust the target path if the
-# image expects something else.
-Volume=%h/.local/state/donate-clanker/workspace:/home/dev/workspace:Z
+# The compatibility entrypoint maps /workspace to the upstream
+# /home/dev/workspace path.
+Volume=%h/.local/state/donate-clanker/workspace:/workspace:Z
 
 # CLI-specific config mounts (e.g. ~/.claude, ~/.copilot) are supplied by a
 # single generated drop-in fragment, not hardcoded here — see

@@ -351,7 +351,11 @@ func TestClientQueuesCompletionUntilReconnect(t *testing.T) {
 		t.Fatalf("task_accepted = %+v", accepted)
 	}
 	<-handler.started
+	client.mu.Lock()
+	conn1Done := client.connDone
+	client.mu.Unlock()
 	_ = conn1.Close()
+	<-conn1Done
 
 	handler.finish <- handlerOutcome{
 		report: TaskReport{
