@@ -24,6 +24,57 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Agent contract manifest stays aligned
+        run: |
+          set -euo pipefail
+          MANIFEST="image/config/agent-contract.json"
+          fail=0
+
+          require_manifest_value() {
+            local filter="$1"
+            local kind="$2"
+            local want="$3"
+            if ! jq -e --arg want "$want" "$filter" "$MANIFEST" >/dev/null; then
+              echo "::error file=${MANIFEST}::missing required ${kind}: $want"
+              fail=1
+            fi
+          }
+
+          if ! jq -e '.version == 1' "$MANIFEST" >/dev/null; then
+            echo "::error file=${MANIFEST}::missing or unsupported version"
+            fail=1
+          fi
+
+          for want in \
+            "AGENTS.md" \
+            "docs/SKILL.md" \
+            "docs/skills/skill-improvement.md"; do
+            require_manifest_value \
+              '.required_documents | any(.path == $want)' \
+              "document path" \
+              "$want"
+          done
+
+          for want in \
+            "Read AGENTS.md first, then docs/SKILL.md." \
+            "If you discover a durable workaround, pattern, or convention, update the nearest docs/skills/*.md file in the same change." \
+            "Use the repository validation command family: go test ./..., git diff --check, gofmt -l ., just --justfile just/61-donate-clanker.just --list."; do
+            require_manifest_value '.rules | any(. == $want)' "rule" "$want"
+          done
+
+          for want in \
+            "go test ./..." \
+            "git diff --check" \
+            "gofmt -l ." \
+            "just --justfile just/61-donate-clanker.just --list"; do
+            require_manifest_value \
+              '.validation_commands | any(. == $want)' \
+              "validation command" \
+              "$want"
+          done
+
+          exit "$fail"
+
       - name: Go tests
         run: |
           set -euo pipefail

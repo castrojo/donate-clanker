@@ -1,6 +1,7 @@
 package image_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -88,6 +89,58 @@ func TestREADMELabelsImageAsCompatibilityMode(t *testing.T) {
 	}
 }
 
+func TestAgentContractFixtureIncludesRequiredPathsAndValidationCommands(t *testing.T) {
+	data, err := os.ReadFile(repoFile(t, "image", "config", "agent-contract.json"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	var manifest struct {
+		Version           int `json:"version"`
+		RequiredDocuments []struct {
+			Path string `json:"path"`
+		} `json:"required_documents"`
+		Rules              []string `json:"rules"`
+		ValidationCommands []string `json:"validation_commands"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	if got, want := manifest.Version, 1; got != want {
+		t.Fatalf("manifest.Version = %d, want %d", got, want)
+	}
+
+	paths := make([]string, len(manifest.RequiredDocuments))
+	for i, doc := range manifest.RequiredDocuments {
+		paths[i] = doc.Path
+	}
+	if got, want := paths, []string{
+		"AGENTS.md",
+		"docs/SKILL.md",
+		"docs/skills/skill-improvement.md",
+	}; !equalStrings(got, want) {
+		t.Fatalf("required document paths = %#v, want %#v", got, want)
+	}
+
+	if got, want := manifest.Rules, []string{
+		"Read AGENTS.md first, then docs/SKILL.md.",
+		"If you discover a durable workaround, pattern, or convention, update the nearest docs/skills/*.md file in the same change.",
+		"Use the repository validation command family: go test ./..., git diff --check, gofmt -l ., just --justfile just/61-donate-clanker.just --list.",
+	}; !equalStrings(got, want) {
+		t.Fatalf("manifest.Rules = %#v, want %#v", got, want)
+	}
+
+	if got, want := manifest.ValidationCommands, []string{
+		"go test ./...",
+		"git diff --check",
+		"gofmt -l .",
+		"just --justfile just/61-donate-clanker.just --list",
+	}; !equalStrings(got, want) {
+		t.Fatalf("manifest.ValidationCommands = %#v, want %#v", got, want)
+	}
+}
+
 func repoFile(t *testing.T, parts ...string) string {
 	t.Helper()
 	return filepath.Join(append([]string{repoRoot(t)}, parts...)...)
@@ -100,4 +153,16 @@ func repoRoot(t *testing.T) string {
 		t.Fatal("runtime.Caller() failed")
 	}
 	return filepath.Clean(filepath.Join(filepath.Dir(file), ".."))
+}
+
+func equalStrings(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }

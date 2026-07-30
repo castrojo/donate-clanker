@@ -1,12 +1,15 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	imageconfig "github.com/projectbluefin/donate-clanker/image/config"
 )
 
 func TestLoadBundledGooseConfig(t *testing.T) {
@@ -30,6 +33,22 @@ func TestLoadBundledGooseConfig(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("LoadBundledGooseConfig() missing %q in %q", want, got)
 		}
+	}
+}
+
+func TestBundledAgentContractJSONMatchesFixture(t *testing.T) {
+	path := repoFile(t, "image", "config", "agent-contract.json")
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	got := imageconfig.BundledAgentContractJSON()
+	if len(bytes.TrimSpace(got)) == 0 {
+		t.Fatal("BundledAgentContractJSON() returned empty content")
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("BundledAgentContractJSON() did not match %s", path)
 	}
 }
 
