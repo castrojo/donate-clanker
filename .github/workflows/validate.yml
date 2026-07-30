@@ -88,6 +88,11 @@ jobs:
           set -euo pipefail
           just --justfile just/61-donate-clanker.just --list
 
+      - name: Guided Goose onboarding behavior
+        run: |
+          set -euo pipefail
+          bash tests/just-onboarding.sh
+
       - name: Recipe bodies are valid bash
         run: |
           set -euo pipefail
