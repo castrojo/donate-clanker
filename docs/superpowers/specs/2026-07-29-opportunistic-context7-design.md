@@ -58,6 +58,13 @@ Use the existing bounded local-inference defaults, including approximately
 useful diffs rather than silently swallowing or excessively dumping output.
 Do not add a new orchestration loop in this MVP.
 
+Extended thinking is disabled for every local model profile. The RamaLama
+server is the source of truth and must start with its non-thinking setting;
+Goose also receives `GOOSE_THINKING_EFFORT=off` as a secondary preference.
+For Qwen chat templates, pass `enable_thinking:false` when the runtime
+supports template kwargs. Qwen3-Coder is already non-thinking-only, but keeps
+the same Goose setting for consistent behavior.
+
 ## Validation
 
 Add the smallest checks that prove:
