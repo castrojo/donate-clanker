@@ -1,8 +1,17 @@
 # donate-clanker
 
-After completing `just contribute-setup goose` in a clean
-[KubeStellar Hive](https://github.com/kubestellar/hive) checkout, run the
-portable compatibility image:
+## Run it
+
+Do the one-time GitHub/Hive setup from a clean
+[KubeStellar Hive](https://github.com/kubestellar/hive) checkout. This uses
+GitHub device authentication and creates the local credentials the container
+needs:
+
+```bash
+just contribute-setup goose
+```
+
+Then, from the repository you want the agent to work on, run:
 
 ```bash
 podman run --rm -it --userns=keep-id \
@@ -10,6 +19,15 @@ podman run --rm -it --userns=keep-id \
   -v "$PWD:/workspace:Z" \
   ghcr.io/projectbluefin/donate-clanker:stable
 ```
+
+The command expects these files from the setup step:
+
+- `$HOME/.config/hive/contributor.env`
+- `$HOME/.config/hive/gh-auth.env`
+
+To use the latest published image instead of a locally cached copy, add
+`--pull=always` after `podman run`. The image remains attached to the
+terminal; press `Ctrl-C` to stop it.
 
 `ghcr.io/projectbluefin/donate-clanker` is compatibility mode: it is a
 small, digest-pinned wrapper around the verified
