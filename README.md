@@ -16,7 +16,8 @@ The command expects these files from the setup step:
 - `$HOME/.config/hive/contributor.env`
 - `$HOME/.config/hive/gh-auth.env`
 
-The image remains attached to the terminal; press `Ctrl-C` to stop it.
+The command opens the live Copilot interface directly; press `Ctrl-C` to stop
+the contributor and container together.
 
 `ghcr.io/projectbluefin/donate-clanker` is compatibility mode: it is a
 small, digest-pinned wrapper around the verified

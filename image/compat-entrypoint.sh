@@ -38,4 +38,34 @@ if [ -f "$auth_env" ]; then
 fi
 
 ln -s "$workspace" "$HOME/workspace"
-exec /usr/local/bin/contributor-agent.sh "$@"
+
+agent_pid=
+cleanup() {
+	status=$?
+	if [ -n "$agent_pid" ] && kill -0 "$agent_pid" 2>/dev/null; then
+		kill "$agent_pid" 2>/dev/null || true
+		wait "$agent_pid" 2>/dev/null || true
+	fi
+	tmux kill-session -t contributor 2>/dev/null || true
+	exit "$status"
+}
+trap cleanup EXIT INT TERM
+
+/usr/local/bin/contributor-agent.sh "$@" &
+agent_pid=$!
+
+attempts=0
+while ! tmux has-session -t contributor 2>/dev/null; do
+	if ! kill -0 "$agent_pid" 2>/dev/null; then
+		wait "$agent_pid"
+		exit $?
+	fi
+	attempts=$((attempts + 1))
+	if [ "$attempts" -ge 100 ]; then
+		echo "donate-clanker: contributor session did not start" >&2
+		exit 1
+	fi
+	sleep 0.1
+done
+
+tmux attach-session -t contributor
