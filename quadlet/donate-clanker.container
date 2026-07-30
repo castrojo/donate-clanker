@@ -15,6 +15,7 @@ Description=Donate a Clanker — Hive contributor workload (foreground only)
 
 [Container]
 Image=ghcr.io/projectbluefin/donate-clanker:stable
+Pull=newer
 ContainerName=donate-clanker
 
 # Rootless UID mapping so the container's `dev` user can read the mounted
