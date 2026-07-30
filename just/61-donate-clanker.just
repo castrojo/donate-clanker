@@ -24,8 +24,11 @@
 # commands. All state this recipe touches lives under $HOME (quadlets,
 # config, workspace) — nothing here needs root or writes elsewhere.
 
-# Deterministic detection/fallback order for TOOL auto-detect.
-tool_order := "claude copilot goose codex"
+# Production auto-detect only covers the supported backend: GitHub + Goose
+# local inference. Legacy backends remain available only via explicit
+# TOOL=<name> and are not production-gated.
+tool_order := "goose"
+legacy_tool_order := "claude copilot codex"
 
 # TOOL/CLANKER_SRC are read from the environment (like upstream hive's own
 # Justfile does with HIVE_HUB) so 'TOOL=copilot ujust donate-clanker' works
@@ -33,6 +36,10 @@ tool_order := "claude copilot goose codex"
 # so these can't be plain recipe params.
 tool_env := env("TOOL", "")
 clanker_src_env := env("CLANKER_SRC", "")
+hive_repo_url := "https://github.com/kubestellar/hive"
+# origin/v2 via `git ls-remote --heads https://github.com/kubestellar/hive v2`
+# on 2026-07-29.
+hive_commit := "e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e"
 
 # Base quadlet unit — no [Install] section (see comment at the bottom of it).
 # Mirrors quadlet/donate-clanker.container in this repo.
@@ -58,7 +65,13 @@ UserNS=keep-id
 # issues reaching a local LiteLLM/Ollama endpoint.
 # Network=host
 
+# donate-clanker's supported onboarding path validates the contents
+# semantically before start; the mount existing on disk is not treated as
+# proof that setup completed correctly.
 Volume=%h/.config/hive:/home/dev/.config/hive:ro,Z
+# Read-only GitHub CLI state. The supported path verifies 'gh auth status
+# --hostname github.com' on the host before the unit is started; the
+# presence of this directory alone is never considered authentication.
 Volume=%h/.config/gh:/home/dev/.config/gh:ro,Z
 
 # ASSUMPTION: no upstream equivalent — convenience workspace mount resolved
@@ -82,6 +95,57 @@ TimeoutStopSec=20
 # one place instead of duplicating it per-recipe is the only concession to
 # DRY here — it never leaves the Justfile as a file of its own.
 shared_functions := '''
+GITHUB_LOGIN_COMMAND="gh auth login --web --hostname github.com --scopes repo,read:org"
+
+github_auth_ready() {
+  command -v gh &>/dev/null && gh auth status --hostname github.com &>/dev/null
+}
+env_value() {
+  local path="$1" key="$2" line value
+  line="$(grep -E "^${key}=" "$path" | head -n1 || true)"
+  [[ -n "$line" ]] || return 1
+  value="${line#*=}"
+  [[ -n "${value//[[:space:]]/}" ]] || return 1
+  printf '%s\n' "$value"
+}
+validate_hive_config_file() {
+  local path="$1" key hub backend
+  [[ -f "$path" ]] || { echo "missing ${path}" >&2; return 1; }
+  for key in HIVE_REGISTRATION_TOKEN HIVE_HUB CONTRIBUTOR_ID CONTRIBUTOR_USERNAME AGENT_BACKEND; do
+    env_value "$path" "$key" >/dev/null || { echo "missing required ${key} in ${path}" >&2; return 1; }
+  done
+  backend="$(env_value "$path" AGENT_BACKEND)" || return 1
+  [[ "$backend" == "goose" ]] || { echo "AGENT_BACKEND must be goose in ${path}" >&2; return 1; }
+  hub="$(env_value "$path" HIVE_HUB)" || return 1
+  [[ "$hub" =~ ^wss://.+/contribute$ ]] || { echo "HIVE_HUB must be a wss:// URL ending in /contribute in ${path}" >&2; return 1; }
+}
+yaml_value() {
+  local path="$1" key="$2"
+  awk -F':' -v key="$key" '
+    /^[^[:space:]#][^:]*:/ {
+      raw=$1
+      gsub(/[[:space:]]+/, "", raw)
+      if (raw == key) {
+        sub(/^[^:]*:[[:space:]]*/, "", $0)
+        sub(/[[:space:]]*#.*/, "", $0)
+        gsub(/^["'"'"']|["'"'"']$/, "", $0)
+        print $0
+        exit
+      }
+    }
+  ' "$path"
+}
+validate_goose_config_file() {
+  local path="$1" key provider base_url
+  [[ -f "$path" ]] || { echo "missing ${path}" >&2; return 1; }
+  for key in provider base_url api_key model; do
+    [[ -n "$(yaml_value "$path" "$key")" ]] || { echo "missing required ${key} in ${path}" >&2; return 1; }
+  done
+  provider="$(yaml_value "$path" provider)"
+  [[ "$provider" == "openai" ]] || { echo "provider must be openai in ${path} for the supported local-inference path" >&2; return 1; }
+  base_url="$(yaml_value "$path" base_url)"
+  [[ "$base_url" =~ ^https?://[^[:space:]]+$ ]] || { echo "base_url must be a valid http(s) endpoint in ${path}" >&2; return 1; }
+}
 tool_installed() {
   case "$1" in
     claude)  command -v claude &>/dev/null ;;
@@ -94,8 +158,8 @@ tool_installed() {
 tool_authenticated() {
   case "$1" in
     claude)  [[ -d "${HOME}/.claude" || -f "${HOME}/.claude.json" ]] ;;
-    copilot) gh auth status &>/dev/null ;;
-    goose)   [[ -n "${GOOSE_PROVIDER:-}" || -f "${HOME}/.config/goose/config.yaml" ]] ;;
+    copilot) gh auth status --hostname github.com &>/dev/null ;;
+    goose)   github_auth_ready && validate_goose_config_file "${HOME}/.config/goose/config.yaml" &>/dev/null ;;
     codex)   [[ -n "${OPENAI_API_KEY:-}" || -d "${HOME}/.codex" ]] ;;
     *)       return 1 ;;
   esac
@@ -103,8 +167,8 @@ tool_authenticated() {
 tool_fixit_hint() {
   case "$1" in
     claude)  echo "Run: claude   (then type /login and follow the prompts)" ;;
-    copilot) echo "Run: gh auth login --web --scopes repo,read:org" ;;
-    goose)   echo "Run: goose configure   (or: export GOOSE_PROVIDER=... GOOSE_MODEL=...)" ;;
+    copilot) echo "Run: ${GITHUB_LOGIN_COMMAND}" ;;
+    goose)   echo "Run: goose configure   (set provider=openai and a local base_url, api_key, and model)" ;;
     codex)   echo "Run: codex login   (or: export OPENAI_API_KEY=...)" ;;
     *)       echo "Unknown tool: $1" ;;
   esac
@@ -188,10 +252,11 @@ FRAG
 '''
 
 # Start donating clanker cycles to the hive — foreground, Ctrl-C to stop.
-# TOOL defaults to auto-detect: the first installed+authenticated CLI, in
-# order (claude, copilot, goose, codex).
+# TOOL defaults to the supported auto-detect path: goose, but only when
+# GitHub auth and the local Goose config are both ready. Legacy backends
+# remain available only via explicit TOOL=<name>.
 # Usage: ujust donate-clanker
-#        TOOL=copilot ujust donate-clanker
+#        TOOL=goose ujust donate-clanker
 #        CLANKER_SRC=~/src/some-repo ujust donate-clanker
 #        CLANKER_SRC=https://github.com/org/repo ujust donate-clanker
 donate-clanker:
@@ -214,6 +279,9 @@ donate-clanker:
     WORKSPACE="${STATE_DIR}/workspace"
     CLONES_DIR="${STATE_DIR}/clones"
     HIVE_SRC_DIR="${STATE_DIR}/hive-src"
+    HIVE_REPO_URL="{{hive_repo_url}}"
+    HIVE_COMMIT="${DONATE_CLANKER_HIVE_COMMIT:-{{hive_commit}}}"
+    HIVE_COMMIT="${HIVE_COMMIT,,}"
     mkdir -p "${CONF_DIR}" "${DROPIN_DIR}" "${STATE_DIR}" "${CFG_DIR}" "${CLONES_DIR}"
 
     # Remembers the last TOOL/model choices made through the interactive
@@ -223,38 +291,26 @@ donate-clanker:
     LAST_TOOL="" LAST_MODEL_CLAUDE="" LAST_MODEL_COPILOT="" LAST_MODEL_CODEX="" LAST_GOOSE_PROVIDER="" LAST_GOOSE_MODEL=""
     [[ -f "$LAST_FILE" ]] && source "$LAST_FILE"
 
-    # ── 0. Pick TOOL: auto-detect; if exactly one CLI is ready, use it
-    #      silently; if several are ready, let the user pick with gum
-    #      (this is foreground/attended already, so an interactive prompt
-    #      here doesn't compromise the "never unattended" guarantee). An
-    #      explicit TOOL= always wins and skips detection entirely. ──
+    # ── 0. Pick TOOL: the supported auto-detect path is GitHub + Goose
+    #      local inference only. Unsupported backends remain explicit,
+    #      manual compatibility paths and are not production-gated. ──
     if [[ -z "$TOOL" ]]; then
-      READY=()
-      for t in ${TOOL_ORDER}; do
-        tool_installed "$t" && tool_authenticated "$t" && READY+=("$t")
-      done
-      case "${#READY[@]}" in
-        0)
-          echo "ERROR: no supported CLI is installed and authenticated on this host." >&2
-          for t in ${TOOL_ORDER}; do echo "  ${t}: $(tool_install_hint "$t")" >&2; done
-          echo "Then re-run, or pass explicitly: TOOL=<name> ujust donate-clanker" >&2
-          exit 1
-          ;;
-        1)
-          TOOL="${READY[0]}"
-          echo "TOOL not set — auto-detected: ${TOOL}"
-          ;;
-        *)
-          if command -v gum &>/dev/null && [[ -t 0 ]]; then
-            TOOL="$(printf '%s\n' "${READY[@]}" | gum choose --selected="${LAST_TOOL}" --header "Multiple AI CLIs are ready — pick one:")"
-            [[ -n "$TOOL" ]] || { echo "ERROR: no selection made." >&2; exit 1; }
-          else
-            echo "ERROR: multiple CLIs are ready (${READY[*]}) and 'gum' isn't available to prompt." >&2
-            echo "  Install gum, or pass explicitly: TOOL=<name> ujust donate-clanker" >&2
-            exit 1
-          fi
-          ;;
-      esac
+      if tool_installed goose && tool_authenticated goose; then
+        TOOL="goose"
+        echo "TOOL not set — auto-detected supported backend: ${TOOL}"
+      else
+        echo "ERROR: supported onboarding requires GitHub + Goose local inference." >&2
+        command -v gh &>/dev/null || echo "  Install: see https://cli.github.com" >&2
+        github_auth_ready || echo "  Run: ${GITHUB_LOGIN_COMMAND}" >&2
+        if ! command -v goose &>/dev/null; then
+          echo "  $(tool_install_hint goose)" >&2
+        else
+          validate_goose_config_file "${HOME}/.config/goose/config.yaml" || true
+          echo "  Run: goose configure   (set provider=openai and your local endpoint/model)" >&2
+        fi
+        echo "  Legacy compatibility backends stay manual-only: TOOL=claude|copilot|codex" >&2
+        exit 1
+      fi
     else
       if ! tool_installed "$TOOL"; then
         echo "ERROR: TOOL=${TOOL} requested but not installed." >&2
@@ -262,8 +318,12 @@ donate-clanker:
         exit 1
       fi
       if ! tool_authenticated "$TOOL"; then
-        echo "ERROR: TOOL=${TOOL} is installed but not authenticated." >&2
+        echo "ERROR: TOOL=${TOOL} is installed but not ready." >&2
         echo "  $(tool_fixit_hint "$TOOL")" >&2
+        if [[ "$TOOL" == "goose" ]]; then
+          github_auth_ready || echo "  Run: ${GITHUB_LOGIN_COMMAND}" >&2
+          validate_goose_config_file "${HOME}/.config/goose/config.yaml" || true
+        fi
         exit 1
       fi
     fi
@@ -319,6 +379,66 @@ donate-clanker:
       printf 'LAST_GOOSE_MODEL=%q\n' "$LAST_GOOSE_MODEL"
     } > "$LAST_FILE"
 
+    normalize_git_remote() {
+      local value="$1"
+      value="${value#ssh://}"
+      value="${value%.git}"
+      value="${value%/}"
+      if [[ "$value" =~ ^git@github\.com:(.+)$ ]]; then
+        printf 'https://github.com/%s\n' "${BASH_REMATCH[1]}"
+      elif [[ "$value" =~ ^git@github\.com/(.+)$ ]]; then
+        printf 'https://github.com/%s\n' "${BASH_REMATCH[1]}"
+      else
+        printf '%s\n' "$value"
+      fi
+    }
+    prepare_pinned_hive_checkout() {
+      local existing_origin actual_commit
+      [[ "$HIVE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
+        echo "ERROR: DONATE_CLANKER_HIVE_COMMIT must be a full 40-character commit SHA; branch names like v2 are not allowed." >&2
+        exit 1
+      }
+      if [[ -d "${HIVE_SRC_DIR}/.git" ]]; then
+        existing_origin="$(git -C "$HIVE_SRC_DIR" remote get-url origin 2>/dev/null || true)"
+        [[ -n "$existing_origin" ]] || {
+          echo "ERROR: ${HIVE_SRC_DIR} is missing an origin remote; move it aside or delete it so donate-clanker can recreate the pinned checkout." >&2
+          exit 1
+        }
+        if [[ "$(normalize_git_remote "$existing_origin")" != "$(normalize_git_remote "$HIVE_REPO_URL")" ]]; then
+          echo "ERROR: ${HIVE_SRC_DIR} points at ${existing_origin}, expected ${HIVE_REPO_URL}." >&2
+          echo "  Move it aside or delete it so donate-clanker can recreate the pinned checkout." >&2
+          exit 1
+        fi
+        [[ -z "$(git -C "$HIVE_SRC_DIR" status --porcelain 2>/dev/null)" ]] || {
+          echo "ERROR: ${HIVE_SRC_DIR} has local changes; refusing to execute an unverified Hive checkout." >&2
+          echo "  Use a clean checkout or delete it so donate-clanker can recreate the pinned source." >&2
+          exit 1
+        }
+      else
+        if [[ -e "$HIVE_SRC_DIR" && ! -d "$HIVE_SRC_DIR" ]]; then
+          echo "ERROR: ${HIVE_SRC_DIR} exists and is not a directory." >&2
+          exit 1
+        fi
+        if [[ -d "$HIVE_SRC_DIR" && -n "$(ls -A "$HIVE_SRC_DIR" 2>/dev/null)" ]]; then
+          echo "ERROR: ${HIVE_SRC_DIR} exists but is not a managed git checkout." >&2
+          echo "  Move it aside or choose an empty directory before continuing." >&2
+          exit 1
+        fi
+        mkdir -p "$HIVE_SRC_DIR"
+        git init --quiet "$HIVE_SRC_DIR"
+        git -C "$HIVE_SRC_DIR" remote add origin "$HIVE_REPO_URL"
+      fi
+
+      echo "Preparing kubestellar/hive @ ${HIVE_COMMIT:0:12} -> ${HIVE_SRC_DIR}..."
+      git -C "$HIVE_SRC_DIR" fetch --depth 1 origin "$HIVE_COMMIT"
+      git -C "$HIVE_SRC_DIR" checkout --detach -f FETCH_HEAD
+      actual_commit="$(git -C "$HIVE_SRC_DIR" rev-parse HEAD)"
+      [[ "$actual_commit" == "$HIVE_COMMIT" ]] || {
+        echo "ERROR: expected Hive commit ${HIVE_COMMIT}, got ${actual_commit}." >&2
+        exit 1
+      }
+    }
+
     # ── 1. Ensure upstream contribute-setup has run ──
     HIVE_CONTRIBUTOR_ENV="${HOME}/.config/hive/contributor.env"
     if [[ ! -f "$HIVE_CONTRIBUTOR_ENV" ]]; then
@@ -326,16 +446,16 @@ donate-clanker:
       for cmd in just gh git; do
         command -v "$cmd" &>/dev/null || { echo "ERROR: '${cmd}' is required to run contribute-setup." >&2; exit 1; }
       done
-      if [[ -d "${HIVE_SRC_DIR}/.git" ]]; then
-        git -C "$HIVE_SRC_DIR" pull --ff-only --quiet || echo "WARNING: pull failed, using existing checkout"
-      else
-        echo "Cloning kubestellar/hive (branch v2) -> ${HIVE_SRC_DIR}..."
-        git clone --quiet -b v2 https://github.com/kubestellar/hive "$HIVE_SRC_DIR"
-      fi
-      echo "Running upstream: just contribute-setup ${TOOL}"
-      ( cd "$HIVE_SRC_DIR" && just contribute-setup "$TOOL" )
+      prepare_pinned_hive_checkout
+      echo "Running upstream pinned setup: just contribute-setup ${TOOL}"
+      just --working-directory "$HIVE_SRC_DIR" --justfile "$HIVE_SRC_DIR/Justfile" contribute-setup "$TOOL"
       [[ -f "$HIVE_CONTRIBUTOR_ENV" ]] || { echo "ERROR: contribute-setup ran but ${HIVE_CONTRIBUTOR_ENV} still missing." >&2; exit 1; }
       echo "✓ Upstream contribute-setup complete."
+    fi
+    if [[ "$TOOL" == "goose" ]] && ! validate_hive_config_file "$HIVE_CONTRIBUTOR_ENV"; then
+      echo "ERROR: upstream Hive setup is incomplete for the supported Goose path." >&2
+      echo "  Re-run from kubestellar/hive @ ${HIVE_COMMIT}: just contribute-setup goose" >&2
+      exit 1
     fi
 
     # ── 2. Write the quadlet unit + selected tool fragment (write-if-changed) ──
@@ -411,7 +531,7 @@ donate-clanker:
     fi
     if ! grep -q '^GH_TOKEN=' "${CFG_DIR}/secrets.env"; then
       echo "WARNING: no GH_TOKEN available — the contributor agent needs it to push commits." >&2
-      echo "  Run: gh auth login --web --scopes repo,read:org" >&2
+      echo "  Run: ${GITHUB_LOGIN_COMMAND}" >&2
     fi
     chmod 600 "${CFG_DIR}/secrets.env"
 
@@ -444,6 +564,9 @@ donate-clanker-doctor:
     set -uo pipefail
     {{shared_functions}}
     TOOL_ORDER="{{tool_order}}"
+    LEGACY_TOOL_ORDER="{{legacy_tool_order}}"
+    HIVE_COMMIT="${DONATE_CLANKER_HIVE_COMMIT:-{{hive_commit}}}"
+    HIVE_COMMIT="${HIVE_COMMIT,,}"
     INVOKED_DIR="{{invocation_directory()}}"
     pass=0; fail=0
     check() {
@@ -457,24 +580,30 @@ donate-clanker-doctor:
     check "podman rootless works (podman info)" podman info
     check "quadlet generator present" test -x /usr/lib/systemd/system-generators/podman-system-generator
     check "user systemd instance reachable" systemctl --user status
-    check "gum installed (needed to pick between multiple ready CLIs)" command -v gum
+    check "gum installed (optional interactive Goose model/provider prompts)" command -v gum
     echo ""
 
-    echo "=== Upstream hive setup ==="
+    echo "=== Supported production backend: GitHub + Goose ==="
     check "gh installed" command -v gh
-    check "gh authenticated" gh auth status
-    check "contribute-setup completed (~/.config/hive/contributor.env)" test -f "${HOME}/.config/hive/contributor.env"
+    check "gh authenticated for github.com" github_auth_ready
+    check "goose installed" command -v goose
+    check "goose local config (~/.config/goose/config.yaml)" validate_goose_config_file "${HOME}/.config/goose/config.yaml"
+    check "contribute-setup completed and valid (~/.config/hive/contributor.env)" validate_hive_config_file "${HOME}/.config/hive/contributor.env"
+    echo "  Fix GitHub auth with: ${GITHUB_LOGIN_COMMAND}"
+    echo "  Fix Goose local config with: goose configure   (provider=openai, local base_url/api_key/model)"
+    echo "  Fix Hive setup by re-running donate-clanker (auto-fetches kubestellar/hive @ ${HIVE_COMMIT}),"
+    echo "    or manually run just contribute-setup goose from that exact commit."
     echo ""
 
-    echo "=== CLI backends ==="
+    echo "=== Supported auto-detect ==="
     ready_tools=()
     for t in ${TOOL_ORDER}; do
       if tool_installed "$t"; then
         if tool_authenticated "$t"; then
-          echo "  ✓ ${t}: installed + authenticated"
+          echo "  ✓ ${t}: installed + GitHub-authenticated + local Goose config valid"
           ready_tools+=("$t")
         else
-          echo "  ~ ${t}: installed, NOT authenticated — $(tool_fixit_hint "$t")"
+          echo "  ~ ${t}: installed, NOT ready — $(tool_fixit_hint "$t")"
         fi
       else
         echo "  ✗ ${t}: not installed — $(tool_install_hint "$t")"
@@ -483,10 +612,24 @@ donate-clanker-doctor:
     echo ""
 
     case "${#ready_tools[@]}" in
-      0) echo "No CLI is both installed and authenticated yet — TOOL auto-detect would fail." ;;
-      1) echo "TOOL would auto-detect to: ${ready_tools[0]}" ;;
-      *) echo "Multiple CLIs are ready (${ready_tools[*]}) — you'll be prompted to pick one via gum." ;;
+      0) echo "Goose is not fully ready yet — TOOL auto-detect would fail." ;;
+      1) echo "TOOL would auto-detect to the supported backend: ${ready_tools[0]}" ;;
+      *) echo "Unexpected: multiple supported backends are ready (${ready_tools[*]})." ;;
     esac
+    echo ""
+
+    echo "=== Legacy compatibility backends (manual only; unsupported for production) ==="
+    for t in ${LEGACY_TOOL_ORDER}; do
+      if tool_installed "$t"; then
+        if tool_authenticated "$t"; then
+          echo "  ~ ${t}: installed + ready (manual TOOL=${t} only)"
+        else
+          echo "  ~ ${t}: installed, NOT ready — $(tool_fixit_hint "$t")"
+        fi
+      else
+        echo "  ✗ ${t}: not installed — $(tool_install_hint "$t")"
+      fi
+    done
     echo ""
 
     echo "=== Source (CLANKER_SRC) ==="

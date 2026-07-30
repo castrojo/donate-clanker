@@ -1,0 +1,26 @@
+ARG GOOSE_IMAGE=ghcr.io/aaif-goose/goose@sha256:3e2f39d15e26198f14807966109cb48992156390b969d4f292d84663e5e161bc
+
+FROM golang:1.22-bookworm@sha256:1f298b0c9fecdf504389a0329236f948cc04a566a2bb32337207cbaaa2f8177c AS build
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY cmd ./cmd
+COPY internal ./internal
+
+RUN CGO_ENABLED=0 go build -trimpath -o /out/contributor ./cmd/contributor
+
+FROM ${GOOSE_IMAGE}
+
+USER root
+RUN install -d -o goose -g goose /etc/donate-clanker /var/lib/donate-clanker
+
+COPY --from=build --chown=goose:goose /out/contributor /usr/local/bin/contributor
+COPY --chown=goose:goose image/config/ /etc/donate-clanker/
+
+ENV DONATE_CLANKER_RUNTIME_DIR=/var/lib/donate-clanker
+
+USER goose
+WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/contributor"]

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+
+	imageconfig "github.com/castrojo/donate-clanker/image/config"
 )
 
 const defaultContextSize = 32768
@@ -42,8 +44,16 @@ func Load(path string) (Catalog, error) {
 		}
 		return nil, err
 	}
+	return loadBytes(path, data)
+}
+
+func LoadBundled() (Catalog, error) {
+	return loadBytes("embedded profile catalog", imageconfig.BundledModelsJSON())
+}
+
+func loadBytes(source string, data []byte) (Catalog, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
-		return nil, fmt.Errorf("%s: %w", path, ErrEmptyFile)
+		return nil, fmt.Errorf("%s: %w", source, ErrEmptyFile)
 	}
 
 	var raw rawCatalog

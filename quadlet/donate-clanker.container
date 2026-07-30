@@ -36,7 +36,13 @@ UserNS=keep-id
 
 # Read-only: upstream hive contributor config written by
 # `just contribute-setup <cli>` (registration token, backend, GH token).
+# donate-clanker's supported onboarding path validates the contents
+# semantically before start; the mount existing on disk is not treated as
+# proof that setup completed correctly.
 Volume=%h/.config/hive:/home/dev/.config/hive:ro,Z
+# Read-only GitHub CLI state. The supported path verifies `gh auth status
+# --hostname github.com` on the host before the unit is started; the
+# presence of this directory alone is never considered authentication.
 Volume=%h/.config/gh:/home/dev/.config/gh:ro,Z
 
 # Workspace: always a single, stable host path. The bootstrap script

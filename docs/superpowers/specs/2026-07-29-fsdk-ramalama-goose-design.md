@@ -88,10 +88,14 @@ authentication or Hive registration.
 The pod receives only:
 
 - the selected workspace, read/write;
-- the specific Hive contributor configuration, read-only;
-- the specific GitHub configuration required by the workflow, read-only;
-- the user-owned RamaLama model cache, read/write;
-- resolved provider/model environment values.
+- the user-owned RamaLama model cache, read/write, and only for the helper;
+- resolved provider/model environment values;
+- the minimal Hive client authentication values required to connect before
+  the worker scrubs them from its process environment.
+
+Goose itself receives only task-scoped GitHub credentials from the active
+Hive assignment. Host Hive/GitHub auth directories are not mounted into the
+Goose process.
 
 The launcher never mounts the whole home directory, prints raw credentials, or
 persists transient Hive registration tokens outside the existing upstream

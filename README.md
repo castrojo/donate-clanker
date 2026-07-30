@@ -10,7 +10,7 @@ when you're not watching it.
 Source of truth for the contributor workflow this wraps:
 https://hosted-projectbluefin-knuckle-gjvq.hive.kubestellar.io/contribute
 (and the `contribute-setup` / `contribute-hive` recipes in
-[kubestellar/hive](https://github.com/kubestellar/hive)'s `Justfile`, branch `v2`).
+[kubestellar/hive @ `e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e`](https://github.com/kubestellar/hive/tree/e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e)'s `Justfile`, the exact `origin/v2` commit pinned here on 2026-07-29).
 
 ## Scope
 
@@ -20,17 +20,61 @@ self-contained `just` recipe file that installs the quadlet unit into
 (CI, `sync-templates`-style propagation, etc.) is future work and
 deliberately out of scope here.
 
+## Local-model inference: Context7 and non-thinking defaults
+
+When the workload runs with `TOOL=goose`, the container ships a bundled Goose
+configuration (`image/config/goose.yaml`) that includes two inference-quality
+defaults:
+
+### Context7 (optional, no credential required)
+
+The configuration registers Context7 (`https://mcp.context7.com/mcp`) as an
+optional streamable-HTTP MCP extension. Goose may call it opportunistically
+when current external documentation would help a task; it is **never a
+prerequisite** for starting or completing work:
+
+- **No token, API key, or account is required** — Context7 is a public MCP
+  endpoint.
+- **Failed or unavailable lookups fall back silently** — the bundled
+  `image/config/local-agent-policy.md` instructs the model to inspect local
+  repository evidence first and to continue with that evidence if Context7
+  is unreachable or returns nothing useful. Work is never blocked.
+- **Offline mode is fully supported** — tasks proceed using only the
+  workspace content mounted by the container.
+
+### Extended thinking disabled by default
+
+All bundled model profiles (`image/config/models.json`) run with extended
+thinking explicitly disabled:
+
+- `thinking: false` is declared in every profile's JSON entry.
+- `--thinking false` is included in every profile's RamaLama runtime
+  arguments, disabling reasoning at the inference-server level.
+- Goose also receives `GOOSE_THINKING_EFFORT=off` as a secondary guard.
+- Profiles for Qwen3.5 and Qwen3.6 additionally pass
+  `--chat-template-kwargs '{"enable_thinking":false}'` to the llama.cpp
+  chat template layer.
+
+These defaults are verified by CI static checks (`validate.yml`) that run
+without GPU hardware, Podman, or network access.
+
 ## What the reference workflow actually does
 
 Per the contribute page and the hive `Justfile`:
 
-1. **Host-side, one-time setup** (`just contribute-setup <cli>`): GitHub
-   device-code auth via `gh`, registers with the hub over HTTPS, writes
+1. **Host-side, one-time setup** (`just contribute-setup goose` for the
+   supported path): GitHub device-code auth via `gh`, registers with the
+   hub over HTTPS, writes
    `~/.config/hive/{contributor.env,gh-auth.env}`. **This repo does not
    reimplement this step** — it's orchestration/auth logic the page owns,
    not container plumbing, and re-deriving it risked inventing steps the
-   page doesn't describe. Run it once from a clone of `kubestellar/hive`
-   before using `ujust donate-clanker`.
+   page doesn't describe. If `contributor.env` is missing, donate-clanker
+   fetches that exact pinned upstream commit into
+   `~/.local/state/donate-clanker/hive-src`, verifies `HEAD` before
+   execution, and runs upstream `just contribute-setup <tool>` there. If
+   you intentionally need a different immutable upstream revision, set
+   `DONATE_CLANKER_HIVE_COMMIT=<40-hex sha>` first; branch names are
+   rejected.
 2. **Containerized run** (`just contribute-hive`): `docker`/`podman run -d
    --rm` of `ghcr.io/kubestellar/hive-contributor:latest`, mounting the
    config above (read-only) plus CLI-specific credential dirs (e.g.
@@ -61,50 +105,69 @@ exposes, not scripts they might run out of context.
 
 ## Onboarding
 
-A fresh machine with none of this configured hits three gaps in order —
-`ujust donate-clanker` now handles all three instead of failing deep inside
-a container log:
+The supported production onboarding path is **GitHub + Goose/local
+inference**. `ujust donate-clanker` now fails fast on the host with
+actionable, secret-safe checks instead of relying on filesystem presence or
+deep container logs:
 
-1. **No CLI installed/authenticated at all — or too many.** `TOOL` is no
-   longer a silent `claude` default. The Justfile's embedded detection
-   logic checks every supported CLI (`claude`, `copilot`, `goose`, `codex`):
-   - **Zero** installed-and-authenticated → fails fast on the host with an
-     install/auth hint for each, before touching podman at all.
-   - **Exactly one** ready → auto-picked silently, no prompt.
-   - **More than one** ready → since this is already an attended,
-     foreground-only workflow, it prompts interactively with `gum choose`
-     instead of guessing. If `gum` isn't installed or there's no terminal
-     attached, it fails fast and asks for an explicit `TOOL=<name>`.
+1. **GitHub auth is authoritative.** Auto-detect only covers `TOOL=goose`,
+   and Goose is considered ready only when `gh auth status --hostname
+   github.com` succeeds. A `~/.config/gh` directory alone is **never**
+   treated as proof of authentication. If auth is missing or invalid, fix it
+   with:
 
-   Override explicitly with `TOOL=<name>` at any time to skip detection
-   entirely; an explicit `TOOL=` that isn't installed or isn't
-   authenticated also fails fast with the same actionable one-liner.
+   ```sh
+   gh auth login --web --hostname github.com --scopes repo,read:org
+   ```
 
-   Once `TOOL` is resolved, an optional model (and, for `goose`, provider)
-   prompt follows the same rule: only asked when not already given via
-   `AGENT_MODEL=`/`GOOSE_PROVIDER=`/`GOOSE_MODEL=` env vars and `gum` +
-   a terminal are available; leaving it blank falls back to the tool's own
-   default. For `copilot`, the model prompt is a `gum choose` list fetched
-   live from the same models API the Copilot CLI/extensions use — no model
-   name to remember or mistype — falling back to free-text entry if that
-   request fails for any reason. Every pick (TOOL, model, goose
-   provider/model — including a deliberate blank) is remembered in
-   `~/.config/donate-clanker/last-selections.env` and offered back as the
-   pre-selected default the next time you run it. The final resolved
-   values are written to `~/.config/donate-clanker/secrets.env`
-   (`chmod 600`) and re-derived fresh on every run rather than accumulating.
-2. **Upstream `contribute-setup` never run.** If
-   `~/.config/hive/contributor.env` doesn't exist, the recipe
-   clones `kubestellar/hive` (branch `v2`) into
-   `~/.local/state/donate-clanker/hive-src` and runs **its own**
-   `just contribute-setup <tool>` — we still never reimplement the
-   registration/GitHub-auth logic ourselves, we just make sure it has run.
-3. **"Is my machine even ready?"** `ujust donate-clanker-doctor` is a
-   read-only preflight: rootless podman, the quadlet generator, `gh` auth,
-   `gum` (needed only when multiple CLIs are ready), whether upstream setup
-   has completed, and which CLIs are installed/authenticated — including
-   whether `TOOL` would auto-pick one or prompt because several qualify. It
-   never starts the container.
+2. **Goose local inference must be configured semantically.** The launcher
+   validates `~/.config/goose/config.yaml` for the supported path — not just
+   the existence of `~/.config/goose/`. The file must contain non-empty
+   top-level `provider`, `base_url`, `api_key`, and `model` keys, and the
+   supported production path requires `provider: openai` so Goose talks to a
+   local OpenAI-compatible endpoint. `goose configure` is the expected way to
+   write that file. Optional `GOOSE_PROVIDER=` / `GOOSE_MODEL=` overrides are
+   still honored for a run, but they do not replace the base local config
+   check.
+
+3. **Hive setup is reused, then validated.** If
+   `~/.config/hive/contributor.env` is missing, the recipe fetches
+   `kubestellar/hive` into `~/.local/state/donate-clanker/hive-src` at the
+   exact pinned commit
+   `e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e`, verifies
+   `git rev-parse HEAD` matches before execution, and then runs upstream
+   `just contribute-setup goose` with your current terminal attached so the
+   upstream prompts can read stdin normally. `DONATE_CLANKER_HIVE_COMMIT`
+   may override that pin, but it must still be a full 40-character commit
+   SHA — mutable refs like `v2` are rejected. If you set
+   `--non-interactive` or `DONATE_CLANKER_NON_INTERACTIVE=true`, or if
+   stdio is not attached to a terminal, donate-clanker refuses to fake the
+   prompts and instead tells you to pre-seed
+   `~/.config/hive/contributor.env` yourself from that exact pinned
+   checkout. If the file already exists,
+   donate-clanker validates it semantically before starting:
+   `HIVE_REGISTRATION_TOKEN`, `HIVE_HUB`, `CONTRIBUTOR_ID`,
+   `CONTRIBUTOR_USERNAME`, and `AGENT_BACKEND=goose` must all be present,
+   and `HIVE_HUB` must be a `wss://` URL ending in `/contribute`. Errors
+   name the missing or invalid key, never the secret value.
+
+4. **Doctor mirrors the supported checks.** `ujust donate-clanker-doctor` is
+   a read-only preflight for rootless podman, the quadlet generator, GitHub
+   auth, Goose local config, and validated upstream Hive setup. It also shows
+   that only Goose participates in supported auto-detect; legacy backends
+   (`claude`, `copilot`, `codex`) remain manual compatibility paths via
+   explicit `TOOL=<name>` and are not part of the production-gated workflow.
+
+Once `TOOL` is resolved, an optional model (and, for `goose`, provider)
+prompt follows the same rule as before: only asked when not already given via
+`AGENT_MODEL=`/`GOOSE_PROVIDER=`/`GOOSE_MODEL=` env vars and `gum` + a
+terminal are available; leaving it blank falls back to the tool's own
+default. Every pick (TOOL, model, goose provider/model — including a
+deliberate blank) is remembered in
+`~/.config/donate-clanker/last-selections.env` and offered back as the
+pre-selected default the next time you run it. The final resolved values are
+written to `~/.config/donate-clanker/secrets.env` (`chmod 600`) and
+re-derived fresh on every run rather than accumulating.
 
 ## Design rationale
 
@@ -184,9 +247,11 @@ above). To actually add a tool, edit `just/61-donate-clanker.just`'s
 `tool_installed`/`tool_authenticated`/`tool_fixit_hint`/`tool_install_hint`
 and in `tool_fragment_conf` (the `[Container]` fragment — usually just
 `Environment=AGENT_BACKEND=<name>` plus whatever `Volume=` lines that CLI
-needs), add the name to the `tool_order` variable, then copy the same
-fragment text into a new `quadlet/tools/<name>.conf` for reference. Run
-`TOOL=<name> ujust donate-clanker` to try it.
+needs). Only add the name to `tool_order` if it becomes part of the
+supported production auto-detect path; otherwise keep it manual-only behind
+explicit `TOOL=<name>`. Then copy the same fragment text into a new
+`quadlet/tools/<name>.conf` for reference. Run `TOOL=<name> ujust
+donate-clanker` to try it.
 
 ## Installing this into your own setup
 

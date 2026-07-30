@@ -19,6 +19,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Go tests
+        run: |
+          set -euo pipefail
+          go test ./...
+
       - name: Install just
         uses: extractions/setup-just@v2
 
@@ -100,6 +110,121 @@ jobs:
           done
 
           exit "$fail"
+
+      - name: Context7 image contract — goose.yaml and policy
+        run: |
+          set -euo pipefail
+          GOOSE_YAML="image/config/goose.yaml"
+          POLICY_MD="image/config/local-agent-policy.md"
+          fail=0
+
+          # Required lines in goose.yaml that prove Context7 is configured as
+          # an enabled streamable HTTP MCP extension.
+          for want in \
+            "bundled: false" \
+            "enabled: true" \
+            "name: context7" \
+            "timeout: 30" \
+            "type: streamable_http" \
+            'uri: "https://mcp.context7.com/mcp"'; do
+            if ! grep -qF "$want" "$GOOSE_YAML"; then
+              echo "::error file=${GOOSE_YAML}::missing required line: $want"
+              fail=1
+            fi
+          done
+
+          # The local-agent policy must contain an opportunistic-use phrase and
+          # a local-fallback phrase so agents do not block on Context7.
+          for want in \
+            "inspect local repository evidence first" \
+            "Context7 only when current external documentation is useful" \
+            "continue with local evidence when Context7 is unavailable"; do
+            if ! grep -qF "$want" "$POLICY_MD"; then
+              echo "::error file=${POLICY_MD}::missing required phrase: $want"
+              fail=1
+            fi
+          done
+
+          exit "$fail"
+
+      - name: Non-thinking model profiles — models.json contract
+        run: |
+          set -euo pipefail
+          MODELS_JSON="image/config/models.json"
+          fail=0
+
+          # Reject any profile that sets thinking to true.  jq exits 1 when the
+          # select() expression matches, so the pattern is: run jq and invert.
+          if thinking_profiles=$(jq -r '
+            to_entries[]
+            | select(.value.thinking == true)
+            | .key' "$MODELS_JSON") \
+            && [[ -n "$thinking_profiles" ]]; then
+            while IFS= read -r profile; do
+              echo "::error file=${MODELS_JSON}::profile $profile has thinking=true"
+            done <<< "$thinking_profiles"
+            fail=1
+          fi
+
+          # Every profile must declare thinking explicitly as false.
+          if missing_thinking=$(jq -r '
+            to_entries[]
+            | select(.value.thinking == null)
+            | .key' "$MODELS_JSON") \
+            && [[ -n "$missing_thinking" ]]; then
+            while IFS= read -r profile; do
+              echo "::error file=${MODELS_JSON}::profile $profile is missing explicit thinking: false"
+            done <<< "$missing_thinking"
+            fail=1
+          fi
+
+          # Every profile must have --thinking false in runtime_args.
+          no_thinking_flag=$(jq -r '
+            to_entries[]
+            | select(
+                (.value.runtime_args // []) | indices("--thinking") | length == 0
+              )
+            | .key' "$MODELS_JSON")
+          if [[ -n "$no_thinking_flag" ]]; then
+            while IFS= read -r profile; do
+              echo "::error file=${MODELS_JSON}::profile $profile missing --thinking false in runtime_args"
+            done <<< "$no_thinking_flag"
+            fail=1
+          fi
+
+          exit "$fail"
+
+      - name: Supported onboarding docs and shell stay aligned
+        run: |
+          set -euo pipefail
+          HIVE_PIN="$(sed -n 's/^hive_commit := "\(.*\)"$/\1/p' just/61-donate-clanker.just)"
+          test -n "$HIVE_PIN"
+          grep -Fq 'tool_order := "goose"' just/61-donate-clanker.just
+          grep -Fq 'gh auth status --hostname github.com' just/61-donate-clanker.just
+          grep -Fq 'fetch --depth 1 origin "$HIVE_COMMIT"' just/61-donate-clanker.just
+          grep -Fq 'DONATE_CLANKER_HIVE_COMMIT' just/61-donate-clanker.just
+          grep -Fq 'validate_hive_config_file "${HOME}/.config/hive/contributor.env"' just/61-donate-clanker.just
+          grep -Fq 'validate_goose_config_file "${HOME}/.config/goose/config.yaml"' just/61-donate-clanker.just
+          grep -Fq "$HIVE_PIN" README.md
+          grep -Fq 'DONATE_CLANKER_HIVE_COMMIT' README.md
+          grep -Fq 'gh auth login --web --hostname github.com --scopes repo,read:org' README.md
+
+      - name: Worker image smoke test
+        run: |
+          set -euo pipefail
+          docker build -f image/Containerfile -t donate-clanker-worker:test .
+          docker run --rm --entrypoint /bin/sh donate-clanker-worker:test -lc '
+            set -e
+            command -v goose
+            command -v contributor
+            goose --version >/dev/null
+            test -r /etc/ssl/certs/ca-certificates.crt
+            test -f /etc/donate-clanker/goose.yaml
+            test -f /etc/donate-clanker/local-agent-policy.md
+            test -w /var/lib/donate-clanker
+            test ! -S /var/run/docker.sock
+            test ! -S /run/podman/podman.sock
+          '
 
       # donate-clanker-doctor needs real podman (rootless), a user systemd
       # instance, and (for full checks) 'gh auth status' — none of which are

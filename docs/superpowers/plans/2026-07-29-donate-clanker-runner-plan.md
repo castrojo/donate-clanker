@@ -15,7 +15,7 @@
 - Images target `linux/amd64` and `linux/arm64`.
 - Execution is foreground-only and ephemeral; no systemd, Quadlet, login linger, or background service.
 - Authentication reuses upstream Hive `contribute-setup`; this project does not reimplement device-code or registration logic.
-- Mount only the selected workspace read/write, specific Hive/GitHub paths read-only, and a persistent RamaLama cache.
+- Mount only the selected workspace read/write and a persistent RamaLama cache; pass the minimal Hive client auth via worker env and inject only task-scoped GitHub tokens into Goose.
 - The Goose container never receives a host container socket.
 - GPU support is best-effort by platform, but startup fails when no supported GPU is available.
 - The client must preserve Hive auth, ping/pong, task identity, revocation, and credential-redaction rules.
@@ -129,7 +129,7 @@
 
 **Interfaces:**
 - `EnsureHiveSetup(context.Context, SetupOptions) error` verifies `contributor.env` and invokes the upstream `contribute-setup` command when absent.
-- `ResolveMounts(Options) ([]Mount, error)` returns only canonical workspace, Hive config, GitHub config, and RamaLama cache mounts.
+- `ResolveMounts(Options) ([]Mount, error)` returns only canonical workspace and RamaLama cache mounts.
 - `Mount` contains host path, container path, read-only flag, and SELinux relabel policy.
 
 - [ ] **Step 1: Write tests** proving whole-home mounts are rejected, symlinked workspace paths are canonicalized, missing auth paths fail before pod creation, and cache directories are created with user-only permissions.
