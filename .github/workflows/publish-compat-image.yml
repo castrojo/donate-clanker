@@ -33,12 +33,17 @@ jobs:
           set -euo pipefail
           {
             echo "sha=sha-${GITHUB_SHA}"
-            echo "tags<<EOF"
-            echo "${IMAGE}:sha-${GITHUB_SHA}"
             if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
               version="${GITHUB_REF_NAME#v}"
               printf 'version=%s\n' "$version"
               printf 'version_tag=%s\n' "$GITHUB_REF_NAME"
+            else
+              echo 'version='
+              echo 'version_tag='
+            fi
+            echo "tags<<EOF"
+            echo "${IMAGE}:sha-${GITHUB_SHA}"
+            if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
               echo "${IMAGE}:$version"
               echo "${IMAGE}:$GITHUB_REF_NAME"
               if [[ "${STABLE_POLICY,,}" == true ]]; then
@@ -48,8 +53,6 @@ jobs:
                 echo 'stable=false'
               fi
             else
-              echo 'version='
-              echo 'version_tag='
               echo 'stable=false'
             fi
             echo EOF
