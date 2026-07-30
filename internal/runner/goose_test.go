@@ -72,6 +72,44 @@ func TestGooseRunFailsBeforeCommandWhenContractDocumentMissing(t *testing.T) {
 	}
 }
 
+func TestGooseRunFailsBeforeCommandWhenContractManifestUnvalidated(t *testing.T) {
+	fake := &fakeCommandRunner{}
+	workspace := repoScratch(t, "invalid-manifest-workspace")
+	runtimeDir := repoScratch(t, "invalid-manifest-runtime")
+	goose := Goose{
+		Runner:   fake,
+		Contract: contract.Manifest{},
+	}
+
+	_, err := goose.Run(context.Background(), Task{
+		Prompt:        "Task ID: hive-123\nTitle: Fix the bug",
+		Workspace:     workspace,
+		Provider:      "openai",
+		Model:         "local",
+		OpenAIBaseURL: "http://127.0.0.1:8000/v1",
+		OpenAIAPIKey:  "local",
+		RuntimeDir:    runtimeDir,
+		BundledConfig: []byte("provider: openai\n"),
+	})
+	if err == nil {
+		t.Fatal("Run() error = nil, want failure")
+	}
+
+	var execErr *ExecutionError
+	if !errors.As(err, &execErr) {
+		t.Fatalf("Run() error = %T, want *ExecutionError", err)
+	}
+	if !strings.Contains(execErr.Error(), "unsupported version") {
+		t.Fatalf("Run() error = %q, want manifest validation failure", execErr.Error())
+	}
+	if len(fake.calls) != 0 {
+		t.Fatalf("Run() command count = %d, want 0", len(fake.calls))
+	}
+	if _, statErr := os.Stat(filepath.Join(runtimeDir, "home")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("Run() staged config despite contract failure, stat error = %v", statErr)
+	}
+}
+
 func TestGooseRunFailsBeforeCommandWhenContractDocumentEmpty(t *testing.T) {
 	fake := &fakeCommandRunner{}
 	workspace := repoScratch(t, "empty-workspace")

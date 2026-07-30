@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,16 +72,20 @@ func LoadBundled() (Manifest, error) {
 }
 
 func (m Manifest) LoadDocuments(workspace string) ([]Document, error) {
+	validated, err := m.validated()
+	if err != nil {
+		return nil, err
+	}
 	cleanWorkspace := filepath.Clean(workspace)
-	documents := make([]Document, len(m.RequiredDocuments))
-	for i, required := range m.RequiredDocuments {
+	documents := make([]Document, len(validated.RequiredDocuments))
+	for i, required := range validated.RequiredDocuments {
 		path := filepath.Join(cleanWorkspace, required.Path)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				return nil, fmt.Errorf("%s: %w", required.Path, ErrMissingFile)
 			}
-			return nil, err
+			return nil, sanitizeDocumentReadError(required.Path, err)
 		}
 		if len(bytes.TrimSpace(data)) == 0 {
 			return nil, fmt.Errorf("%s: %w", required.Path, ErrEmptyFile)
@@ -124,45 +129,11 @@ func (m Manifest) PromptSection(documents []Document) string {
 }
 
 func validate(raw rawManifest) (Manifest, error) {
-	if raw.Version != supportedVersion {
-		return Manifest{}, fmt.Errorf("version %d: %w", raw.Version, ErrUnsupportedVersion)
-	}
-	if len(raw.RequiredDocuments) == 0 {
-		return Manifest{}, fmt.Errorf("required_documents: %w", ErrMissingField)
-	}
-	if len(raw.Rules) == 0 {
-		return Manifest{}, fmt.Errorf("rules: %w", ErrMissingField)
-	}
-	if len(raw.ValidationCommands) == 0 {
-		return Manifest{}, fmt.Errorf("validation_commands: %w", ErrMissingField)
-	}
 	requiredDocuments := make([]RequiredDocument, len(raw.RequiredDocuments))
-	seen := make(map[string]struct{}, len(raw.RequiredDocuments))
 	for i, doc := range raw.RequiredDocuments {
-		path, err := validateDocumentPath(doc.Path)
-		if err != nil {
-			return Manifest{}, fmt.Errorf("required_documents[%d].path (%q): %w", i, doc.Path, err)
-		}
-		if strings.TrimSpace(doc.Heading) == "" {
-			return Manifest{}, fmt.Errorf("required_documents[%d].heading: %w", i, ErrMissingField)
-		}
-		if _, ok := seen[path]; ok {
-			return Manifest{}, fmt.Errorf("%s: %w", path, ErrDuplicatePath)
-		}
-		seen[path] = struct{}{}
 		requiredDocuments[i] = RequiredDocument{
-			Path:    path,
+			Path:    doc.Path,
 			Heading: doc.Heading,
-		}
-	}
-	for i, rule := range raw.Rules {
-		if strings.TrimSpace(rule) == "" {
-			return Manifest{}, fmt.Errorf("rules[%d]: %w", i, ErrMissingField)
-		}
-	}
-	for i, command := range raw.ValidationCommands {
-		if strings.TrimSpace(command) == "" {
-			return Manifest{}, fmt.Errorf("validation_commands[%d]: %w", i, ErrMissingField)
 		}
 	}
 	return Manifest{
@@ -170,7 +141,7 @@ func validate(raw rawManifest) (Manifest, error) {
 		RequiredDocuments:  requiredDocuments,
 		Rules:              append([]string(nil), raw.Rules...),
 		ValidationCommands: append([]string(nil), raw.ValidationCommands...),
-	}, nil
+	}.validated()
 }
 
 func validateDocumentPath(path string) (string, error) {
@@ -188,4 +159,64 @@ func validateDocumentPath(path string) (string, error) {
 		return "", ErrTraversalPath
 	}
 	return clean, nil
+}
+
+func (m Manifest) validated() (Manifest, error) {
+	if m.Version != supportedVersion {
+		return Manifest{}, fmt.Errorf("version %d: %w", m.Version, ErrUnsupportedVersion)
+	}
+	if len(m.RequiredDocuments) == 0 {
+		return Manifest{}, fmt.Errorf("required_documents: %w", ErrMissingField)
+	}
+	if len(m.Rules) == 0 {
+		return Manifest{}, fmt.Errorf("rules: %w", ErrMissingField)
+	}
+	if len(m.ValidationCommands) == 0 {
+		return Manifest{}, fmt.Errorf("validation_commands: %w", ErrMissingField)
+	}
+
+	requiredDocuments := make([]RequiredDocument, len(m.RequiredDocuments))
+	seen := make(map[string]struct{}, len(m.RequiredDocuments))
+	for i, doc := range m.RequiredDocuments {
+		path, err := validateDocumentPath(doc.Path)
+		if err != nil {
+			return Manifest{}, fmt.Errorf("required_documents[%d].path (%q): %w", i, doc.Path, err)
+		}
+		if strings.TrimSpace(doc.Heading) == "" {
+			return Manifest{}, fmt.Errorf("required_documents[%d].heading: %w", i, ErrMissingField)
+		}
+		if _, ok := seen[path]; ok {
+			return Manifest{}, fmt.Errorf("%s: %w", path, ErrDuplicatePath)
+		}
+		seen[path] = struct{}{}
+		requiredDocuments[i] = RequiredDocument{
+			Path:    path,
+			Heading: doc.Heading,
+		}
+	}
+	for i, rule := range m.Rules {
+		if strings.TrimSpace(rule) == "" {
+			return Manifest{}, fmt.Errorf("rules[%d]: %w", i, ErrMissingField)
+		}
+	}
+	for i, command := range m.ValidationCommands {
+		if strings.TrimSpace(command) == "" {
+			return Manifest{}, fmt.Errorf("validation_commands[%d]: %w", i, ErrMissingField)
+		}
+	}
+
+	return Manifest{
+		Version:            m.Version,
+		RequiredDocuments:  requiredDocuments,
+		Rules:              append([]string(nil), m.Rules...),
+		ValidationCommands: append([]string(nil), m.ValidationCommands...),
+	}, nil
+}
+
+func sanitizeDocumentReadError(path string, err error) error {
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		return fmt.Errorf("%s: %w", path, pathErr.Err)
+	}
+	return fmt.Errorf("%s: read failed", path)
 }

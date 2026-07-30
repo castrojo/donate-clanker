@@ -137,6 +137,77 @@ func TestLoadDocumentsRejectsMissingAndEmptyFiles(t *testing.T) {
 	}
 }
 
+func TestLoadDocumentsRejectsInvalidManifestPaths(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want error
+	}{
+		{name: "absolute", path: "/etc/passwd", want: ErrAbsolutePath},
+		{name: "traversal", path: "../AGENTS.md", want: ErrTraversalPath},
+		{name: "cleaned-traversal", path: "docs/../../AGENTS.md", want: ErrTraversalPath},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manifest := Manifest{
+				Version: supportedVersion,
+				RequiredDocuments: []RequiredDocument{
+					{Path: tt.path, Heading: "Invalid"},
+				},
+				Rules:              []string{"rule"},
+				ValidationCommands: []string{"go test ./..."},
+			}
+
+			_, err := manifest.LoadDocuments(t.TempDir())
+			if err == nil {
+				t.Fatal("LoadDocuments() error = nil, want error")
+			}
+			if !errors.Is(err, tt.want) {
+				t.Fatalf("LoadDocuments() error = %v, want %v", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadDocumentsSanitizesUnreadableFileErrors(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permission-denied read checks are unreliable when running as root")
+	}
+
+	manifest := Manifest{
+		Version: supportedVersion,
+		RequiredDocuments: []RequiredDocument{
+			{Path: "docs/locked.md", Heading: "Locked"},
+		},
+		Rules:              []string{"rule"},
+		ValidationCommands: []string{"go test ./..."},
+	}
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "docs", "locked.md")
+	mustWrite(t, path, "locked content")
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatalf("Chmod() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(path, 0o644)
+	})
+
+	_, err := manifest.LoadDocuments(workspace)
+	if err == nil {
+		t.Fatal("LoadDocuments() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "docs/locked.md") {
+		t.Fatalf("LoadDocuments() error = %v, want relative path", err)
+	}
+	if strings.Contains(err.Error(), workspace) {
+		t.Fatalf("LoadDocuments() error leaked workspace path: %v", err)
+	}
+	if !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("LoadDocuments() error = %v, want permission denied", err)
+	}
+}
+
 func TestLoadDocumentsPreservesManifestOrder(t *testing.T) {
 	manifest := Manifest{
 		Version: supportedVersion,
