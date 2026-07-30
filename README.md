@@ -23,11 +23,20 @@ the contributor and container together.
 small, digest-pinned wrapper around the verified
 `ghcr.io/kubestellar/hive-contributor` runtime. It maps `/config` and
 `/workspace` to the upstream `/home/dev` paths, runs in the foreground as the
-upstream non-root `dev` user, and needs no host container socket. It does **not**
+upstream non-root `dev` user, attaches the live Copilot interface to the
+invoking terminal, and needs no host container socket. It does **not**
 include donate-clanker's native Goose/RamaLama launcher or local inference
 helper. Releases always publish immutable `sha-<commit>` and version tags;
 the `stable` alias is published only when the repository's explicit stable
 channel policy enables it.
+
+On this Bluefin machine, `ujust donate-clanker` is configured as a local
+shortcut for the same published-image command. It defaults to the authenticated
+Copilot backend, refreshes the `stable` image before starting, and attaches the
+interactive UI. Use `ujust donate-clanker-stop` only to clean up a stale
+process; normal shutdown is `Ctrl-C`. The shortcut also opens each assigned
+GitHub issue in the system browser using `xdg-open`; the direct Podman command
+does not open host applications.
 
 Source of truth for the contributor workflow this wraps:
 https://hosted-projectbluefin-knuckle-gjvq.hive.kubestellar.io/contribute
@@ -36,11 +45,10 @@ https://hosted-projectbluefin-knuckle-gjvq.hive.kubestellar.io/contribute
 
 ## Scope
 
-This repo covers running it on your machine right now: a single
-self-contained `just` recipe file that installs the quadlet unit into
-`~/.config/containers/systemd/`. Packaging this into a Bluefin image build
-(CI, `sync-templates`-style propagation, etc.) is future work and
-deliberately out of scope here.
+This repo covers the published compatibility image and the optional native
+launcher integration. The direct Podman command is the portable path; the
+self-contained `just` recipe remains available for hosts that want Quadlet
+management and explicit tool selection.
 
 ## Native launcher configuration (not compatibility mode)
 
@@ -126,9 +134,9 @@ is deliberately no separate `bin/` of standalone scripts: a user browsing
 the image or this repo only ever finds one file and the three commands it
 exposes, not scripts they might run out of context.
 
-## Onboarding
+## Native launcher onboarding
 
-The supported production onboarding path is **GitHub + Goose/local
+The native launcher onboarding path is **GitHub + Goose/local
 inference**. `ujust donate-clanker` now fails fast on the host with
 actionable, secret-safe checks instead of relying on filesystem presence or
 deep container logs:
