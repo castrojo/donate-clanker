@@ -354,7 +354,7 @@ donate-clanker:
     }
 
     RUN_ID="$(date +%s)-$$"
-    RUN_DIR="${STATE_DIR}/runs/${RUN_ID}"
+    RUN_DIR="${TMPDIR:-/tmp}/donate-clanker-$$"
     mkdir -p "$RUN_DIR"
     BOOTSTRAP_SOCKET_NAME="bootstrap-${RUN_ID}.sock"
     BOOTSTRAP_SOCKET="${RUN_DIR}/${BOOTSTRAP_SOCKET_NAME}"
@@ -383,42 +383,7 @@ donate-clanker:
     umask 077
     printf '%s\0%s\0%s\0%s\0' \
       "$HIVE_ENDPOINT" "$HIVE_REGISTRATION_TOKEN" "$TOOL" "$RUN_ID" |
-      python3 -c '
-      import json
-      import os
-      import socket
-      import sys
-
-      path = sys.argv[1]
-      values = sys.stdin.buffer.read().split(b"\0")
-      if len(values) < 4:
-          raise SystemExit("bootstrap input is incomplete")
-      payload = {
-          "version": 1,
-          "hive_endpoint": values[0].decode(),
-          "registration_token": values[1].decode(),
-          "backend": values[2].decode(),
-          "run_id": values[3].decode(),
-      }
-      server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-      try:
-          os.unlink(path)
-      except FileNotFoundError:
-          pass
-      server.bind(path)
-      os.chmod(path, 0o600)
-      server.listen(1)
-      try:
-          conn, _ = server.accept()
-          with conn:
-              conn.sendall((json.dumps(payload, separators=(",", ":")) + "\n").encode())
-      finally:
-          server.close()
-          try:
-              os.unlink(path)
-          except FileNotFoundError:
-              pass
-      ' "$BOOTSTRAP_SOCKET" &
+      python3 -c 'import json,os,socket,sys; path=sys.argv[1]; values=sys.stdin.buffer.read().split(b"\0"); len(values) < 4 and sys.exit("bootstrap input is incomplete"); payload={"version":1,"hive_endpoint":values[0].decode(),"registration_token":values[1].decode(),"backend":values[2].decode(),"run_id":values[3].decode()}; os.path.exists(path) and os.unlink(path); server=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM); server.bind(path); os.chmod(path,0o600); server.listen(1); server.settimeout(5); conn,_=server.accept(); conn.settimeout(5); conn.sendall((json.dumps(payload,separators=(",",":"))+"\n").encode()); ack=json.loads(conn.recv(65536).splitlines()[0]); ack == {"version":1,"type":"control_ack"} or sys.exit("invalid bootstrap acknowledgement"); conn.close(); server.close(); os.unlink(path)' "$BOOTSTRAP_SOCKET" &
     BOOTSTRAP_PID=$!
 
     # ── 2. Run the self-contained QEMU VM in the foreground. The guest

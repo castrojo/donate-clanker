@@ -187,6 +187,9 @@ Gum documents `gum choose` for option selection and `gum input --value`,
 
 - [ ] The VM runner exposes no host workspace, home, or container socket
 - [ ] Bootstrap uses only the versioned control-channel allowlist
+- [ ] `tests/guest-bootstrap-consumer.py` is the local test-only consumer for
+  validating and acknowledging `DONATE_CLANKER_BOOTSTRAP_SOCKET`; it is not the
+  signed external runner
 - [ ] Guest state contains no persisted registration or assignment token
 - [ ] Goose receives only assignment-scoped GitHub token values
 - [ ] Missing required repository documents stop native task execution before any Goose command starts

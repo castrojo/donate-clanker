@@ -9,6 +9,8 @@ home="$scratch/home"
 cfg_dir="$home/.config/donate-clanker"
 gum_log="$scratch/gum.log"
 runner_log="$scratch/runner.log"
+consumer="$repo_root/tests/guest-bootstrap-consumer.py"
+tmp_root="${TMPDIR:-/tmp}"
 real_just="$(command -v just)"
 mkdir -p "$fake_bin" "$home/.config/goose" "$home/.config/hive" "$cfg_dir"
 
@@ -48,6 +50,32 @@ cat >"$fake_bin/podman" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "${RUNNER_LOG:?}"
+mount_arg=""
+bootstrap_socket=""
+while (($#)); do
+  case "$1" in
+    --mount) mount_arg="${2:-}"; shift 2 ;;
+    --env)
+      case "${2:-}" in
+        DONATE_CLANKER_BOOTSTRAP_SOCKET=*) bootstrap_socket="${2#*=}" ;;
+      esac
+      shift 2
+      ;;
+    *) shift ;;
+  esac
+done
+if [[ -n "${RUNNER_CONSUMED:-}" && -n "$mount_arg" && -n "$bootstrap_socket" ]]; then
+  state_dir="$(sed -E 's/^type=bind,src=(.*),dst=.*$/\1/' <<<"$mount_arg")"
+  for _ in {1..50}; do
+    socket_path="$(find "$state_dir" -maxdepth 1 -type s -print -quit)"
+    [[ -n "$socket_path" ]] && break
+    sleep 0.01
+  done
+  [[ -n "$socket_path" ]] || { echo "bootstrap socket was not created" >&2; exit 1; }
+  DONATE_CLANKER_BOOTSTRAP_SOCKET="$socket_path" \
+    DONATE_CLANKER_TEST_CONSUMED="${RUNNER_CONSUMED}" \
+    python3 "${DONATE_CLANKER_TEST_CONSUMER:?}"
+fi
 exit 97
 EOF
 chmod +x "$fake_bin"/*
@@ -57,7 +85,8 @@ run_launcher() {
     -u TOOL -u DONATE_CLANKER_VM_RUNNER_IMAGE -u DONATE_CLANKER_HIVE_COMMIT \
     -u AGENT_MODEL -u GOOSE_PROVIDER -u GOOSE_MODEL \
     HOME="$home" PATH="$fake_bin:$PATH" \
-    GUM_LOG="$gum_log" RUNNER_LOG="$runner_log" \
+    GUM_LOG="$gum_log" RUNNER_LOG="$runner_log" RUNNER_CONSUMED="$scratch/runner-consumed" \
+    DONATE_CLANKER_TEST_CONSUMER="$consumer" \
     DONATE_CLANKER_VM_RUNNER_IMAGE="ghcr.io/projectbluefin/donate-clanker-vm-runner@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
     "$@" \
     "$real_just" --justfile "$repo_root/just/61-donate-clanker.just" donate-clanker
@@ -115,12 +144,16 @@ assert_file_contains 'GOOSE_PROVIDER=openai' "$cfg_dir/secrets.env"
 assert_file_contains 'GOOSE_MODEL=claude-3-5-sonnet' "$cfg_dir/secrets.env"
 assert_file_not_contains 'stale-' "$cfg_dir/secrets.env"
 test "$(stat -c '%a' "$cfg_dir/secrets.env")" = 600
-assert_file_contains "run --rm --interactive --tty --name donate-clanker-vm --device /dev/kvm --mount type=bind,src=${home}/.local/state/donate-clanker/runs/" "$runner_log"
+assert_file_contains "run --rm --interactive --tty --name donate-clanker-vm --device /dev/kvm --mount type=bind,src=${tmp_root}/donate-clanker-" "$runner_log"
 assert_file_contains "--env DONATE_CLANKER_BOOTSTRAP_SOCKET=/run/donate-clanker/bootstrap-" "$runner_log"
 assert_file_contains "--env DONATE_CLANKER_VM=1" "$runner_log"
 assert_file_contains "ghcr.io/projectbluefin/donate-clanker-vm-runner@sha256:" "$runner_log"
 assert_file_not_contains "--env-file" "$runner_log"
 assert_file_not_contains "${home}/.config/hive/contributor.env" "$runner_log"
+test -f "$scratch/runner-consumed"
+assert_file_contains "acknowledged" "$scratch/runner-consumed"
+test -z "$(find "$tmp_root" -maxdepth 1 -name 'donate-clanker-*' -user "$(id -un)" -print -quit 2>/dev/null)"
+assert_file_not_contains "super-secret-registration-token" "$runner_log"
 
 # One ready tool is selected without a chooser.
 rm -f "$home/.config/goose/config.yaml"
