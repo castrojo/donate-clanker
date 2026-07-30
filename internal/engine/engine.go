@@ -44,7 +44,6 @@ type Engine interface {
 	Version(context.Context) error
 	PodCreate(context.Context, PodSpec) error
 	Run(context.Context, RunSpec) (Process, error)
-	Logs(context.Context, string) (io.ReadCloser, error)
 	Stop(context.Context, string) error
 	Remove(context.Context, string) error
 	RemovePod(context.Context, string) error

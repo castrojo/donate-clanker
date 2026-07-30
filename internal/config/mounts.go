@@ -21,10 +21,9 @@ var (
 )
 
 type Mount struct {
-	HostPath       string
-	ContainerPath  string
-	ReadOnly       bool
-	SELinuxRelabel string
+	HostPath      string
+	ContainerPath string
+	ReadOnly      bool
 }
 
 func ResolveMounts(opts Options) ([]Mount, error) {
@@ -51,8 +50,8 @@ func ResolveMounts(opts Options) ([]Mount, error) {
 	}
 
 	return []Mount{
-		{HostPath: workspace, ContainerPath: WorkspaceMountPath, SELinuxRelabel: "z"},
-		{HostPath: cacheDir, ContainerPath: CacheMountPath, SELinuxRelabel: "z"},
+		{HostPath: workspace, ContainerPath: WorkspaceMountPath},
+		{HostPath: cacheDir, ContainerPath: CacheMountPath},
 	}, nil
 }
 

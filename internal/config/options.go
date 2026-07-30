@@ -33,7 +33,6 @@ type Options struct {
 	Model                  string
 	CacheDir               string
 	HiveConfigDir          string
-	GitHubConfigDir        string
 	GooseConfigPath        string
 	ProfileCatalogPath     string
 	ProfileCatalogExplicit bool
@@ -44,7 +43,6 @@ type Options struct {
 	NonInteractive         bool
 	ReadinessTimeout       time.Duration
 	ModelContainerPort     int
-	ModelContainerBaseURL  string
 }
 
 func Parse(args []string, env map[string]string) (Options, error) {
@@ -63,7 +61,6 @@ func Parse(args []string, env map[string]string) (Options, error) {
 	model := fs.String("model", defaults.Model, "explicit model override")
 	cacheDir := fs.String("cache-dir", defaults.CacheDir, "persistent model cache directory")
 	hiveConfigDir := fs.String("hive-config-dir", defaults.HiveConfigDir, "Hive config directory")
-	githubConfigDir := fs.String("github-config-dir", defaults.GitHubConfigDir, "GitHub config directory")
 	gooseConfigPath := fs.String("goose-config", defaults.GooseConfigPath, "validated Goose local config path")
 	profileCatalogPath := fs.String("profile-catalog", defaults.ProfileCatalogPath, "profile catalog path")
 	helperImage := fs.String("helper-image", defaults.HelperImage, "helper image reference")
@@ -99,7 +96,6 @@ func Parse(args []string, env map[string]string) (Options, error) {
 		Model:                  strings.TrimSpace(*model),
 		CacheDir:               normalizePath(*cacheDir),
 		HiveConfigDir:          normalizePath(*hiveConfigDir),
-		GitHubConfigDir:        normalizePath(*githubConfigDir),
 		GooseConfigPath:        normalizePath(*gooseConfigPath),
 		ProfileCatalogPath:     normalizePath(*profileCatalogPath),
 		ProfileCatalogExplicit: profileCatalogExplicit,
@@ -110,7 +106,6 @@ func Parse(args []string, env map[string]string) (Options, error) {
 		NonInteractive:         *nonInteractive,
 		ReadinessTimeout:       *readinessTimeout,
 		ModelContainerPort:     8000,
-		ModelContainerBaseURL:  "http://127.0.0.1:8000/v1",
 	}, nil
 }
 
@@ -142,7 +137,6 @@ func defaultOptions(env map[string]string) (Options, error) {
 		Model:              model,
 		CacheDir:           firstNonEmpty(env["DONATE_CLANKER_CACHE_DIR"], filepath.Join(home, ".local", "state", "donate-clanker", "cache", "ramalama")),
 		HiveConfigDir:      firstNonEmpty(env["DONATE_CLANKER_HIVE_CONFIG_DIR"], filepath.Join(home, ".config", "hive")),
-		GitHubConfigDir:    firstNonEmpty(env["DONATE_CLANKER_GITHUB_CONFIG_DIR"], filepath.Join(home, ".config", "gh")),
 		GooseConfigPath:    firstNonEmpty(env["DONATE_CLANKER_GOOSE_CONFIG"], filepath.Join(home, ".config", "goose", "config.yaml")),
 		ProfileCatalogPath: firstNonEmpty(env["DONATE_CLANKER_PROFILE_CATALOG"], filepath.Join("image", "config", "models.json")),
 		HelperImage:        strings.TrimSpace(env["DONATE_CLANKER_HELPER_IMAGE"]),

@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"fmt"
-	"io"
 	"strings"
 )
 
@@ -69,14 +68,6 @@ func (e podmanEngine) Run(ctx context.Context, spec RunSpec) (Process, error) {
 	}
 
 	return e.runner.Start(ctx, "podman", args...)
-}
-
-func (e podmanEngine) Logs(ctx context.Context, name string) (io.ReadCloser, error) {
-	process, err := e.runner.Start(ctx, "podman", "logs", "-f", name)
-	if err != nil {
-		return nil, err
-	}
-	return process.StdoutStderr(), nil
 }
 
 func (e podmanEngine) Stop(ctx context.Context, name string) error {

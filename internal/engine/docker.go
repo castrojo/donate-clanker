@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"fmt"
-	"io"
 	"strings"
 )
 
@@ -60,14 +59,6 @@ func (e dockerEngine) Run(ctx context.Context, spec RunSpec) (Process, error) {
 		return &completedProcess{output: strings.TrimSpace(result.Stdout), err: err}, err
 	}
 	return e.runner.Start(ctx, "docker", args...)
-}
-
-func (e dockerEngine) Logs(ctx context.Context, name string) (io.ReadCloser, error) {
-	process, err := e.runner.Start(ctx, "docker", "logs", "-f", name)
-	if err != nil {
-		return nil, err
-	}
-	return process.StdoutStderr(), nil
 }
 
 func (e dockerEngine) Stop(ctx context.Context, name string) error {

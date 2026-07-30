@@ -251,7 +251,6 @@ func testOptions() config.Options {
 		Profile:            "Qwen3.5-4B",
 		CacheDir:           "/cache",
 		HiveConfigDir:      "/hive",
-		GitHubConfigDir:    "/gh",
 		GooseConfigPath:    "/goose/config.yaml",
 		ProfileCatalogPath: "/catalog.json",
 		HelperImage:        "helper@sha256:abc",
@@ -409,12 +408,9 @@ func (fakeEngine) Name() string                                                {
 func (fakeEngine) Version(context.Context) error                               { return nil }
 func (fakeEngine) PodCreate(context.Context, engine.PodSpec) error             { return nil }
 func (fakeEngine) Run(context.Context, engine.RunSpec) (engine.Process, error) { return nil, nil }
-func (fakeEngine) Logs(context.Context, string) (io.ReadCloser, error) {
-	return io.NopCloser(noopReader{}), nil
-}
-func (fakeEngine) Stop(context.Context, string) error      { return nil }
-func (fakeEngine) Remove(context.Context, string) error    { return nil }
-func (fakeEngine) RemovePod(context.Context, string) error { return nil }
+func (fakeEngine) Stop(context.Context, string) error                          { return nil }
+func (fakeEngine) Remove(context.Context, string) error                        { return nil }
+func (fakeEngine) RemovePod(context.Context, string) error                     { return nil }
 
 func appScratch(t *testing.T, name string) string {
 	t.Helper()

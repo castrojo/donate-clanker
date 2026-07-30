@@ -148,9 +148,6 @@ func (e *recordingEngine) Run(_ context.Context, spec engine.RunSpec) (engine.Pr
 	e.calls = append(e.calls, "run "+spec.Name+" "+spec.Image+" detach="+boolString(spec.Detach))
 	return fakeProcess{}, nil
 }
-func (e *recordingEngine) Logs(context.Context, string) (io.ReadCloser, error) {
-	return io.NopCloser(nilReader{}), nil
-}
 func (e *recordingEngine) Stop(_ context.Context, name string) error {
 	e.calls = append(e.calls, "stop "+name)
 	return nil

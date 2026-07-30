@@ -50,7 +50,6 @@ func TestResolveMountsReturnsOnlyWorkspaceAndCache(t *testing.T) {
 	t.Setenv("HOME", root)
 	opts := minimalMountOptions(t, root)
 	opts.HiveConfigDir = filepath.Join(root, "missing-hive")
-	opts.GitHubConfigDir = filepath.Join(root, "missing-gh")
 
 	mounts, err := ResolveMounts(opts)
 	if err != nil {
@@ -96,9 +95,8 @@ func minimalMountOptions(t *testing.T, root string) Options {
 		t.Fatalf("MkdirAll(%q) error = %v", workspace, err)
 	}
 	return Options{
-		Workspace:       workspace,
-		HiveConfigDir:   filepath.Join(root, ".config", "hive"),
-		GitHubConfigDir: filepath.Join(root, ".config", "gh"),
-		CacheDir:        cacheDir,
+		Workspace:     workspace,
+		HiveConfigDir: filepath.Join(root, ".config", "hive"),
+		CacheDir:      cacheDir,
 	}
 }
