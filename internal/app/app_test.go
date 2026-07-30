@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/castrojo/donate-clanker/internal/config"
-	"github.com/castrojo/donate-clanker/internal/engine"
-	"github.com/castrojo/donate-clanker/internal/hive"
-	"github.com/castrojo/donate-clanker/internal/pod"
-	"github.com/castrojo/donate-clanker/internal/profile"
-	"github.com/castrojo/donate-clanker/internal/setup"
+	"github.com/projectbluefin/donate-clanker/internal/config"
+	"github.com/projectbluefin/donate-clanker/internal/engine"
+	"github.com/projectbluefin/donate-clanker/internal/hive"
+	"github.com/projectbluefin/donate-clanker/internal/pod"
+	"github.com/projectbluefin/donate-clanker/internal/profile"
+	"github.com/projectbluefin/donate-clanker/internal/setup"
 )
 
 func TestRunOrdersFoundationSteps(t *testing.T) {

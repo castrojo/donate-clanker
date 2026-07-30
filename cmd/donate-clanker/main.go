@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/castrojo/donate-clanker/internal/app"
-	"github.com/castrojo/donate-clanker/internal/config"
+	"github.com/projectbluefin/donate-clanker/internal/app"
+	"github.com/projectbluefin/donate-clanker/internal/config"
 )
 
 func main() {

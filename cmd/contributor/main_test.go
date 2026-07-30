@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/castrojo/donate-clanker/internal/hive"
-	"github.com/castrojo/donate-clanker/internal/runner"
+	"github.com/projectbluefin/donate-clanker/internal/hive"
+	"github.com/projectbluefin/donate-clanker/internal/runner"
 )
 
 func TestClearWorkerCredentialEnvironmentRemovesHostAuthState(t *testing.T) {

@@ -1,6 +1,6 @@
 # donate-clanker
 
-**Install:** `git clone https://github.com/castrojo/donate-clanker ~/.local/share/donate-clanker && echo 'import "'"$HOME"'/.local/share/donate-clanker/just/61-donate-clanker.just"' >> ~/Justfile`
+**Install:** `git clone https://github.com/projectbluefin/donate-clanker ~/.local/share/donate-clanker && echo 'import "'"$HOME"'/.local/share/donate-clanker/just/61-donate-clanker.just"' >> ~/Justfile`
 
 `ujust donate-clanker` — run the [KubeStellar Hive](https://github.com/kubestellar/hive)
 contributor workload (donate CLI/API tokens to the Bluefin agent swarm) as a
@@ -261,7 +261,7 @@ touch `/usr` or require `sudo` at all — no image rebuild, no transient
 overlay, nothing to redo after a reboot:
 
 ```sh
-git clone https://github.com/castrojo/donate-clanker ~/.local/share/donate-clanker
+git clone https://github.com/projectbluefin/donate-clanker ~/.local/share/donate-clanker
 
 # one-off, explicit file:
 just --justfile ~/.local/share/donate-clanker/just/61-donate-clanker.just donate-clanker-doctor

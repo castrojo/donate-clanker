@@ -11,9 +11,9 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/castrojo/donate-clanker/internal/config"
-	"github.com/castrojo/donate-clanker/internal/hive"
-	"github.com/castrojo/donate-clanker/internal/runner"
+	"github.com/projectbluefin/donate-clanker/internal/config"
+	"github.com/projectbluefin/donate-clanker/internal/hive"
+	"github.com/projectbluefin/donate-clanker/internal/runner"
 )
 
 const defaultRuntimeDir = "/var/lib/donate-clanker"

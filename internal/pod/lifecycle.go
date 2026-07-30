@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/castrojo/donate-clanker/internal/config"
-	"github.com/castrojo/donate-clanker/internal/engine"
+	"github.com/projectbluefin/donate-clanker/internal/config"
+	"github.com/projectbluefin/donate-clanker/internal/engine"
 )
 
 func StartModel(ctx context.Context, handle *Handle, spec ModelSpec) error {

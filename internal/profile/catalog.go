@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	imageconfig "github.com/castrojo/donate-clanker/image/config"
+	imageconfig "github.com/projectbluefin/donate-clanker/image/config"
 )
 
 const defaultContextSize = 32768

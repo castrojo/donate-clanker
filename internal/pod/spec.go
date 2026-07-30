@@ -6,8 +6,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/castrojo/donate-clanker/internal/config"
-	"github.com/castrojo/donate-clanker/internal/engine"
+	"github.com/projectbluefin/donate-clanker/internal/config"
+	"github.com/projectbluefin/donate-clanker/internal/engine"
 )
 
 const DefaultContainerPort = 8000

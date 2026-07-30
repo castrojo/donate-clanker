@@ -1,4 +1,4 @@
-module github.com/castrojo/donate-clanker
+module github.com/projectbluefin/donate-clanker
 
 go 1.22
 
