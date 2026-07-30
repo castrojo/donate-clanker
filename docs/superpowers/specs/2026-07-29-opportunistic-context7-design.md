@@ -36,8 +36,9 @@ Context7 remains available for follow-up lookups during the same task.
 ## Failure behavior
 
 Context7 failures do not fail task startup or task execution. If Goose calls
-Context7 and the request fails, the container emits one concise warning and
-continues. If Goose never calls Context7, no warning is emitted.
+Context7 and the request fails, Goose/MCP surfaces one concise warning and
+continues. If Goose never calls Context7, no warning is emitted. The worker
+does not intercept or parse raw MCP traffic.
 
 The MVP does not add an API key requirement, automatic documentation ingestion,
 remote web fallback, local vector search, or a second retrieval service.
