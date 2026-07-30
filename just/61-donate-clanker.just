@@ -56,6 +56,7 @@ Description=Donate a Clanker — Hive contributor workload (foreground only)
 
 [Container]
 Image=ghcr.io/projectbluefin/donate-clanker:stable
+Pull=newer
 ContainerName=donate-clanker
 UserNS=keep-id
 
