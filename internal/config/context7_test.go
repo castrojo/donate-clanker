@@ -77,6 +77,22 @@ func TestLoadLocalAgentPolicyTooLarge(t *testing.T) {
 	}
 }
 
+func TestDefaultGooseEnvironmentDisablesThinking(t *testing.T) {
+	env := DefaultGooseEnvironment("Qwen3.6-35B-A3B")
+
+	for key, want := range map[string]string{
+		"GOOSE_PROVIDER":        "openai",
+		"GOOSE_MODEL":           "Qwen3.6-35B-A3B",
+		"GOOSE_THINKING_EFFORT": "off",
+		"OPENAI_BASE_URL":       "http://127.0.0.1:8000/v1",
+		"OPENAI_API_KEY":        "local",
+	} {
+		if got := env[key]; got != want {
+			t.Fatalf("DefaultGooseEnvironment()[%q] = %q, want %q", key, got, want)
+		}
+	}
+}
+
 func repoFile(t *testing.T, parts ...string) string {
 	t.Helper()
 	root := repoRoot(t)

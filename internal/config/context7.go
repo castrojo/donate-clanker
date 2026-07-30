@@ -9,6 +9,14 @@ import (
 
 const policyMaxSize = 64 * 1024
 
+const (
+	DefaultGooseProvider       = "openai"
+	DefaultGooseModel          = "local"
+	DefaultGooseOpenAIBaseURL  = "http://127.0.0.1:8000/v1"
+	DefaultGooseOpenAIAPIKey   = "local"
+	DefaultGooseThinkingEffort = "off"
+)
+
 var (
 	ErrMissingFile  = errors.New("missing file")
 	ErrEmptyFile    = errors.New("empty file")
@@ -25,6 +33,20 @@ func LoadLocalAgentPolicy(path string) (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+func DefaultGooseEnvironment(model string) map[string]string {
+	if model == "" {
+		model = DefaultGooseModel
+	}
+
+	return map[string]string{
+		"GOOSE_PROVIDER":        DefaultGooseProvider,
+		"GOOSE_MODEL":           model,
+		"GOOSE_THINKING_EFFORT": DefaultGooseThinkingEffort,
+		"OPENAI_BASE_URL":       DefaultGooseOpenAIBaseURL,
+		"OPENAI_API_KEY":        DefaultGooseOpenAIAPIKey,
+	}
 }
 
 func loadBytes(path string, maxSize int64) ([]byte, error) {
