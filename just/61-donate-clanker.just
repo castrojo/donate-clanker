@@ -275,6 +275,16 @@ FRAG
       ;;
   esac
 }
+gum_can_prompt() {
+  command -v gum &>/dev/null || return 1
+  [[ "${DONATE_CLANKER_TEST_GUM_TTY:-}" == "1" ]] || [[ -t 0 ]]
+}
+tool_supports_launcher_model_override() {
+  case "$1" in
+    claude|copilot|codex) return 0 ;;
+    *)                    return 1 ;;
+  esac
+}
 '''
 
 # Start donating clanker cycles to the hive — foreground, Ctrl-C to stop.
@@ -352,18 +362,16 @@ donate-clanker:
     #        the next run's default. ──
     AGENT_MODEL="${AGENT_MODEL:-}"
     LAST_MODEL_FOR_TOOL=""
+    if ! tool_supports_launcher_model_override "$TOOL"; then
+      AGENT_MODEL=""
+    fi
     case "$TOOL" in
       claude)  LAST_MODEL_FOR_TOOL="$LAST_MODEL_CLAUDE" ;;
       copilot) LAST_MODEL_FOR_TOOL="$LAST_MODEL_COPILOT" ;;
       codex)   LAST_MODEL_FOR_TOOL="$LAST_MODEL_CODEX" ;;
     esac
-    if command -v gum &>/dev/null && [[ -t 0 ]]; then
-      if [[ "$TOOL" == "goose" && -z "$GOOSE_PROVIDER" ]]; then
-        GOOSE_PROVIDER="$(printf '%s\n' anthropic openai google ollama openrouter | gum choose --selected="${LAST_GOOSE_PROVIDER}" --header "Goose provider (Esc to leave unset — needs 'goose configure' instead):")"
-      fi
-      if [[ "$TOOL" == "goose" ]]; then
-        [[ -z "$GOOSE_MODEL" ]] && GOOSE_MODEL="$(gum input --value "${LAST_GOOSE_MODEL}" --placeholder "e.g. claude-3-5-sonnet — blank for goose's default" --header "Goose model (optional):")"
-      elif [[ "$TOOL" == "copilot" && -z "$AGENT_MODEL" ]]; then
+    if tool_supports_launcher_model_override "$TOOL" && gum_can_prompt; then
+      if [[ "$TOOL" == "copilot" && -z "$AGENT_MODEL" ]]; then
         MODEL_LIST="$(copilot_live_models || true)"
         if [[ -n "$MODEL_LIST" ]]; then
           AGENT_MODEL="$(printf '%s\n' "$MODEL_LIST" | gum choose --selected="${LAST_MODEL_FOR_TOOL}" --header "Model for copilot (Esc to leave unset — use copilot's default):")"
@@ -526,7 +534,9 @@ donate-clanker:
     # from earlier runs.
     grep -v -E '^(GOOSE_PROVIDER|GOOSE_MODEL|AGENT_MODEL|GH_TOKEN)=' "${CFG_DIR}/secrets.env" > "${CFG_DIR}/secrets.env.tmp" 2>/dev/null || true
     mv "${CFG_DIR}/secrets.env.tmp" "${CFG_DIR}/secrets.env"
-    [[ -n "$AGENT_MODEL" ]] && echo "AGENT_MODEL=${AGENT_MODEL}" >> "${CFG_DIR}/secrets.env"
+    if tool_supports_launcher_model_override "$TOOL" && [[ -n "$AGENT_MODEL" ]]; then
+      echo "AGENT_MODEL=${AGENT_MODEL}" >> "${CFG_DIR}/secrets.env"
+    fi
     # Upstream contributor-agent.sh needs GH_TOKEN regardless of
     # AGENT_BACKEND — it's the contributor's personal token for the
     # fork+push credential helper, independent of which CLI drives the

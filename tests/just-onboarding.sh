@@ -7,21 +7,36 @@ trap 'rm -rf "$scratch"' EXIT
 fake_bin="$scratch/bin"
 home="$scratch/home"
 cfg_dir="$home/.config/donate-clanker"
+gum_log="$scratch/gum.log"
 mkdir -p "$fake_bin" "$home/.config/goose" "$home/.config/hive" "$cfg_dir"
 
 cat >"$fake_bin/gh" <<'EOF'
 #!/usr/bin/env bash
 [[ "${GH_READY:-}" == "1" ]] || exit 1
 EOF
+cat >"$fake_bin/claude" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
 cat >"$fake_bin/goose" <<'EOF'
 #!/usr/bin/env bash
 exit 0
+EOF
+cat >"$fake_bin/gum" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "${1:-}" >> "${GUM_LOG:?}"
+case "${1:-}" in
+  input) printf '%s\n' "${GUM_INPUT_RESPONSE:-}" ;;
+  choose) printf '%s\n' "${GUM_CHOOSE_RESPONSE:-}" ;;
+  *) exit 1 ;;
+esac
 EOF
 cat >"$fake_bin/systemctl" <<'EOF'
 #!/usr/bin/env bash
 exit 1
 EOF
-chmod +x "$fake_bin/gh" "$fake_bin/goose" "$fake_bin/systemctl"
+chmod +x "$fake_bin/gh" "$fake_bin/claude" "$fake_bin/goose" "$fake_bin/gum" "$fake_bin/systemctl"
 
 run_launcher() {
   env \
@@ -35,6 +50,7 @@ run_launcher() {
     -u CLANKER_STRICT_SANDBOX \
     HOME="$home" \
     PATH="$fake_bin:$PATH" \
+    GUM_LOG="$gum_log" \
     "$@" \
     just --justfile "$repo_root/just/61-donate-clanker.just" donate-clanker
 }
@@ -52,6 +68,11 @@ assert_not_contains() {
 assert_file_not_contains() {
   local needle="$1" path="$2"
   ! grep -Fq "$needle" "$path"
+}
+
+assert_file_contains() {
+  local needle="$1" path="$2"
+  grep -Fq "$needle" "$path"
 }
 
 write_goose_config() {
@@ -138,3 +159,25 @@ assert_file_not_contains 'LAST_GOOSE_PROVIDER=' "$cfg_dir/last-selections.env"
 assert_file_not_contains 'LAST_GOOSE_MODEL=' "$cfg_dir/last-selections.env"
 assert_not_contains 'GOOSE_PROVIDER=' "$(cat "$cfg_dir/secrets.env")"
 assert_not_contains 'GOOSE_MODEL=' "$(cat "$cfg_dir/secrets.env")"
+
+mkdir -p "$home/.claude"
+: >"$gum_log"
+set +e
+legacy_prompt="$(run_launcher TOOL=claude DONATE_CLANKER_TEST_GUM_TTY=1 GUM_INPUT_RESPONSE=claude-sonnet-test CLANKER_SRC="$repo_root" 2>&1)"
+status=$?
+set -e
+test "$status" -ne 0
+assert_contains 'WARNING: no GH_TOKEN available' "$legacy_prompt"
+assert_file_contains 'input' "$gum_log"
+assert_file_contains 'LAST_MODEL_CLAUDE=claude-sonnet-test' "$cfg_dir/last-selections.env"
+assert_file_contains 'AGENT_MODEL=claude-sonnet-test' "$cfg_dir/secrets.env"
+
+: >"$gum_log"
+set +e
+goose_prompt="$(run_launcher TOOL=goose GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 AGENT_MODEL=forced-goose-model CLANKER_SRC="$repo_root" 2>&1)"
+status=$?
+set -e
+test "$status" -ne 0
+test ! -s "$gum_log"
+assert_file_contains 'LAST_MODEL_CLAUDE=claude-sonnet-test' "$cfg_dir/last-selections.env"
+assert_not_contains 'AGENT_MODEL=' "$(cat "$cfg_dir/secrets.env")"
