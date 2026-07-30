@@ -8,6 +8,7 @@ metadata:
     - /websites/pkg_go_dev_go1_25_3
     - /lima-vm/lima
     - /charmbracelet/gum
+    - /qemu/qemu
 ---
 
 # Donate Clanker Worker Credential Boundary
@@ -141,6 +142,8 @@ The VM design in
 `docs/superpowers/specs/2026-07-30-donate-clanker-vm-design.md` defines the
 QEMU runner, one-shot control channel, guest clone lifecycle, and cleanup
 boundary. It supersedes the earlier Lima compatibility path for new work.
+QEMU's `/qemu/qemu` documentation defines the `microvm` machine's direct
+kernel boot and user-mode networking options used by that contract.
 
 Gum documents `gum choose` for option selection and `gum input --value`,
 `--placeholder`, and `--header` for prefilled text prompts (source: Context7
