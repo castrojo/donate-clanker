@@ -28,8 +28,9 @@ just --justfile just/61-donate-clanker.just donate-clanker
 
 The launcher verifies GitHub, agent, and Hive setup, then requires
 `DONATE_CLANKER_VM_RUNNER_IMAGE` to name the signed, immutable QEMU runner
-image (a `sha256:` digest). It runs that image with KVM and no host filesystem,
-home-directory, tool-configuration, or container-socket mounts:
+image (a `sha256:` digest). It runs that image with KVM and only a per-run
+control/overlay directory; no host workspace, home-directory,
+tool-configuration, or container-socket mounts are used:
 
 ```bash
 DONATE_CLANKER_VM_RUNNER_IMAGE=\

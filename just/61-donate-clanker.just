@@ -18,7 +18,8 @@
 # 'just --justfile', or import it from your own personal Justfile — see
 # README "Installing this into your own setup" for the copy-paste
 # commands. Persistent state is limited to launcher configuration; the VM
-# runner receives no host filesystem mounts.
+# runner receives only its per-run control/overlay directory, never a
+# workspace or host home/configuration mount.
 
 # Deterministic detection order for every supported CLI. The launcher selects
 # the only ready tool silently, or asks the user to choose when several are
@@ -115,6 +116,10 @@ ensure_vm_runner() {
   command -v podman &>/dev/null || {
     echo "ERROR: Podman is required to run the pinned QEMU VM runner." >&2
     echo "  Install Podman, then re-run donate-clanker." >&2
+    return 1
+  }
+  command -v python3 &>/dev/null || {
+    echo "ERROR: python3 is required to open the one-shot VM bootstrap channel." >&2
     return 1
   }
   [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]] || {
@@ -343,9 +348,82 @@ donate-clanker:
       [[ -f "$HIVE_CONTRIBUTOR_ENV" ]] || { echo "ERROR: contribute-setup ran but ${HIVE_CONTRIBUTOR_ENV} still missing." >&2; exit 1; }
       echo "✓ Upstream contribute-setup complete."
     fi
+    read_hive_value() {
+      local key="$1"
+      awk -F= -v wanted="$key" '$1 == wanted {sub(/^[^=]*=/, ""); print; exit}' "$HIVE_CONTRIBUTOR_ENV"
+    }
+
+    RUN_ID="$(date +%s)-$$"
+    RUN_DIR="${STATE_DIR}/runs/${RUN_ID}"
+    mkdir -p "$RUN_DIR"
+    BOOTSTRAP_SOCKET_NAME="bootstrap-${RUN_ID}.sock"
+    BOOTSTRAP_SOCKET="${RUN_DIR}/${BOOTSTRAP_SOCKET_NAME}"
+    BOOTSTRAP_PID=""
+    cleanup_bootstrap() {
+      if [[ -n "$BOOTSTRAP_PID" ]]; then
+        kill "$BOOTSTRAP_PID" 2>/dev/null || true
+        wait "$BOOTSTRAP_PID" 2>/dev/null || true
+      fi
+      rm -f "$BOOTSTRAP_SOCKET"
+      rm -rf "$RUN_DIR"
+    }
+    trap cleanup_bootstrap EXIT INT TERM
+
+    HIVE_ENDPOINT="$(read_hive_value HIVE_WS_URL)"
+    [[ -n "$HIVE_ENDPOINT" ]] || HIVE_ENDPOINT="$(read_hive_value HIVE_HUB)"
+    HIVE_REGISTRATION_TOKEN="$(read_hive_value HIVE_REGISTRATION_TOKEN)"
+    [[ -n "$HIVE_ENDPOINT" && -n "$HIVE_REGISTRATION_TOKEN" ]] || {
+      echo "ERROR: Hive setup is missing HIVE_HUB/HIVE_WS_URL or HIVE_REGISTRATION_TOKEN." >&2
+      exit 1
+    }
+
+    # QEMU opens this socket from the runner's per-run bind mount.
+    # The envelope is read from a pipe and sent once; no secret is present in
+    # the runner environment, command line, or a host-created env file.
+    umask 077
+    printf '%s\0%s\0%s\0%s\0' \
+      "$HIVE_ENDPOINT" "$HIVE_REGISTRATION_TOKEN" "$TOOL" "$RUN_ID" |
+      python3 -c '
+      import json
+      import os
+      import socket
+      import sys
+
+      path = sys.argv[1]
+      values = sys.stdin.buffer.read().split(b"\0")
+      if len(values) < 4:
+          raise SystemExit("bootstrap input is incomplete")
+      payload = {
+          "version": 1,
+          "hive_endpoint": values[0].decode(),
+          "registration_token": values[1].decode(),
+          "backend": values[2].decode(),
+          "run_id": values[3].decode(),
+      }
+      server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+      try:
+          os.unlink(path)
+      except FileNotFoundError:
+          pass
+      server.bind(path)
+      os.chmod(path, 0o600)
+      server.listen(1)
+      try:
+          conn, _ = server.accept()
+          with conn:
+              conn.sendall((json.dumps(payload, separators=(",", ":")) + "\n").encode())
+      finally:
+          server.close()
+          try:
+              os.unlink(path)
+          except FileNotFoundError:
+              pass
+      ' "$BOOTSTRAP_SOCKET" &
+    BOOTSTRAP_PID=$!
+
     # ── 2. Run the self-contained QEMU VM in the foreground. The guest
-    #        clones assignments itself; no host path or socket crosses this
-    #        boundary. exec preserves terminal Ctrl-C semantics. ──
+    #        clones assignments itself; only the per-run control/overlay
+    #        directory crosses this boundary. ──
     [[ -n "{{vm_runner_image}}" ]] || {
       echo "ERROR: donate-clanker VM runner is not configured." >&2
       echo "  Set DONATE_CLANKER_VM_RUNNER_IMAGE to the signed immutable runner image reference." >&2
@@ -355,8 +433,9 @@ donate-clanker:
     CONTAINER_ARGS=(
       podman run --rm --interactive --tty --name donate-clanker-vm
       --device /dev/kvm
-      --env-file "$HIVE_CONTRIBUTOR_ENV"
-      --env "AGENT_BACKEND=${TOOL}"
+      --mount "type=bind,src=${RUN_DIR},dst=/run/donate-clanker,rw"
+      --env "DONATE_CLANKER_BOOTSTRAP_SOCKET=/run/donate-clanker/${BOOTSTRAP_SOCKET_NAME}"
+      --env "DONATE_CLANKER_RUN_ID=${RUN_ID}"
       --env "DONATE_CLANKER_VM=1"
     )
     if [[ -n "$AGENT_MODEL" ]]; then
@@ -369,7 +448,11 @@ donate-clanker:
     CONTAINER_ARGS+=("{{vm_runner_image}}")
     echo "✓ donate-clanker is running in the pinned QEMU VM runner."
     echo "  Stop any time with Ctrl-C, or: ujust donate-clanker-stop"
-    exec "${CONTAINER_ARGS[@]}"
+    set +e
+    "${CONTAINER_ARGS[@]}"
+    status=$?
+    set -e
+    exit "$status"
 
 # Preflight check: is this machine actually ready for 'ujust donate-clanker'?
 # Never starts the container — read-only diagnostics only.

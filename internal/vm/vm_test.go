@@ -41,6 +41,24 @@ func TestQEMUArgsContainOnlyGuestInputs(t *testing.T) {
 	}
 }
 
+func TestQEMUArgsUseThePerRunControlSocket(t *testing.T) {
+	spec := testSpec()
+	args, err := spec.QEMUArgs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(args, "\x00")
+	want := "-chardev\x00socket,id=control,path=" + spec.Channel
+	if !strings.Contains(got, want) {
+		t.Fatalf("QEMU args do not connect the control channel to %q: %s", spec.Channel, got)
+	}
+	for _, secret := range []string{"registration_token", "secret", "HIVE_REGISTRATION_TOKEN"} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("QEMU args contain bootstrap credential material %q", secret)
+		}
+	}
+}
+
 func TestRunnerArgsDoNotExposeHostSockets(t *testing.T) {
 	args, err := testSpec().RunnerArgs()
 	if err != nil {

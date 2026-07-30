@@ -115,8 +115,12 @@ assert_file_contains 'GOOSE_PROVIDER=openai' "$cfg_dir/secrets.env"
 assert_file_contains 'GOOSE_MODEL=claude-3-5-sonnet' "$cfg_dir/secrets.env"
 assert_file_not_contains 'stale-' "$cfg_dir/secrets.env"
 test "$(stat -c '%a' "$cfg_dir/secrets.env")" = 600
-assert_file_contains "run --rm --interactive --tty --name donate-clanker-vm --device /dev/kvm --env-file ${home}/.config/hive/contributor.env --env AGENT_BACKEND=goose --env DONATE_CLANKER_VM=1 --env GOOSE_PROVIDER=openai --env GOOSE_MODEL=claude-3-5-sonnet ghcr.io/projectbluefin/donate-clanker-vm-runner@sha256:" "$runner_log"
-assert_file_not_contains "--volume" "$runner_log"
+assert_file_contains "run --rm --interactive --tty --name donate-clanker-vm --device /dev/kvm --mount type=bind,src=${home}/.local/state/donate-clanker/runs/" "$runner_log"
+assert_file_contains "--env DONATE_CLANKER_BOOTSTRAP_SOCKET=/run/donate-clanker/bootstrap-" "$runner_log"
+assert_file_contains "--env DONATE_CLANKER_VM=1" "$runner_log"
+assert_file_contains "ghcr.io/projectbluefin/donate-clanker-vm-runner@sha256:" "$runner_log"
+assert_file_not_contains "--env-file" "$runner_log"
+assert_file_not_contains "${home}/.config/hive/contributor.env" "$runner_log"
 
 # One ready tool is selected without a chooser.
 rm -f "$home/.config/goose/config.yaml"
