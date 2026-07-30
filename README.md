@@ -13,7 +13,9 @@ provide:
 - Usable KVM (`/dev/kvm` readable and writable by the invoking user).
 - Network access to GitHub, the Hive endpoint, and the configured OCI registry.
 - A ready, authenticated supported agent CLI (`claude`, `copilot`, `goose`, or
-  `codex`); `gum` is used when an attended choice is needed.
+  `codex`). `gum` is used for an attended choice when available; if several
+  CLIs are ready and `gum` is unavailable, the plain `ujust donate-clanker`
+  path selects Goose automatically.
 
 The host does not provide a repository workspace to the guest. Do not install
 or configure Lima for the product path.
@@ -23,10 +25,13 @@ or configure Lima for the product path.
 From any supported Bluefin host, run:
 
 ```bash
-just --justfile just/61-donate-clanker.just donate-clanker
+ujust donate-clanker
 ```
 
-The launcher verifies GitHub, agent, and Hive setup, then requires
+The launcher verifies GitHub, agent, and Hive setup, then uses the signed,
+versioned local VM artifact path by default. When using a checkout directly,
+substitute `just --justfile just/61-donate-clanker.just` for `ujust`.
+The pinned remote-runner path requires
 `DONATE_CLANKER_VM_RUNNER_IMAGE` to name the signed, immutable QEMU runner
 image (a `sha256:` digest). It runs that image with KVM and only a per-run
 control/overlay directory; no host workspace, home-directory,
@@ -48,8 +53,11 @@ guest. It does not copy the host home directory, SSH keys, general-purpose
 environment, or container-engine socket into the VM. Assignment credentials
 are scoped to the guest task and are scrubbed during cleanup.
 
-For local VM prototyping, place one built raw disk in
-`~/.local/state/donate-clanker/` or point `DONATE_CLANKER_VM_RAW` at it:
+For local VM prototyping, the launcher auto-fetches the versioned raw VM
+artifact for the host architecture into
+`~/.local/state/donate-clanker/`, then verifies its downloaded SHA-256
+checksum. To use an existing disk instead, point `DONATE_CLANKER_VM_RAW` at
+it:
 
 ```bash
 DONATE_CLANKER_VM_RAW=/path/to/donate-clanker-vm-25.08.14-x86_64.raw \
@@ -57,8 +65,13 @@ DONATE_CLANKER_VM_RAW=/path/to/donate-clanker-vm-25.08.14-x86_64.raw \
 ```
 
 This boots the raw FSDK disk directly with host QEMU/KVM using 4 vCPUs and
-8 GiB RAM. The default remote-agent profile is 2 vCPUs/4 GiB; local inference
-memory belongs to the host model runtime, not this worker VM.
+8 GiB RAM. A remote agent needs at least 2 vCPUs/2 GiB RAM; 2 vCPUs/4 GiB is
+the recommended remote-agent size. Local inference is separate and must be
+sized for the host model runtime; it is not added to the worker VM sizing.
+
+The upstream BuildStream build has taken about 10 minutes on x86_64 and
+produced a roughly 2.2G raw disk in local runs. This is a non-guaranteed
+benchmark, not a release-time or hardware-performance promise.
 
 For Goose with a Copilot subscription, run `goose configure`, select **GitHub
 Copilot**, and complete Goose's device-flow login. The launcher defaults Goose
@@ -79,8 +92,10 @@ The VM release is composed of matching, signed immutable artifacts:
 - `ghcr.io/projectbluefin/donate-clanker-vm-guest@sha256:<digest>` — the
   immutable guest kernel, initramfs/root filesystem, and worker.
 
-The launcher consumes digests, not floating `latest` images. Runner and guest
-artifacts are published and maintained by this repository's release process.
+The launcher consumes digests, not floating `latest` images. The local raw VM
+download is likewise versioned and checksum-verified. Runner and guest
+artifacts are published and maintained by this repository's release process;
+the FSDK raw disk is an external artifact.
 
 Local inference is an explicit external dependency. The FSDK/RamaLama helper
 artifact is built and published by

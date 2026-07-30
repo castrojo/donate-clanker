@@ -44,8 +44,10 @@ Do not use this for:
 9. Preserve redaction on both command output and surfaced errors. Redact `*_TOKEN=...`, YAML-style secret keys, and the full `Authorization:` line value.
 10. For the published compatibility image, mount only `/config` and `/workspace`, source `/config/hive/gh-auth.env` into the upstream process environment, and attach the contributor tmux session to the invoking terminal.
 11. Launcher auto-detection considers every ready CLI. Preserve the attended
-    `gum choose` chooser when several are ready and `gum input --value` for
-    remembered Goose provider/model prompts; persist only current nonblank
+    `gum choose` chooser when several are ready; when `gum` is unavailable and
+    Goose is ready, the plain launcher path auto-selects Goose. Preserve
+    `gum input --value` for remembered Goose provider/model prompts; Goose
+    defaults to provider `github_copilot`. Persist only current nonblank
     launcher-managed model settings in the mode-`0600` selections state.
 12. Run focused tests for `cmd/contributor`, `internal/app`, `internal/config`, `internal/runner`, and `internal/hive`, then run `go test ./...`.
 
@@ -67,6 +69,17 @@ control channel, and the overlay are removed on every exit path.
 The former Lima compatibility-image behavior is historical/migration context
 only. Do not add new host workspace-sharing or Lima mounts when changing the
 VM launcher.
+
+The current local VM UX auto-fetches the versioned raw FSDK disk for the host
+architecture into the launcher state directory and verifies its SHA-256
+sidecar before boot. It boots direct QEMU/KVM with 4 vCPUs and 8 GiB RAM.
+Remote-agent sizing is 2 vCPUs/2 GiB minimum and 2 vCPUs/4 GiB recommended;
+local inference is host-sized separately for the model runtime. A local
+BuildStream run has taken about 10 minutes on x86_64 and produced a roughly
+2.2G raw disk; treat that only as a non-guaranteed benchmark. These
+conveniences do not change the boundary: no host workspace, home directory,
+tool configuration, container socket, or long-lived host credentials enter
+the guest, and assignment credentials remain task-scoped and scrubbed.
 
 ## Local Observation Boundary
 
@@ -174,6 +187,8 @@ Gum documents `gum choose` for option selection and `gum input --value`,
 - Native task execution reuses a Goose process or runtime directory across assignments, restarts an active task after token refresh, or manipulates tmux
 - Multiple ready CLIs silently select one, Goose skips its provider/model
   prompts, or launcher state is not refreshed from the current selection
+- The gum-unavailable fallback fails to select Goose when Goose is ready, or
+  the launcher fetches a raw disk without verifying its versioned checksum
 - Context7 availability can block assignment execution
 - Local hooks are treated as a substitute for CI
 - Tests only cover success paths and not env/mount exposure or redaction
