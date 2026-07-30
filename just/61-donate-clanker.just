@@ -223,6 +223,9 @@ donate-clanker:
           if gum_can_prompt; then
             TOOL="$(printf '%s\n' "${READY[@]}" | gum choose --selected="${LAST_TOOL}" --header "Multiple AI CLIs are ready — pick one:")"
             [[ -n "$TOOL" ]] || { echo "ERROR: no selection made." >&2; exit 1; }
+          elif [[ " ${READY[*]} " == *" goose "* ]]; then
+            TOOL="goose"
+            echo "gum unavailable — auto-selected: goose"
           else
             echo "ERROR: multiple CLIs are ready (${READY[*]}) and 'gum' isn't available to prompt." >&2
             echo "  Install gum, or pass explicitly: TOOL=<name> ujust donate-clanker" >&2

@@ -175,8 +175,7 @@ multiple_without_gum="$(run_launcher GH_READY=1 2>&1)"
 status=$?
 set -e
 test "$status" -ne 0
-assert_contains "multiple CLIs are ready (claude copilot goose) and 'gum' isn't available to prompt." "$multiple_without_gum"
-assert_contains 'TOOL=<name> ujust donate-clanker' "$multiple_without_gum"
+assert_contains "gum unavailable — auto-selected: goose" "$multiple_without_gum"
 
 # Explicit legacy selection retains its independent remembered model state.
 : >"$gum_log"
