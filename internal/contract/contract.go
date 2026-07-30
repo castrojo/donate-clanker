@@ -23,6 +23,7 @@ var (
 	ErrDuplicatePath      = errors.New("duplicate document path")
 	ErrAbsolutePath       = errors.New("absolute path")
 	ErrTraversalPath      = errors.New("path escapes workspace")
+	ErrNotRegularFile     = errors.New("not a regular file")
 )
 
 type Manifest struct {
@@ -79,7 +80,16 @@ func (m Manifest) LoadDocuments(workspace string) ([]Document, error) {
 	cleanWorkspace := filepath.Clean(workspace)
 	documents := make([]Document, len(validated.RequiredDocuments))
 	for i, required := range validated.RequiredDocuments {
-		path := filepath.Join(cleanWorkspace, required.Path)
+		path, err := resolveDocumentPath(cleanWorkspace, required.Path)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil, fmt.Errorf("%s: %w", required.Path, ErrMissingFile)
+			}
+			if errors.Is(err, ErrTraversalPath) || errors.Is(err, ErrNotRegularFile) {
+				return nil, fmt.Errorf("%s: %w", required.Path, err)
+			}
+			return nil, sanitizeDocumentReadError(required.Path, err)
+		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -159,6 +169,47 @@ func validateDocumentPath(path string) (string, error) {
 		return "", ErrTraversalPath
 	}
 	return clean, nil
+}
+
+func resolveDocumentPath(workspace, relativePath string) (string, error) {
+	workspacePath, err := filepath.Abs(workspace)
+	if err != nil {
+		return "", err
+	}
+	resolvedWorkspace, err := filepath.EvalSymlinks(workspacePath)
+	if err != nil {
+		return "", err
+	}
+
+	path := workspacePath
+	resolvedPath := resolvedWorkspace
+	for _, component := range strings.Split(relativePath, string(filepath.Separator)) {
+		path = filepath.Join(path, component)
+		resolvedPath, err = filepath.EvalSymlinks(path)
+		if err != nil {
+			return "", err
+		}
+		if !pathWithin(resolvedWorkspace, resolvedPath) {
+			return "", ErrTraversalPath
+		}
+	}
+
+	info, err := os.Stat(resolvedPath)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", ErrNotRegularFile
+	}
+	return resolvedPath, nil
+}
+
+func pathWithin(root, path string) bool {
+	relative, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func (m Manifest) validated() (Manifest, error) {

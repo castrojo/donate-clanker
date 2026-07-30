@@ -32,7 +32,7 @@ Do not use this for:
 5. Give Goose only the active assignment's GitHub token via `GH_TOKEN`/`GITHUB_TOKEN`; never pass host GitHub config directories into Goose.
 6. Keep local policy and Hive assignment as separate prompt sections. Policy must precede assignment with explicit headings, and the assignment body must remain verbatim under `Hive assignment (verbatim):`.
 7. Native task execution must fail closed before Goose starts whenever the bundled contract cannot load, the required repository documents cannot be read, or the manifest-backed contract section cannot be injected ahead of the verbatim Hive assignment.
-8. Validate contract manifests at use sites too, not just when decoding bundled JSON. Reject absolute/traversal document paths before reading the workspace, and surface document read failures using only manifest-relative paths.
+8. Validate contract manifests at use sites too, not just when decoding bundled JSON. Reject absolute/traversal paths, any symlink-resolved component outside the cleaned workspace, and non-regular document targets; surface failures using only manifest-relative paths.
 9. Preserve redaction on both command output and surfaced errors. Redact `*_TOKEN=...`, YAML-style secret keys, and the full `Authorization:` line value.
 10. For the published compatibility image, mount only `/config` and `/workspace`, source `/config/hive/gh-auth.env` into the upstream process environment, and attach the contributor tmux session to the invoking terminal.
 11. Run focused tests for `cmd/contributor`, `internal/app`, `internal/config`, `internal/runner`, and `internal/hive`, then run `go test ./...`.
@@ -57,7 +57,7 @@ Do not use this for:
 - Host `GH_TOKEN` can flow into Goose without coming from the assignment
 - Prompt text lacks separate policy/assignment headings
 - Goose command launch can proceed after contract/document load failures, or the prompt omits the injected agent-contract section
-- Hand-built contract manifests can skip validation or leak absolute workspace paths in read errors
+- Hand-built contract manifests can skip validation, follow symlinks outside the workspace, accept non-regular targets, or leak absolute workspace paths in read errors
 - Tests only cover success paths and not env/mount exposure or redaction
 - A foreground compatibility container starts a detached tmux session but never attaches it to the user's terminal
 
@@ -70,7 +70,7 @@ Do not use this for:
 - [ ] Missing required repository documents stop native task execution before any Goose command starts
 - [ ] Prompt output preserves verbatim assignment text under a dedicated heading
 - [ ] Valid workspaces inject the manifest-backed contract section before `Hive assignment (verbatim):`
-- [ ] Contract manifests fail closed when unvalidated, and document-read failures expose only manifest-relative paths
+- [ ] Contract manifests fail closed when unvalidated, every resolved path component remains in the workspace, final targets are regular files, and failures expose only manifest-relative paths
 - [ ] Redaction covers `GH_TOKEN`, `GITHUB_TOKEN`, and full `Authorization:` lines
 - [ ] Compatibility image sources `gh-auth.env` and attaches tmux without requiring a host container socket
 - [ ] `go test ./cmd/contributor ./internal/app ./internal/config ./internal/runner ./internal/hive` passes

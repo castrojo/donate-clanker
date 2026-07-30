@@ -170,6 +170,102 @@ func TestLoadDocumentsRejectsInvalidManifestPaths(t *testing.T) {
 	}
 }
 
+func TestLoadDocumentsRejectsSymlinkedRequiredDocumentOutsideWorkspace(t *testing.T) {
+	manifest := Manifest{
+		Version: supportedVersion,
+		RequiredDocuments: []RequiredDocument{
+			{Path: "AGENTS.md", Heading: "Agents"},
+		},
+		Rules:              []string{"rule"},
+		ValidationCommands: []string{"go test ./..."},
+	}
+	workspace := t.TempDir()
+	outside := t.TempDir()
+	outsidePath := filepath.Join(outside, "AGENTS.md")
+	mustWrite(t, outsidePath, "outside content")
+	if err := os.Symlink(outsidePath, filepath.Join(workspace, "AGENTS.md")); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+
+	_, err := manifest.LoadDocuments(workspace)
+	if err == nil {
+		t.Fatal("LoadDocuments() error = nil, want error")
+	}
+	if !errors.Is(err, ErrTraversalPath) {
+		t.Fatalf("LoadDocuments() error = %v, want %v", err, ErrTraversalPath)
+	}
+	if !strings.Contains(err.Error(), "AGENTS.md") {
+		t.Fatalf("LoadDocuments() error = %v, want relative path", err)
+	}
+	if strings.Contains(err.Error(), workspace) || strings.Contains(err.Error(), outside) {
+		t.Fatalf("LoadDocuments() error leaked absolute path: %v", err)
+	}
+}
+
+func TestLoadDocumentsRejectsSymlinkedParentOutsideWorkspace(t *testing.T) {
+	manifest := Manifest{
+		Version: supportedVersion,
+		RequiredDocuments: []RequiredDocument{
+			{Path: "docs/SKILL.md", Heading: "Skill"},
+		},
+		Rules:              []string{"rule"},
+		ValidationCommands: []string{"go test ./..."},
+	}
+	workspace := t.TempDir()
+	outside := t.TempDir()
+	safePath := filepath.Join(workspace, "safe", "SKILL.md")
+	mustWrite(t, safePath, "workspace content")
+	if err := os.Symlink(safePath, filepath.Join(outside, "SKILL.md")); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+	if err := os.Symlink(outside, filepath.Join(workspace, "docs")); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+
+	_, err := manifest.LoadDocuments(workspace)
+	if err == nil {
+		t.Fatal("LoadDocuments() error = nil, want error")
+	}
+	if !errors.Is(err, ErrTraversalPath) {
+		t.Fatalf("LoadDocuments() error = %v, want %v", err, ErrTraversalPath)
+	}
+	if !strings.Contains(err.Error(), "docs/SKILL.md") {
+		t.Fatalf("LoadDocuments() error = %v, want relative path", err)
+	}
+	if strings.Contains(err.Error(), workspace) || strings.Contains(err.Error(), outside) {
+		t.Fatalf("LoadDocuments() error leaked absolute path: %v", err)
+	}
+}
+
+func TestLoadDocumentsRejectsNonRegularFile(t *testing.T) {
+	manifest := Manifest{
+		Version: supportedVersion,
+		RequiredDocuments: []RequiredDocument{
+			{Path: "AGENTS.md", Heading: "Agents"},
+		},
+		Rules:              []string{"rule"},
+		ValidationCommands: []string{"go test ./..."},
+	}
+	workspace := t.TempDir()
+	if err := os.Mkdir(filepath.Join(workspace, "AGENTS.md"), 0o755); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+
+	_, err := manifest.LoadDocuments(workspace)
+	if err == nil {
+		t.Fatal("LoadDocuments() error = nil, want error")
+	}
+	if !errors.Is(err, ErrNotRegularFile) {
+		t.Fatalf("LoadDocuments() error = %v, want %v", err, ErrNotRegularFile)
+	}
+	if !strings.Contains(err.Error(), "AGENTS.md") {
+		t.Fatalf("LoadDocuments() error = %v, want relative path", err)
+	}
+	if strings.Contains(err.Error(), workspace) {
+		t.Fatalf("LoadDocuments() error leaked workspace path: %v", err)
+	}
+}
+
 func TestLoadDocumentsSanitizesUnreadableFileErrors(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("permission-denied read checks are unreliable when running as root")
