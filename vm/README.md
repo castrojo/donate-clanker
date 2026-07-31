@@ -1,8 +1,14 @@
 # Donate Clanker VM artifact contract
 
 The VM launcher consumes externally built artifacts. This repository does not
-build the BuildStream/FSDK guest or QEMU runner; release automation only
-verifies that those artifacts satisfy this contract.
+build or publish the BuildStream/FSDK guest, QEMU runner, or raw FSDK disk.
+The VM release workflow only verifies that externally published OCI artifacts
+satisfy this contract.
+
+`.github/workflows/publish-vm.yml` runs for `v*.*.*` tags and manual dispatch.
+It reads the artifact references and Cosign identity settings from repository
+variables, then runs this verifier. A passing workflow is a release gate, not
+an artifact publication step.
 
 `manifest.json` defines the required OCI references:
 
@@ -42,5 +48,6 @@ scripts/verify-vm-artifacts.sh
 ```
 
 The example values only exercise static validation; they are not release
-artifacts. A release workflow must provide real immutable references and run
-remote verification.
+artifacts. A tagged release must provide real immutable references and run
+remote verification. The launcher’s versioned raw-disk download is maintained
+by `projectbluefin/fsdk-containers` and is outside this OCI verifier.

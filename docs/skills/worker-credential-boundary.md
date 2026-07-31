@@ -65,6 +65,10 @@ assignment-scoped GitHub token only for that clone/task and scrubs it before
 cleanup. The guest uses outbound-only networking, a minimal device set, an
 immutable base, and an ephemeral overlay. QEMU, the runner container, the
 control channel, and the overlay are removed on every exit path.
+For local raw-VM boot, use `qemu-system-x86_64` with an OVMF firmware path
+for x86_64, or `qemu-system-aarch64 -machine virt` with AAVMF/QEMU_EFI
+firmware for aarch64; the QEMU source `/qemu/qemu` documents the aarch64
+`virt` machine contract.
 
 The former Lima compatibility-image behavior is historical/migration context
 only. Do not add new host workspace-sharing or Lima mounts when changing the
@@ -73,6 +77,8 @@ VM launcher.
 The current local VM UX auto-fetches the versioned raw FSDK disk for the host
 architecture into the launcher state directory and verifies its SHA-256
 sidecar before boot. It boots direct QEMU/KVM with 4 vCPUs and 8 GiB RAM.
+The launcher selects the matching QEMU binary, firmware, machine, and cached
+guest artifact for x86_64 or aarch64 hosts.
 Remote-agent sizing is 2 vCPUs/2 GiB minimum and 2 vCPUs/4 GiB recommended;
 local inference is host-sized separately for the model runtime. A local
 BuildStream run has taken about 10 minutes on x86_64 and produced a roughly

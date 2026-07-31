@@ -1,8 +1,8 @@
 name: validate
 
 # just/61-donate-clanker.just is the shipped launcher. This workflow validates
-# its Bash syntax and the mocked attended selection flow without requiring a
-# live Hive account, host container engine, or interactive terminal.
+# its Bash syntax, VM contract, compatibility image, and mocked attended
+# selection flow without requiring a live Hive account or interactive terminal.
 
 on:
   push:
@@ -31,6 +31,9 @@ jobs:
       - name: Agent contract manifest stays aligned
         run: |
           set -euo pipefail
+          # jq filters intentionally use single-quoted literals containing
+          # jq variables, not shell variables.
+          # shellcheck disable=SC2016
           MANIFEST="image/config/agent-contract.json"
           fail=0
 
@@ -113,28 +116,16 @@ jobs:
           bash -n recipe_bodies.sh
           rm -f recipe_bodies.sh
 
-      - name: Lima launcher contract
+      - name: VM artifact contract
         run: |
           set -euo pipefail
-          JUSTFILE="just/61-donate-clanker.just"
-          fail=0
-
-          for want in \
-            "ensure_lima()" \
-            "brew install lima" \
-            "ensure_lima_vm" \
-            'lima_args=(start --name "$instance" --tty=false' \
-            "template:podman" \
-            'limactl shell "$LIMA_INSTANCE" -- "${CONTAINER_ARGS[@]}"' \
-            '--volume "${HOME}/.config/hive:/config:ro"' \
-            '--volume "${WORKSPACE_TARGET}:/workspace"'; do
-            if ! grep -Fq "$want" "$JUSTFILE"; then
-              echo "::error file=${JUSTFILE}::missing Lima launch contract: $want"
-              fail=1
-            fi
-          done
-
-          exit "$fail"
+          VM_VERIFY_REMOTE=false \
+          VM_RUNNER_REF=ghcr.io/example/runner@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+          VM_GUEST_REF=ghcr.io/example/guest@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
+          VM_GUEST_KERNEL_REF=ghcr.io/example/kernel@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc \
+          VM_GUEST_INITRAMFS_REF=ghcr.io/example/initramfs@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd \
+          VM_GUEST_ROOTFS_REF=ghcr.io/example/rootfs@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee \
+          scripts/verify-vm-artifacts.sh
 
       - name: Context7 image contract — goose.yaml and policy
         run: |
@@ -222,6 +213,9 @@ jobs:
       - name: Interactive launcher docs and shell stay aligned
         run: |
           set -euo pipefail
+          # The sed and grep patterns intentionally contain literal
+          # dollar-sign syntax for the embedded shell checks.
+          # shellcheck disable=SC2016
           HIVE_PIN="$(sed -n 's/^hive_commit := "\(.*\)"$/\1/p' just/61-donate-clanker.just)"
           test -n "$HIVE_PIN"
           grep -Fq 'tool_order := "claude copilot goose codex"' just/61-donate-clanker.just
@@ -273,7 +267,7 @@ jobs:
           printf '%s\n' "$output" | grep -Fq \
             'definitely-missing-cli CLI not found.'
 
-      # donate-clanker-doctor needs real CLI authentication and a functioning
-      # Lima installation, neither of which is meaningful on a hosted runner.
-      # The mocked onboarding harness covers the launcher's selection and
-      # guest-command construction; local use exercises real readiness.
+      # donate-clanker-doctor needs real CLI authentication and usable KVM,
+      # neither of which is meaningful on a hosted runner. The mocked
+      # onboarding harness covers selection and guest-command construction;
+      # local use exercises real readiness.

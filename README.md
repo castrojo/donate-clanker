@@ -1,17 +1,23 @@
 # donate-clanker
 
 donate-clanker runs the contributor worker in a disposable, self-contained
-QEMU microVM. The supported product path is the pinned VM runner; the guest
-owns the worker runtime, Git client, task workspace, and repository clones.
+QEMU microVM. The default launcher path boots a checksum-verified raw FSDK
+artifact; deployments can instead force a pinned containerized QEMU runner.
+In both paths, the guest owns the worker runtime, Git client, task workspace,
+and repository clones.
 
 ## Host prerequisites
 
 The launcher is supported on Bluefin base and Bluefin DX hosts. The host must
 provide:
 
-- Podman, to run the pinned QEMU runner image.
+- QEMU and matching firmware (OVMF on x86_64 or AAVMF/QEMU_EFI on aarch64),
+  to boot the local raw VM artifact.
+- Podman, only when using the pinned containerized QEMU runner.
 - Usable KVM (`/dev/kvm` readable and writable by the invoking user).
-- Network access to GitHub, the Hive endpoint, and the configured OCI registry.
+- `curl` and `sha256sum` when the raw VM artifact must be downloaded.
+- Network access to GitHub, the Hive endpoint, and the configured artifact
+  registry.
 - A ready, authenticated supported agent CLI (`claude`, `copilot`, `goose`, or
   `codex`). `gum` is used for an attended choice when available; if several
   CLIs are ready and `gum` is unavailable, the plain `ujust donate-clanker`
@@ -28,14 +34,23 @@ From any supported Bluefin host, run:
 ujust donate-clanker
 ```
 
-The launcher verifies GitHub, agent, and Hive setup, then uses the signed,
-versioned local VM artifact path by default. When using a checkout directly,
-substitute `just --justfile just/61-donate-clanker.just` for `ujust`.
-The pinned remote-runner path requires
-`DONATE_CLANKER_VM_RUNNER_IMAGE` to name the signed, immutable QEMU runner
-image (a `sha256:` digest). It runs that image with KVM and only a per-run
-control/overlay directory; no host workspace, home-directory,
-tool-configuration, or container-socket mounts are used:
+The launcher verifies GitHub, agent, and Hive setup, then chooses the VM source
+in this order:
+
+1. An explicit `DONATE_CLANKER_VM_RAW` path.
+2. An explicitly configured `DONATE_CLANKER_VM_RUNNER_IMAGE` digest.
+3. One cached raw artifact in `~/.local/state/donate-clanker/`.
+4. The versioned raw artifact downloaded from `projectbluefin/fsdk-containers`.
+
+The download path is fail-closed: the selected FSDK release must publish the
+matching `.raw` file and `.sha256` sidecar. Set `DONATE_CLANKER_VM_VERSION` to
+another published version when needed; until a matching raw release exists,
+use an explicit `DONATE_CLANKER_VM_RAW` path or the pinned runner image.
+
+When using a checkout directly, substitute
+`just --justfile just/61-donate-clanker.just` for `ujust`. To force the pinned
+containerized runner, set `DONATE_CLANKER_VM_RUNNER_IMAGE` to an immutable
+`sha256:` digest:
 
 ```bash
 DONATE_CLANKER_VM_RUNNER_IMAGE=\
@@ -83,29 +98,21 @@ Use the read-only preflight before launching:
 just --justfile just/61-donate-clanker.just donate-clanker-doctor
 ```
 
-## VM artifacts and external FSDK dependency
+## Agent selection and onboarding
 
-The VM release is composed of matching, signed immutable artifacts:
+The launcher detects every ready CLI in deterministic order:
+`claude`, `copilot`, `goose`, then `codex`. One ready CLI is selected without a
+prompt. When several are ready, `gum` provides the attended chooser; if `gum`
+is unavailable and Goose is ready, Goose is selected automatically. Otherwise,
+set `TOOL=<name>` explicitly.
 
-- `ghcr.io/projectbluefin/donate-clanker-vm-runner@sha256:<digest>` — the
-  containerized QEMU/KVM runner.
-- `ghcr.io/projectbluefin/donate-clanker-vm-guest@sha256:<digest>` — the
-  immutable guest kernel, initramfs/root filesystem, and worker.
-
-The launcher consumes digests, not floating `latest` images. The local raw VM
-download is likewise versioned and checksum-verified. Runner and guest
-artifacts are published and maintained by this repository's release process;
-the FSDK raw disk is an external artifact.
-
-Local inference is an explicit external dependency. The FSDK/RamaLama helper
-artifact is built and published by
-[`projectbluefin/fsdk-containers`](https://github.com/projectbluefin/fsdk-containers);
-donate-clanker does not build or vendor that artifact. A deployment selecting
-local inference must provide the matching signed immutable FSDK artifact and
-its published launch contract. Changes to that image belong in
-`projectbluefin/fsdk-containers`, not here.
-
-## Hive setup and onboarding
+Goose prompts for its provider and optional model when an attended terminal and
+`gum` are available. `GOOSE_PROVIDER`, `GOOSE_MODEL`, and `AGENT_MODEL` can
+pre-seed those choices. Goose defaults to the `github_copilot` provider, and
+the provider/model choices are remembered in
+`~/.config/donate-clanker/last-selections.env`. The current launcher-managed
+values are written fresh to `~/.config/donate-clanker/secrets.env` with mode
+`0600`; stale provider, model, and agent-model values are removed between runs.
 
 If `~/.config/hive/contributor.env` is absent, the launcher fetches the pinned
 Hive revision and runs the upstream interactive setup:
@@ -116,8 +123,40 @@ just contribute-setup <tool>
 
 The setup is upstream-owned and requires an attended terminal. For
 non-interactive use, pre-seed the Hive configuration before invoking the
-launcher. The selected agent and optional model settings are passed through
-the VM bootstrap channel; no host tool configuration directory is mounted.
+launcher. The default pin is
+`e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e`; `DONATE_CLANKER_HIVE_COMMIT` may
+override it, but must be a full 40-character commit SHA. The selected agent
+and optional model settings are passed through the VM bootstrap channel; no
+host tool configuration directory is mounted.
+
+Use `donate-clanker-stop` to remove a stale containerized runner:
+
+```bash
+just --justfile just/61-donate-clanker.just donate-clanker-stop
+```
+
+## VM artifacts and external FSDK dependency
+
+The VM release is composed of matching, signed immutable artifacts:
+
+- `ghcr.io/projectbluefin/donate-clanker-vm-runner@sha256:<digest>` — the
+  containerized QEMU/KVM runner.
+- `ghcr.io/projectbluefin/donate-clanker-vm-guest@sha256:<digest>` — the
+  immutable guest kernel, initramfs/root filesystem, and worker.
+
+The launcher consumes digests, not floating `latest` images. The local raw VM
+download is likewise versioned and checksum-verified. The
+`.github/workflows/publish-vm.yml` workflow validates externally published
+runner and guest references on version tags or manual dispatch; it does not
+build or publish those artifacts. The raw FSDK disk is also external.
+
+Local inference is an explicit external dependency. The FSDK/RamaLama helper
+artifact is built and published by
+[`projectbluefin/fsdk-containers`](https://github.com/projectbluefin/fsdk-containers);
+donate-clanker does not build or vendor that artifact. A deployment selecting
+local inference must provide the matching signed immutable FSDK artifact and
+its published launch contract. Changes to that image belong in
+`projectbluefin/fsdk-containers`, not here.
 
 ## Scope
 
@@ -136,17 +175,16 @@ just --justfile ~/.local/share/donate-clanker/just/61-donate-clanker.just \
   donate-clanker-doctor
 ```
 
-## Legacy compatibility image (historical migration context)
+## Compatibility image (separate legacy path)
 
-Older releases used `ghcr.io/projectbluefin/donate-clanker` as a wrapper
-in **compatibility mode** around the upstream Hive contributor image. That
-legacy path required a Lima
-VM, guest Podman, explicit `/config` and `/workspace` mounts, and a host
-workspace source sometimes selected with `CLANKER_SRC`. It is retained here
-only to explain older deployments and is not the product path. It does **not**
-include the native Goose/RamaLama launcher and uses no host container socket.
-Do not add new Lima, host-workspace, home-directory, socket, or
-compatibility-image requirements.
+`ghcr.io/projectbluefin/donate-clanker` is a compatibility mode wrapper around
+the upstream Hive contributor image. Version tags still build this image
+through `.github/workflows/publish-compat-image.yml`, but it is not the VM
+runner. It does **not** include the native Goose/RamaLama launcher or local VM
+artifacts and uses no host container socket. The old Lima, guest-Podman,
+`/config`, `/workspace`, and `CLANKER_SRC` behavior is historical migration
+context only. Do not add new host workspace, home-directory, socket, Lima, or
+compatibility-image requirements to the supported VM path.
 
 ## Source of truth
 

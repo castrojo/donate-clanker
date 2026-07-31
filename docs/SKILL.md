@@ -10,6 +10,8 @@ task, then validate with the repository's existing checks.
 | Change Hive credentials, Goose execution, mounts, or assignment prompts | [`worker-credential-boundary.md`](skills/worker-credential-boundary.md) |
 | Change native contributor assignment isolation, local observations, or helper profile launch behavior | [`worker-credential-boundary.md`](skills/worker-credential-boundary.md) |
 | Onboard or audit this repository against the factory | [`factory-onboarding.md`](skills/factory-onboarding.md) |
+| Change GitHub Actions workflows or CI-only validation | [`ci-tooling.md`](skills/ci-tooling.md) |
+| Check release health or VM artifact publication ownership | [`release.md`](skills/release.md) |
 | Record a durable workaround or repository convention | [`skill-improvement.md`](skills/skill-improvement.md) |
 
 Factory-wide policy lives in
@@ -29,5 +31,8 @@ migration context only, not current product requirements.
 The launcher requires an immutable runner image reference and usable KVM.
 Local inference is an explicit external dependency on a matching signed FSDK
 artifact published by `projectbluefin/fsdk-containers`; this repository does
-not own that artifact. Keep VM, guest-clone, and host-boundary documentation
-consistent with this model without changing skill-boundary documents.
+not own that artifact. VM runner and guest OCI artifacts are likewise external
+inputs: `.github/workflows/publish-vm.yml` validates their immutable
+references but does not publish them. Keep VM, guest-clone, host-boundary, and
+release-ownership documentation consistent with this model without changing
+skill-boundary documents.

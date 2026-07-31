@@ -2,17 +2,21 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
 scratch="${repo_root}/.just-onboarding-scratch-$$-$(date +%s%N)"
-trap 'rm -rf "$scratch"' EXIT
+tmp_root=".just-onboarding-tmp-$$-$(date +%s%N)"
+trap 'rm -rf "$scratch" "$tmp_root"' EXIT
 fake_bin="$scratch/bin"
 home="$scratch/home"
 cfg_dir="$home/.config/donate-clanker"
 gum_log="$scratch/gum.log"
 runner_log="$scratch/runner.log"
+qemu_log="$scratch/qemu.log"
+curl_log="$scratch/curl.log"
+find_log="$scratch/find.log"
 consumer="$repo_root/tests/guest-bootstrap-consumer.py"
-tmp_root="${TMPDIR:-/tmp}"
 real_just="$(command -v just)"
-mkdir -p "$fake_bin" "$home/.config/goose" "$home/.config/hive" "$cfg_dir"
+mkdir -p "$fake_bin" "$home/.config/goose" "$home/.config/hive" "$cfg_dir" "$tmp_root"
 
 cat >"$fake_bin/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -46,6 +50,57 @@ cat >"$fake_bin/git" <<'EOF'
 #!/usr/bin/env bash
 exit 97
 EOF
+cat >"$fake_bin/curl" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+url=""
+while (($#)); do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) url="$1"; shift ;;
+  esac
+done
+printf '%s -> %s\n' "$url" "$output" >> "${CURL_LOG:?}"
+if [[ "${TEST_CURL_MODE:-}" == "checksum-fail" && "$url" == *.sha256 ]]; then
+  printf 'partial checksum\n' >"$output"
+  exit 98
+fi
+if [[ -n "${TEST_CURL_MODE:-}" ]]; then
+  printf 'downloaded VM\n' >"$output"
+  exit 0
+fi
+echo "unexpected raw VM fetch" >&2
+exit 98
+EOF
+cat >"$fake_bin/find" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${FIND_LOG:?}"
+case " $* " in
+  *"OVMF_CODE.fd"*|*"AAVMF_CODE.fd"*|*"QEMU_EFI.fd"*)
+    printf '%s\n' /dev/null
+    exit 0
+    ;;
+esac
+exec /usr/bin/find "$@"
+EOF
+cat >"$fake_bin/uname" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "-m" && -n "${TEST_UNAME_M:-}" ]]; then
+  printf '%s\n' "$TEST_UNAME_M"
+else
+  exec /usr/bin/uname "$@"
+fi
+EOF
+cat >"$fake_bin/qemu-system-x86_64" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s %s\n' "$(basename "$0")" "$*" >> "${QEMU_LOG:?}"
+exit 97
+EOF
+cp "$fake_bin/qemu-system-x86_64" "$fake_bin/qemu-system-aarch64"
 cat >"$fake_bin/podman" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -84,10 +139,9 @@ run_launcher() {
   env \
     -u TOOL -u DONATE_CLANKER_VM_RUNNER_IMAGE -u DONATE_CLANKER_HIVE_COMMIT \
     -u AGENT_MODEL -u GOOSE_PROVIDER -u GOOSE_MODEL \
-    HOME="$home" PATH="$fake_bin:$PATH" \
-    GUM_LOG="$gum_log" RUNNER_LOG="$runner_log" RUNNER_CONSUMED="$scratch/runner-consumed" \
+    HOME="$home" PATH="$fake_bin:$PATH" TMPDIR="$tmp_root" \
+    GUM_LOG="$gum_log" RUNNER_LOG="$runner_log" QEMU_LOG="$qemu_log" CURL_LOG="$curl_log" FIND_LOG="$find_log" RUNNER_CONSUMED="$scratch/runner-consumed" \
     DONATE_CLANKER_TEST_CONSUMER="$consumer" \
-    DONATE_CLANKER_TEST_SKIP_VM_FETCH=1 \
     DONATE_CLANKER_VM_RUNNER_IMAGE="ghcr.io/projectbluefin/donate-clanker-vm-runner@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
     "$@" \
     "$real_just" --justfile "$repo_root/just/61-donate-clanker.just" donate-clanker
@@ -96,6 +150,7 @@ run_launcher() {
 assert_contains() { grep -Fq -- "$1" <<<"$2"; }
 assert_file_contains() { grep -Fq -- "$1" "$2"; }
 assert_file_not_contains() { ! grep -Fq -- "$1" "$2"; }
+assert_file_not_exists() { [[ ! -e "$1" ]]; }
 
 write_goose_config() {
   cat >"$home/.config/goose/config.yaml" <<'EOF'
@@ -166,6 +221,76 @@ set -e
 test "$status" -ne 0
 assert_contains 'TOOL not set — auto-detected: claude' "$single"
 test ! -s "$gum_log"
+
+# A fetched raw disk is removed when its checksum sidecar download fails.
+rm -rf "$home/.local/state"
+: >"$curl_log"
+set +e
+fetch_failure="$(run_launcher TOOL=claude DONATE_CLANKER_VM_RUNNER_IMAGE= TEST_UNAME_M=x86_64 TEST_CURL_MODE=checksum-fail 2>&1)"
+status=$?
+set -e
+test "$status" -ne 0
+assert_contains "VM release checksum sidecar is not published yet" "$fetch_failure"
+assert_file_contains "donate-clanker-vm-25.08.14-x86_64.raw" "$curl_log"
+assert_file_not_exists "$home/.local/state/donate-clanker/donate-clanker-vm-25.08.14-x86_64.raw"
+assert_file_not_exists "$home/.local/state/donate-clanker/donate-clanker-vm-25.08.14-x86_64.raw.partial"
+assert_file_not_exists "$home/.local/state/donate-clanker/donate-clanker-vm-25.08.14-x86_64.raw.sha256"
+assert_file_not_exists "$home/.local/state/donate-clanker/donate-clanker-vm-25.08.14-x86_64.raw.sha256.partial"
+
+# A cached raw disk must have a checksum sidecar before it can boot.
+state_dir="$home/.local/state/donate-clanker"
+mkdir -p "$state_dir"
+raw_x86="$state_dir/donate-clanker-vm-25.08.14-x86_64.raw"
+raw_arm="$state_dir/donate-clanker-vm-25.08.14-aarch64.raw"
+printf 'x86 guest\n' >"$raw_x86"
+set +e
+missing_sidecar="$(run_launcher TOOL=claude DONATE_CLANKER_VM_RUNNER_IMAGE= TEST_UNAME_M=x86_64 2>&1)"
+status=$?
+set -e
+test "$status" -ne 0
+assert_contains "VM raw disk checksum sidecar not found" "$missing_sidecar"
+
+(
+  cd "$state_dir"
+  sha256sum "$(basename "$raw_x86")" >"$(basename "$raw_x86").sha256"
+)
+printf 'arm guest\n' >"$raw_arm"
+(
+  cd "$state_dir"
+  sha256sum "$(basename "$raw_arm")" >"$(basename "$raw_arm").sha256"
+)
+
+# Local QEMU follows the host architecture, firmware, machine, and guest
+# artifact instead of always selecting the x86_64 path.
+: >"$qemu_log"
+: >"$find_log"
+set +e
+local_x86="$(run_launcher TOOL=claude DONATE_CLANKER_VM_RUNNER_IMAGE= TEST_UNAME_M=x86_64 2>&1)"
+status=$?
+set -e
+test "$status" -ne 0
+assert_contains "booting local donate-clanker VM" "$local_x86"
+assert_file_contains "qemu-system-x86_64" "$qemu_log"
+assert_file_contains "-machine q35" "$qemu_log"
+assert_file_contains "-bios /dev/null" "$qemu_log"
+assert_file_contains "-device virtio-serial-pci" "$qemu_log"
+assert_file_contains "$raw_x86" "$qemu_log"
+assert_file_contains "-name OVMF_CODE.fd" "$find_log"
+
+: >"$qemu_log"
+: >"$find_log"
+set +e
+local_arm="$(run_launcher TOOL=claude DONATE_CLANKER_VM_RUNNER_IMAGE= TEST_UNAME_M=aarch64 2>&1)"
+status=$?
+set -e
+test "$status" -ne 0
+assert_contains "booting local donate-clanker VM" "$local_arm"
+assert_file_contains "qemu-system-aarch64" "$qemu_log"
+assert_file_contains "-machine virt" "$qemu_log"
+assert_file_contains "-bios /dev/null" "$qemu_log"
+assert_file_contains "-device virtio-serial-device" "$qemu_log"
+assert_file_contains "$raw_arm" "$qemu_log"
+assert_file_contains "-name AAVMF_CODE.fd" "$find_log"
 
 # More than one ready tool without an attended gum prompt fails with an
 # actionable explicit override instead of silently choosing one.
