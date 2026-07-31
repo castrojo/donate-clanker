@@ -20,18 +20,22 @@ import (
 
 func TestClearWorkerCredentialEnvironmentRemovesHostAuthState(t *testing.T) {
 	for key, value := range map[string]string{
-		"HIVE_REGISTRATION_TOKEN": "hive-secret",
-		"HIVE_HUB":                "wss://example.invalid/contribute",
-		"HIVE_WS_URL":             "wss://example.invalid/api/contribute/ws",
-		"CONTRIBUTOR_ID":          "c-123",
-		"CONTRIBUTOR_USERNAME":    "tester",
-		"HIVE_CONFIG_DIR":         "/config/hive",
-		"GH_TOKEN":                "gho_host_token",
-		"GITHUB_TOKEN":            "gho_host_token",
-		"GH_CONFIG_DIR":           "/config/github",
-		"GITHUB_CONFIG_DIR":       "/config/github",
-		"GOOSE_MODEL":             "local",
-		"OPENAI_BASE_URL":         "http://127.0.0.1:8000/v1",
+		"HIVE_REGISTRATION_TOKEN":           "hive-secret",
+		"HIVE_HUB":                          "wss://example.invalid/contribute",
+		"HIVE_WS_URL":                       "wss://example.invalid/api/contribute/ws",
+		"CONTRIBUTOR_ID":                    "c-123",
+		"CONTRIBUTOR_USERNAME":              "tester",
+		"HIVE_CONFIG_DIR":                   "/config/hive",
+		"GH_TOKEN":                          "gho_host_token",
+		"GITHUB_TOKEN":                      "gho_host_token",
+		"GH_CONFIG_DIR":                     "/config/github",
+		"GITHUB_CONFIG_DIR":                 "/config/github",
+		"DONATE_CLANKER_HIVE_ENDPOINT":      "wss://example.invalid/contribute",
+		"DONATE_CLANKER_REGISTRATION_TOKEN": "bootstrap-secret",
+		"DONATE_CLANKER_BACKEND":            "goose",
+		"DONATE_CLANKER_RUN_ID":             "run-1",
+		"GOOSE_MODEL":                       "local",
+		"OPENAI_BASE_URL":                   "http://127.0.0.1:8000/v1",
 	} {
 		t.Setenv(key, value)
 	}
@@ -49,6 +53,10 @@ func TestClearWorkerCredentialEnvironmentRemovesHostAuthState(t *testing.T) {
 		"GITHUB_TOKEN",
 		"GH_CONFIG_DIR",
 		"GITHUB_CONFIG_DIR",
+		"DONATE_CLANKER_HIVE_ENDPOINT",
+		"DONATE_CLANKER_REGISTRATION_TOKEN",
+		"DONATE_CLANKER_BACKEND",
+		"DONATE_CLANKER_RUN_ID",
 	} {
 		if got := os.Getenv(key); got != "" {
 			t.Fatalf("%s = %q, want empty", key, got)
@@ -60,6 +68,32 @@ func TestClearWorkerCredentialEnvironmentRemovesHostAuthState(t *testing.T) {
 		"OPENAI_BASE_URL": "http://127.0.0.1:8000/v1",
 	} {
 		if got := os.Getenv(key); got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+}
+
+func TestCurrentEnvironmentMapsVMBootstrapEnvelope(t *testing.T) {
+	for _, key := range []string{
+		"HIVE_REGISTRATION_TOKEN",
+		"HIVE_HUB",
+		"HIVE_WS_URL",
+		"AGENT_BACKEND",
+	} {
+		t.Setenv(key, "")
+	}
+	t.Setenv("DONATE_CLANKER_HIVE_ENDPOINT", "wss://example.invalid/contribute")
+	t.Setenv("DONATE_CLANKER_REGISTRATION_TOKEN", "bootstrap-secret")
+	t.Setenv("DONATE_CLANKER_BACKEND", "goose")
+
+	values := currentEnvironment()
+	for key, want := range map[string]string{
+		"HIVE_REGISTRATION_TOKEN": "bootstrap-secret",
+		"HIVE_HUB":                "wss://example.invalid/contribute",
+		"HIVE_WS_URL":             "wss://example.invalid/contribute",
+		"AGENT_BACKEND":           "goose",
+	} {
+		if got := values[key]; got != want {
 			t.Fatalf("%s = %q, want %q", key, got, want)
 		}
 	}

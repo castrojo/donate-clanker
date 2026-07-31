@@ -176,20 +176,28 @@ func (h *contributorHandler) Refresh(_ context.Context, assignment hive.Assignme
 }
 
 func currentEnvironment() map[string]string {
-	values := map[string]string{}
-	for _, key := range []string{
-		"HIVE_REGISTRATION_TOKEN",
-		"HIVE_HUB",
-		"HIVE_WS_URL",
-		"CONTRIBUTOR_ID",
-		"CONTRIBUTOR_USERNAME",
-		"AGENT_BACKEND",
-		"AGENT_MODEL",
-		"GOOSE_MODEL",
-	} {
-		values[key] = os.Getenv(key)
+	return map[string]string{
+		"HIVE_REGISTRATION_TOKEN": firstNonEmpty(
+			os.Getenv("HIVE_REGISTRATION_TOKEN"),
+			os.Getenv("DONATE_CLANKER_REGISTRATION_TOKEN"),
+		),
+		"HIVE_HUB": firstNonEmpty(
+			os.Getenv("HIVE_HUB"),
+			os.Getenv("DONATE_CLANKER_HIVE_ENDPOINT"),
+		),
+		"HIVE_WS_URL": firstNonEmpty(
+			os.Getenv("HIVE_WS_URL"),
+			os.Getenv("DONATE_CLANKER_HIVE_ENDPOINT"),
+		),
+		"CONTRIBUTOR_ID":       os.Getenv("CONTRIBUTOR_ID"),
+		"CONTRIBUTOR_USERNAME": os.Getenv("CONTRIBUTOR_USERNAME"),
+		"AGENT_BACKEND": firstNonEmpty(
+			os.Getenv("AGENT_BACKEND"),
+			os.Getenv("DONATE_CLANKER_BACKEND"),
+		),
+		"AGENT_MODEL": os.Getenv("AGENT_MODEL"),
+		"GOOSE_MODEL": os.Getenv("GOOSE_MODEL"),
 	}
-	return values
 }
 
 func clearWorkerCredentialEnvironment() {
@@ -204,6 +212,10 @@ func clearWorkerCredentialEnvironment() {
 		"GITHUB_TOKEN",
 		"GH_CONFIG_DIR",
 		"GITHUB_CONFIG_DIR",
+		"DONATE_CLANKER_HIVE_ENDPOINT",
+		"DONATE_CLANKER_REGISTRATION_TOKEN",
+		"DONATE_CLANKER_BACKEND",
+		"DONATE_CLANKER_RUN_ID",
 	} {
 		_ = os.Unsetenv(key)
 	}
