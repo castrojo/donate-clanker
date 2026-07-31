@@ -36,7 +36,7 @@ hive_repo_url := "https://github.com/kubestellar/hive"
 hive_commit := "e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e"
 vm_runner_image := env("DONATE_CLANKER_VM_RUNNER_IMAGE", "")
 vm_raw_image := env("DONATE_CLANKER_VM_RAW", "")
-vm_version := "25.08.14"
+vm_version := env("DONATE_CLANKER_VM_VERSION", "25.08.14")
 
 # Shared bash, 'eval''d at the top of every recipe script that needs it:
 # host CLI detection + the selected tool's container mounts. Keeping this in
@@ -130,9 +130,39 @@ ensure_vm_runner() {
     return 1
   }
 }
+vm_host_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64) printf 'x86_64\n' ;;
+    aarch64|arm64) printf 'aarch64\n' ;;
+    *) echo "ERROR: unsupported host architecture: $(uname -m)" >&2; return 1 ;;
+  esac
+}
+vm_firmware() {
+  local arch="$1" name firmware
+  command -v find &>/dev/null || return 1
+  case "$arch" in
+    x86_64)
+      for name in OVMF_CODE.fd OVMF_CODE_4M.fd; do
+        firmware="$(find /usr/share /usr/lib -name "$name" -print -quit 2>/dev/null)"
+        [[ -n "$firmware" ]] && { printf '%s\n' "$firmware"; return 0; }
+      done
+      ;;
+    aarch64)
+      for name in AAVMF_CODE.fd QEMU_EFI.fd; do
+        firmware="$(find /usr/share /usr/lib -name "$name" -print -quit 2>/dev/null)"
+        [[ -n "$firmware" ]] && { printf '%s\n' "$firmware"; return 0; }
+      done
+      ;;
+    *) return 1 ;;
+  esac
+  return 1
+}
 ensure_vm_host() {
-  command -v qemu-system-x86_64 &>/dev/null || {
-    echo "ERROR: qemu-system-x86_64 is required for local VM prototyping." >&2
+  local arch qemu
+  arch="$(vm_host_arch)" || return 1
+  qemu="qemu-system-${arch}"
+  command -v "$qemu" &>/dev/null || {
+    echo "ERROR: ${qemu} is required for local VM prototyping." >&2
     return 1
   }
   [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]] || {
@@ -142,25 +172,36 @@ ensure_vm_host() {
 }
 fetch_vm_raw() {
   local state_dir="$1" version="$2" arch raw url
-  arch="$(uname -m)"
-  case "$arch" in
-    x86_64|aarch64) ;;
-    *) echo "ERROR: unsupported host architecture: $arch" >&2; return 1 ;;
-  esac
+  arch="$(vm_host_arch)" || return 1
   command -v curl &>/dev/null || { echo "ERROR: curl is required to fetch the VM artifact." >&2; return 1; }
+  command -v zstd &>/dev/null || { echo "ERROR: zstd is required to decompress the VM artifact." >&2; return 1; }
   raw="${state_dir}/donate-clanker-vm-${version}-${arch}.raw"
-  url="https://github.com/projectbluefin/fsdk-containers/releases/download/v${version}/$(basename "$raw")"
+  local zst="${raw}.zst" checksum="${raw}.sha256"
+  local base_url="https://github.com/projectbluefin/fsdk-containers/releases/download/v${version}"
   mkdir -p "$state_dir"
   echo "Fetching donate-clanker VM ${version} for ${arch}..."
-  curl -fL --retry 3 --output "${raw}.partial" "$url" || {
-    rm -f "${raw}.partial"
-    echo "ERROR: VM release asset is not published yet: ${url}" >&2
+  curl -fL --retry 3 --output "${zst}.partial" "${base_url}/$(basename "$zst")" || {
+    rm -f "${zst}.partial"
+    echo "ERROR: VM release asset is not published yet: ${base_url}/$(basename "$zst")" >&2
+    return 1
+  }
+  mv "${zst}.partial" "$zst"
+  curl -fL --retry 3 --output "${checksum}.partial" "${base_url}/$(basename "$checksum")" || {
+    rm -f "$zst" "${zst}.partial" "$checksum" "${checksum}.partial"
+    echo "ERROR: VM release checksum sidecar is not published yet: ${base_url}/$(basename "$checksum")" >&2
+    return 1
+  }
+  mv "${checksum}.partial" "$checksum"
+  echo "Decompressing VM image..."
+  zstd -d "$zst" -o "${raw}.partial" --force || {
+    rm -f "$zst" "$checksum" "${raw}.partial"
+    echo "ERROR: VM decompression failed." >&2
     return 1
   }
   mv "${raw}.partial" "$raw"
-  curl -fL --retry 3 --output "${raw}.sha256" "${url}.sha256"
-  (cd "$state_dir" && sha256sum -c "$(basename "${raw}.sha256")") || {
-    rm -f "$raw" "${raw}.sha256"
+  rm -f "$zst"
+  (cd "$state_dir" && sha256sum -c "$(basename "$checksum")") || {
+    rm -f "$raw" "$checksum"
     echo "ERROR: downloaded VM checksum failed." >&2
     return 1
   }
@@ -449,29 +490,46 @@ donate-clanker:
     #        clones assignments itself; only the per-run control/overlay
     #        directory crosses this boundary. ──
     VM_RAW="{{vm_raw_image}}"
-    if [[ -z "$VM_RAW" ]]; then
+    # An explicit raw disk wins. Otherwise, an explicitly configured runner
+    # image skips the local artifact lookup and fetch path.
+    if [[ -z "$VM_RAW" && -z "{{vm_runner_image}}" ]]; then
+      VM_ARCH="$(vm_host_arch)"
       shopt -s nullglob
-      LOCAL_VM_CANDIDATES=("${STATE_DIR}"/*.raw)
+      LOCAL_VM_CANDIDATES=("${STATE_DIR}"/*-"${VM_ARCH}".raw)
       shopt -u nullglob
       [[ "${#LOCAL_VM_CANDIDATES[@]}" -eq 1 ]] && VM_RAW="${LOCAL_VM_CANDIDATES[0]}"
     fi
-    if [[ -z "$VM_RAW" && "${DONATE_CLANKER_TEST_SKIP_VM_FETCH:-}" != 1 ]]; then
+    if [[ -z "$VM_RAW" && -z "{{vm_runner_image}}" && "${DONATE_CLANKER_TEST_SKIP_VM_FETCH:-}" != 1 ]]; then
       VM_RAW="$(fetch_vm_raw "$STATE_DIR" "{{vm_version}}")"
     fi
     if [[ -n "$VM_RAW" ]]; then
+      VM_ARCH="$(vm_host_arch)"
       [[ -f "$VM_RAW" ]] || { echo "ERROR: VM raw disk not found: $VM_RAW" >&2; exit 1; }
-      [[ -f "${VM_RAW}.sha256" ]] && (cd "$(dirname "$VM_RAW")" && sha256sum -c "$(basename "${VM_RAW}.sha256")")
+      [[ -f "${VM_RAW}.sha256" ]] || {
+        echo "ERROR: VM raw disk checksum sidecar not found: ${VM_RAW}.sha256" >&2
+        exit 1
+      }
+      (cd "$(dirname "$VM_RAW")" && sha256sum -c "$(basename "${VM_RAW}.sha256")") || {
+        echo "ERROR: VM raw disk checksum failed: $VM_RAW" >&2
+        exit 1
+      }
       ensure_vm_host
-      OVMF="$(find /usr/share /usr/lib -name OVMF_CODE.fd -print -quit 2>/dev/null)"
-      [[ -n "$OVMF" ]] || { echo "ERROR: OVMF_CODE.fd not found." >&2; exit 1; }
+      FIRMWARE="$(vm_firmware "$VM_ARCH")" || {
+        echo "ERROR: matching firmware for ${VM_ARCH} was not found." >&2
+        exit 1
+      }
+      case "$VM_ARCH" in
+        x86_64) VM_MACHINE=q35; SERIAL_DEVICE=virtio-serial-pci ;;
+        aarch64) VM_MACHINE=virt; SERIAL_DEVICE=virtio-serial-device ;;
+      esac
       echo "✓ booting local donate-clanker VM (4 vCPU, 8 GiB RAM)."
-      exec qemu-system-x86_64 \
-        -enable-kvm -machine q35 -cpu host -smp 4 -m 8192 \
-        -bios "$OVMF" \
+      exec "qemu-system-${VM_ARCH}" \
+        -enable-kvm -machine "$VM_MACHINE" -cpu host -smp 4 -m 8192 \
+        -bios "$FIRMWARE" \
         -drive "file=${VM_RAW},format=raw,if=virtio" \
         -nic user,model=virtio \
         -chardev "socket,id=control,path=${BOOTSTRAP_SOCKET}" \
-        -device virtio-serial-pci \
+        -device "$SERIAL_DEVICE" \
         -device "virtserialport,chardev=control,name=org.projectbluefin.donate-clanker.bootstrap" \
         -nographic
     fi
