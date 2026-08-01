@@ -1,6 +1,6 @@
 ---
 name: goose-context
-version: "1.1"
+version: "1.2"
 last_updated: 2026-08-01
 id: goose-context
 one_line_purpose: Keep Goose config, Context7, and skills loaded in the guest.
@@ -18,13 +18,26 @@ metadata:
 
 # Goose Context
 
+## Overview
+
+Keep image-owned Goose context available in Hive tmux sessions and route
+task-specific guidance from each cloned repository's skill catalog.
+
 ## When to Use
 
 Load this when Goose in the guest is missing the Context7 extension, when a
 skill that should be available is not, when editing `image/config/goose.yaml`,
 or when deciding where a new piece of agent context belongs.
 
+## When NOT to Use
+
+Do not use this for Hive task selection, delivery, or tmux lifecycle changes.
+
 ## Core Process
+
+1. Keep image-owned configuration under `GOOSE_PATH_ROOT`, not Hive's rewritten default path.
+2. Use global skills, then consult the cloned repository's task-specific catalog.
+3. Use Context7 only for current external documentation; otherwise use repository evidence.
 
 ### GOOSE_PATH_ROOT is not optional
 
@@ -75,9 +88,19 @@ Per-repo skills **cannot** be discovered natively. Goose starts in
 session start. By the time a repository exists, discovery has already run.
 
 The workaround: the agent is instructed to read `docs/skills/index.json`
-after cloning and open only the matching `entry_point`. This is model-driven
-behavior. It is not enforced and it is not guaranteed. Say so plainly rather
-than describing it as automatic discovery.
+after cloning and open only the matching `entry_point`. The image keeps this
+instruction in `/opt/bluefin/local-agent-policy.md` and supplies it through
+`GOOSE_MOIM_MESSAGE_FILE`, so it remains visible on every turn. The agent
+still makes the routing decision; it is not native auto-discovery. Say so
+plainly rather than describing it as automatic discovery.
+
+### Global routing policy
+
+`/opt/bluefin/local-agent-policy.md` is the concise, image-baked prompt for
+every Goose session. It tells the agent to use matching global Agent Skills,
+then consult the cloned repository's catalog. Keep it short: persistent
+instructions consume context on every turn. Override its path only with
+`GOOSE_MOIM_MESSAGE_FILE` when deliberately replacing this global policy.
 
 ### CONTEXT_FILE_NAMES
 
@@ -85,6 +108,14 @@ than describing it as automatic discovery.
 prompt. `AGENTS.md` is auto-loaded on **every request**, so every line in it
 costs tokens on every turn. Keep it under 200 lines and factual. Push
 anything task-scoped into `docs/skills/` where it loads on demand.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "Hive starts Goose, so image configuration can live in the default config path." | Hive overwrites that path before the agent runs; use `GOOSE_PATH_ROOT`. |
+| "Global skill descriptions make repository skills automatically available." | Repository-local skills appear after session startup; the agent must consult the cloned catalog. |
+| "The policy can contain every skill body." | Persistent instructions consume context every turn; route to the relevant document instead. |
 
 ## Red Flags
 
@@ -162,3 +193,8 @@ discover it as `failed to get api info` inside a guest they cannot read.
 
 `donate-clanker-doctor` reports whether a usable credential can be resolved,
 without printing it and without starting anything.
+
+## Sources
+
+- Goose configuration and persistent instructions: `/aaif-goose/goose`
+- Skill structure guidance: `/addyosmani/agent-skills`
