@@ -47,7 +47,14 @@ func (ExecRunner) Output(ctx context.Context, name string, args ...string) ([]by
 // providerEnvKeys maps a Goose provider to the environment variables that
 // conventionally carry its API key.
 var providerEnvKeys = map[string][]string{
-	"github_copilot": {"GITHUB_TOKEN", "GH_TOKEN"},
+	// GITHUB_COPILOT_TOKEN first: Goose's github_copilot provider wants the
+	// long-lived OAuth token from the Copilot editor device flow (a "ghu_"
+	// user-to-server token), which is the only one its API accepts. A plain
+	// GITHUB_TOKEN/GH_TOKEN is a different client with different scopes and
+	// fails at the first model call with "failed to get api info", so they
+	// stay only as last-resort fallbacks for contributors who set them
+	// deliberately.
+	"github_copilot": {"GITHUB_COPILOT_TOKEN", "GITHUB_TOKEN", "GH_TOKEN"},
 	"anthropic":      {"ANTHROPIC_API_KEY"},
 	"openai":         {"OPENAI_API_KEY"},
 	"google":         {"GOOGLE_API_KEY", "GEMINI_API_KEY"},
@@ -73,6 +80,12 @@ func SupportedProviders() []string {
 //
 // The system keyring is deliberately never consulted: it is not readable
 // without a session bus and fails differently on every contributor's machine.
+//
+// Note that step 2 yields a token Copilot inference rejects -- it is kept
+// because it still authenticates the GitHub API surface an agent uses, but a
+// contributor who wants the model to answer must supply
+// GITHUB_COPILOT_TOKEN. The container path reads that token from the login
+// keyring on the contributor's behalf; see just/61-donate-clanker.just.
 func Resolve(ctx context.Context, provider, model string, env map[string]string, runner Runner) (Resolved, error) {
 	provider = strings.TrimSpace(provider)
 	if provider == "" {

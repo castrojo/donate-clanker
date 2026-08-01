@@ -327,6 +327,7 @@ run_recipe() {
     env \
       -u TOOL -u DONATE_CLANKER_VM_RUNNER_IMAGE -u DONATE_CLANKER_HIVE_COMMIT \
       -u AGENT_MODEL -u GOOSE_PROVIDER -u GOOSE_MODEL -u GH_READY \
+      -u GITHUB_COPILOT_TOKEN \
       -u TEST_UNAME_M -u TEST_CURL_MODE -u DONATE_CLANKER_TEST_GUM_TTY \
       -u DONATE_CLANKER_NON_INTERACTIVE -u GOOSE_INSTALLED \
       HOME="$home" PATH="$fake_bin:/usr/bin:/bin" TMPDIR="$tmp_root" \
@@ -563,6 +564,16 @@ assert_file_not_contains "qemu" "$runner_log"
 assert_file_not_contains "super-secret-registration-token" "$runner_log"
 assert_eq "$(wc -c <"$qemu_log")" 0 "the container recipe must not start a VM"
 assert_file_contains "image exists" "$image_log"
+
+begin "donate-clanker-container: the Copilot credential is passed, never a gh token"
+# Without this the agent starts a fresh device flow on every launch and the
+# pane sits on "enter code XXXX-XXXX" until a human types one in.
+reset_logs
+run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o \
+  GITHUB_COPILOT_TOKEN=ghu-test-token
+assert_contains "Copilot credential passed" "$OUT"
+assert_file_contains "--env GITHUB_COPILOT_TOKEN=ghu-test-token" "$runner_log"
 
 begin "donate-clanker-container: an unobtainable image is one actionable error"
 reset_logs
