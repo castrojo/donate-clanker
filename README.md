@@ -1,8 +1,8 @@
 # donate-clanker
 
 Donate a terminal to the Bluefin factory: a thin, foreground launcher that
-boots a self-contained QEMU VM running a KubeStellar Hive contributor image
-with Goose, preloaded with Bluefin review context.
+boots a self-contained QEMU VM running a Project Bluefin FSDK-derived
+contributor image with Goose, preloaded with Bluefin review context.
 
 ## What it does
 
@@ -150,8 +150,9 @@ minutes to every merge. On `arm64`, use `stable` or build
 
 ## Review context
 
-The image derives `FROM ghcr.io/kubestellar/hive-contributor`, pinned by
-digest, and layers the Bluefin review context on top.
+The image derives `FROM ghcr.io/projectbluefin/lab-runner`, pinned by digest,
+then layers in the minimal Hive contributor runtime, Goose, and the Bluefin
+review context.
 
 **Goose config survival.** Hive unconditionally overwrites
 `~/.config/goose/config.yaml` at every startup. donate-clanker therefore sets
@@ -196,7 +197,7 @@ required status checks, not hooks.
                               qemu-system-* -nographic
                                     |
                                     v
-                          derived hive-contributor container
+                          fsdk-derived contributor container
                                     |
                                     v
                           tmux session "contributor"

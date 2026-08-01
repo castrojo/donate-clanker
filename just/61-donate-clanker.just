@@ -83,7 +83,7 @@ hive_commit := "e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e"
 vm_runner_image := env("DONATE_CLANKER_VM_RUNNER_IMAGE", "")
 vm_raw_image := env("DONATE_CLANKER_VM_RAW", "")
 vm_version := env("DONATE_CLANKER_VM_VERSION", "25.08.14")
-# The derived KubeStellar Hive contributor image. Used by
+# The fsdk-derived contributor image. Used by
 # donate-clanker-container; the VM path gets the same image from inside the
 # guest, so this only matters for local development.
 #

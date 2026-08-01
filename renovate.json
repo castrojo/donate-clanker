@@ -16,12 +16,12 @@
       "platformAutomerge": true
     },
     {
-      "description": "Keep the Hive contributor base image digest in image/Containerfile current",
+      "description": "Keep the FSDK lab-runner base image digest in image/Containerfile current",
       "matchManagers": [
         "dockerfile"
       ],
       "matchPackageNames": [
-        "ghcr.io/kubestellar/hive-contributor"
+        "ghcr.io/projectbluefin/lab-runner"
       ],
       "pinDigests": true
     }
