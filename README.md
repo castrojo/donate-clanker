@@ -156,6 +156,11 @@ review context.
 Goose configuration — which declares the Context7 MCP extension — survives
 Hive's rewrite.
 
+**Global review policy.** The image installs its short review policy at
+`~/.agents/AGENTS.md`, Goose's global-hints path, so it is loaded before any
+assigned repository exists. It keeps local evidence first and treats Context7
+as an optional source of current external documentation.
+
 **Org skills.** Goose v1.45 has native Agent Skills: a skill is a *directory*
 containing a `SKILL.md` with YAML frontmatter (`name`, `description`). Only
 the name and description enter the system prompt; the body loads on demand

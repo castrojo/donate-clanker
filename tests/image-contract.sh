@@ -61,6 +61,7 @@ require image/Containerfile \
   'https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/config/backends.conf' \
   '/usr/local/bin/goose run --help >/dev/null' \
   'image/config/goose.yaml /opt/bluefin/goose/config/config.yaml' \
+  'image/config/local-agent-policy.md /home/dev/.agents/AGENTS.md' \
   'COPY --chmod=0755 image/git-hooks/ /opt/bluefin/git-hooks/' \
   'https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/docs/skills/index.json' \
   '--raw-base "https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/"' \
@@ -126,13 +127,16 @@ require image/config/local-agent-policy.md \
 
 # GOOSE_PATH_ROOT is the whole reason our config survives Hive's rewrite, and
 # Hive's knowledge export lands on CLAUDE.md, which Goose ignores by default.
+# shellcheck disable=SC2016 # Every argument is a literal source substring.
 require image/entrypoint.sh \
   'export GOOSE_PATH_ROOT=' \
   'GOOSE_DISABLE_KEYRING=1' \
+  'GOOSE_MODEL must be set for GOOSE_PROVIDER=' \
   'CONTEXT_FILE_NAMES' \
   'CLAUDE.md' \
   'core.hooksPath /opt/bluefin/git-hooks' \
   'mcp.context7.com' \
+  'skill_docs=("$skills_root"/*/SKILL.md)' \
   '/usr/local/bin/contributor-agent.sh "$@" &' \
   'tmux has-session -t contributor' \
   'tmux attach-session -t contributor' \
@@ -143,7 +147,9 @@ forbid image/entrypoint.sh \
   '/var/run/docker.sock' \
   '/run/podman/podman.sock' \
   ':-/config}' \
-  ':-/workspace}'
+  ':-/workspace}' \
+  'find ' \
+  '/opt/bluefin/local-agent-policy.md'
 
 # Hooks run in every repository via a global core.hooksPath, so they must never
 # claim to be enforcement: --no-verify bypasses all of them.

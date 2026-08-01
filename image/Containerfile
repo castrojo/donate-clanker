@@ -128,7 +128,9 @@ RUN set -eu; \
 RUN mkdir -p /opt/bluefin/goose/config /opt/bluefin/goose/data /opt/bluefin/goose/state \
     && chown -R 1000:1000 /opt/bluefin/goose
 COPY --chown=1000:1000 image/config/goose.yaml /opt/bluefin/goose/config/config.yaml
-COPY image/config/local-agent-policy.md /opt/bluefin/local-agent-policy.md
+# Goose treats ~/.agents/AGENTS.md as global hints regardless of the current
+# repository, so install the review policy where it is actually loaded.
+COPY --chown=1000:1000 image/config/local-agent-policy.md /home/dev/.agents/AGENTS.md
 
 # Git hooks, wired via a global core.hooksPath by the entrypoint. Ergonomics
 # only -- `git commit --no-verify` bypasses every one of them.

@@ -40,6 +40,10 @@ if [ -z "${GOOSE_MODEL:-}" ]; then
 	google) GOOSE_MODEL="gemini-2.0-flash" ;;
 	openrouter) GOOSE_MODEL="openai/gpt-4o" ;;
 	ollama) GOOSE_MODEL="qwen2.5" ;;
+	*)
+		note "GOOSE_MODEL must be set for GOOSE_PROVIDER=${GOOSE_PROVIDER}; no built-in default is available"
+		exit 1
+		;;
 	esac
 	note "GOOSE_MODEL not set; defaulting to ${GOOSE_MODEL} for ${GOOSE_PROVIDER}"
 fi
@@ -93,7 +97,10 @@ fi
 
 skills_root="${HOME}/.agents/skills"
 if [ -d "$skills_root" ]; then
-	note "$(find "$skills_root" -name SKILL.md 2>/dev/null | wc -l) org skills available (load one with /<skill-name>)"
+	shopt -s nullglob
+	skill_docs=("$skills_root"/*/SKILL.md)
+	shopt -u nullglob
+	note "${#skill_docs[@]} org skills available (load one with /<skill-name>)"
 fi
 
 # --- Hand over to Hive -------------------------------------------------------

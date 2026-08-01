@@ -1,6 +1,6 @@
 ---
 name: image-build
-version: "1.4"
+version: "1.5"
 last_updated: 2026-08-01
 id: image-build
 one_line_purpose: Derive and pin the donate-clanker contributor image safely.
@@ -66,7 +66,9 @@ Only the contributor runtime delta plus the review context payload:
 4. **Git hooks** at `/opt/bluefin/git-hooks`, wired through a global
    `core.hooksPath`. Ergonomics only — `git commit --no-verify` bypasses
    them. Enforcement is GitHub rulesets and required status checks.
-5. **Agent policy and model configuration** from `image/config/`.
+5. **Agent policy and model configuration** from `image/config/`. The policy
+   is installed as `/home/dev/.agents/AGENTS.md`, where Goose loads it as
+   global hints before an assigned repository exists.
 
 Nothing else. No credentials, no workspace, no host state. Credentials arrive
 at runtime as environment variables from the launcher.
