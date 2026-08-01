@@ -242,12 +242,10 @@ resolve_copilot_token() {
   COPILOT_TOKEN="${GITHUB_COPILOT_TOKEN:-}"
   [[ -n "$COPILOT_TOKEN" ]] && return 0
   command -v secret-tool &>/dev/null || return 0
-  COPILOT_TOKEN="$(secret-tool lookup service goose username secrets 2>/dev/null |
-    python3 -c 'import sys,json
-try:
-    print(json.load(sys.stdin).get("GITHUB_COPILOT_TOKEN",""))
-except Exception:
-    pass' 2>/dev/null)"
+  # Extracted with sed rather than a JSON parser so this stays a single line:
+  # CI lifts recipe bodies out of this file and runs 'bash -n' over them, which
+  # a multi-line embedded script breaks.
+  COPILOT_TOKEN="$(secret-tool lookup service goose username secrets 2>/dev/null | sed -nE 's/.*"GITHUB_COPILOT_TOKEN"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -1)"
   return 0
 }
 gum_can_prompt() {
