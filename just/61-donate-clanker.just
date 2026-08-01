@@ -172,6 +172,17 @@ contributor_image_available() {
   podman image exists "$ref" && return 0
   podman manifest inspect "$ref" &>/dev/null
 }
+require_no_running_instance() {
+  # --replace reclaims a name left behind by a dead run, but it would also
+  # tear down a session that is still alive in another terminal. A live
+  # agent is never collateral: say so and hand over the attach command.
+  local name="$1"
+  [[ "$(podman inspect --format '{{.State.Running}}' "$name" 2>/dev/null || echo false)" == "true" ]] || return 0
+  echo "ERROR: ${name} is already running." >&2
+  echo "  Attach to the live session: podman exec -it ${name} tmux attach -t contributor" >&2
+  echo "  Or end it first: ujust donate-clanker-stop" >&2
+  return 1
+}
 ensure_contributor_image() {
   # A missing tag otherwise surfaces as a bare 'manifest unknown' from
   # podman at launch time, which says nothing about what to do next.
@@ -652,6 +663,7 @@ donate-clanker:
       exit 1
     }
     ensure_vm_runner
+    require_no_running_instance donate-clanker-vm
     # --rm --interactive --tty and never --detach: the runner container owns
     # this terminal for as long as it lives.
     CONTAINER_ARGS=(
@@ -709,6 +721,7 @@ donate-clanker-container:
 
     CONTAINER_NAME="donate-clanker-container"
     CONTRIBUTOR_IMAGE="{{contributor_image}}"
+    require_no_running_instance "$CONTAINER_NAME"
     ensure_contributor_image "$CONTRIBUTOR_IMAGE"
 
     # Hive's own convention: the contributor config lives at

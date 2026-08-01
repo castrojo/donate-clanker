@@ -235,6 +235,14 @@ case "${1:-}" in
     [[ "${FAKE_PODMAN_IMAGE_MISSING:-0}" == 1 ]] && exit 1
     exit 0
     ;;
+  inspect)
+    # Only the liveness probe uses 'podman inspect'; nothing is running
+    # unless a scenario asks for it.
+    printf '%s\n' "$*" >>"${IMAGE_LOG:?}"
+    [[ "${FAKE_PODMAN_RUNNING:-0}" == 1 ]] || { echo false; exit 1; }
+    echo true
+    exit 0
+    ;;
 esac
 printf '%s\n' "$*" >> "${RUNNER_LOG:?}"
 mount_arg=""
@@ -567,6 +575,17 @@ assert_file_contains "pull" "$image_log"
 assert_eq "$(wc -c <"$runner_log")" 0 "no container may start when the image is unobtainable"
 
 # ══ 8. Stop recipe ════════════════════════════════════════════════════════
+begin "donate-clanker-container: a live session is never replaced silently"
+reset_logs
+run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+  GUM_PROVIDER_RESPONSE=OpenAI GUM_INPUT_RESPONSE=gpt-test \
+  FAKE_PODMAN_RUNNING=1
+assert_nonzero_status "$STATUS" "a running container must stop the relaunch"
+assert_eq "$(error_line_count "$OUT")" 1 "expected exactly one ERROR line"
+assert_contains "is already running" "$OUT"
+assert_contains "tmux attach -t contributor" "$OUT"
+assert_eq "$(wc -c <"$runner_log")" 0 "a live session must never be replaced"
+
 begin "donate-clanker-stop: succeeds when nothing is running"
 reset_logs
 run_recipe donate-clanker-stop
