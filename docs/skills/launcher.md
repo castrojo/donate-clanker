@@ -1,7 +1,7 @@
 ---
 name: launcher
-version: "1.0"
-last_updated: 2026-07-31
+version: "1.1"
+last_updated: 2026-08-01
 id: launcher
 one_line_purpose: Change donate-clanker just recipes without breaking foreground.
 entry_point: docs/skills/launcher.md
@@ -33,6 +33,20 @@ launch that exits before the tmux session appears.
 | `donate-clanker` | Boots the pinned QEMU VM in the foreground, attaches to tmux session `contributor`. Ctrl-C stops it. |
 | `donate-clanker-container` | Runs only the container, no VM, attaches to the same session. Local development. |
 | `donate-clanker-doctor` | Read-only preflight. Starts nothing. |
+
+Both launch paths pass the contributor's Copilot credential to the agent, so
+neither stalls on a device code: the container gets it as
+`GITHUB_COPILOT_TOKEN`, the VM gets it as `provider_secret` inside the v2
+bootstrap envelope on the one-shot socket. `donate-clanker-doctor` reports
+whether one can be resolved at all, without printing it. See
+[`goose-context.md`](goose-context.md) for why a `gh auth token` is not a
+substitute.
+
+Doctor also warns when `~/.config/hive/contributor.env` names a backend other
+than `goose`. That file is upstream's and the launcher passes
+`AGENT_BACKEND=goose` itself, so the stale line is harmless -- but it is
+reported, never rewritten. Editing a user's file to silence a warning is worse
+than the warning.
 
 Everything else in the file is private (`_`-prefixed) recipes and variables,
 deliberately. A user browsing the repository should find one file and three

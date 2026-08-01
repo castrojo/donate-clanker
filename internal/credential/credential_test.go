@@ -102,7 +102,7 @@ func TestResolveFailsLoudlyWhenGhUnavailable(t *testing.T) {
 	if !errors.Is(err, ErrNoCredential) {
 		t.Fatalf("error = %v, want ErrNoCredential", err)
 	}
-	if !strings.Contains(err.Error(), "gh auth login") {
+	if !strings.Contains(err.Error(), "goose configure") {
 		t.Fatalf("error should tell the contributor how to fix it, got %v", err)
 	}
 }
@@ -125,5 +125,126 @@ func TestEnvironmentMap(t *testing.T) {
 	}
 	if _, ok := env["malformed"]; ok {
 		t.Fatal("malformed entry should be skipped")
+	}
+}
+
+// scriptedRunner answers per command name, so a test can say "the keyring has
+// this, gh has that" instead of handing every command the same output.
+type scriptedRunner struct {
+	responses map[string]string
+	errs      map[string]error
+	called    []string
+}
+
+func (s *scriptedRunner) Output(_ context.Context, name string, args ...string) ([]byte, error) {
+	s.called = append(s.called, strings.Join(append([]string{name}, args...), " "))
+	if err, ok := s.errs[name]; ok {
+		return nil, err
+	}
+	out, ok := s.responses[name]
+	if !ok {
+		return nil, exec.ErrNotFound
+	}
+	return []byte(out), nil
+}
+
+const keyringEntry = `{"GITHUB_COPILOT_TOKEN":"ghu_keyring","OPENAI_API_KEY":"other"}`
+
+// The keyring holds the only credential Copilot inference accepts, so it must
+// beat the gh token the VM path used to settle for.
+func TestResolvePrefersKeyringOverGhAuthToken(t *testing.T) {
+	runner := &scriptedRunner{responses: map[string]string{
+		"secret-tool": keyringEntry,
+		"gh":          "gho_from_gh",
+	}}
+	got, err := Resolve(context.Background(), "github_copilot", "", map[string]string{}, runner)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if got.Secret != "ghu_keyring" {
+		t.Fatalf("Secret = %q, want the keyring token", got.Secret)
+	}
+	if got.Source != KeyringSource {
+		t.Fatalf("Source = %q, want %q", got.Source, KeyringSource)
+	}
+	if got.Advisory != "" {
+		t.Fatalf("a working Copilot credential needs no advisory, got %q", got.Advisory)
+	}
+}
+
+// An explicit GITHUB_COPILOT_TOKEN is the contributor speaking directly; the
+// keyring must not be touched at all in that case.
+func TestResolveSkipsKeyringWhenTokenIsExported(t *testing.T) {
+	runner := &scriptedRunner{responses: map[string]string{"secret-tool": keyringEntry}}
+	got, err := Resolve(context.Background(), "github_copilot", "", map[string]string{"GITHUB_COPILOT_TOKEN": "ghu_env"}, runner)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if got.Secret != "ghu_env" {
+		t.Fatalf("Secret = %q, want the exported token", got.Secret)
+	}
+	if len(runner.called) != 0 {
+		t.Fatalf("the keyring was probed unnecessarily: %v", runner.called)
+	}
+}
+
+// No secret-tool, no session bus, a locked collection or a junk entry must all
+// behave identically: fall through, never fail the launch.
+func TestResolveKeyringFailureFallsThrough(t *testing.T) {
+	for name, runner := range map[string]*scriptedRunner{
+		"secret-tool missing": {responses: map[string]string{"gh": "gho_from_gh"}},
+		"keyring locked":      {responses: map[string]string{"gh": "gho_from_gh"}, errs: map[string]error{"secret-tool": errors.New("no such collection")}},
+		"malformed entry":     {responses: map[string]string{"secret-tool": "not json", "gh": "gho_from_gh"}},
+		"entry without token": {responses: map[string]string{"secret-tool": `{"OPENAI_API_KEY":"x"}`, "gh": "gho_from_gh"}},
+	} {
+		got, err := Resolve(context.Background(), "github_copilot", "", map[string]string{}, runner)
+		if err != nil {
+			t.Fatalf("%s: Resolve() error = %v", name, err)
+		}
+		if got.Secret != "gho_from_gh" {
+			t.Fatalf("%s: Secret = %q, want the gh fallback", name, got.Secret)
+		}
+	}
+}
+
+// The keyring is only meaningful for Copilot; other providers keep their own
+// explicit configuration and must not have their keyring read behind them.
+func TestResolveDoesNotReadKeyringForOtherProviders(t *testing.T) {
+	runner := &scriptedRunner{responses: map[string]string{"secret-tool": keyringEntry}}
+	if _, err := Resolve(context.Background(), "anthropic", "", map[string]string{}, runner); !errors.Is(err, ErrNoCredential) {
+		t.Fatalf("error = %v, want ErrNoCredential", err)
+	}
+	if len(runner.called) != 0 {
+		t.Fatalf("the keyring was probed for a non-Copilot provider: %v", runner.called)
+	}
+}
+
+// Settling for a gh token is allowed, but it must never be silent: Copilot
+// rejects it and the failure otherwise appears inside the guest.
+func TestResolveAdvisesWhenOnlyAGhTokenIsAvailable(t *testing.T) {
+	cases := map[string]Resolved{}
+	runner := &scriptedRunner{responses: map[string]string{"gh": "gho_from_gh"}}
+	got, err := Resolve(context.Background(), "github_copilot", "", map[string]string{}, runner)
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	cases["gh auth token"] = got
+
+	got, err = Resolve(context.Background(), "github_copilot", "", map[string]string{"GITHUB_TOKEN": "gho_env"}, &scriptedRunner{})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	cases["GITHUB_TOKEN"] = got
+
+	for name, resolved := range cases {
+		if resolved.Advisory == "" {
+			t.Fatalf("%s: expected an advisory", name)
+		}
+		if !strings.Contains(resolved.Advisory, "goose configure") {
+			t.Fatalf("%s: advisory must carry the fix, got %q", name, resolved.Advisory)
+		}
+		if strings.Contains(resolved.Advisory, resolved.Secret) {
+			t.Fatalf("%s: advisory leaked the credential", name)
+		}
 	}
 }

@@ -244,9 +244,31 @@ resolve_copilot_token() {
   command -v secret-tool &>/dev/null || return 0
   # Extracted with sed rather than a JSON parser so this stays a single line:
   # CI lifts recipe bodies out of this file and runs 'bash -n' over them, which
-  # a multi-line embedded script breaks.
-  COPILOT_TOKEN="$(secret-tool lookup service goose username secrets 2>/dev/null | sed -nE 's/.*"GITHUB_COPILOT_TOKEN"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -1)"
+  # a multi-line embedded script breaks. The trailing '|| true' matters under
+  # 'set -euo pipefail': a locked or empty keyring makes secret-tool exit
+  # non-zero, and pipefail would otherwise abort the whole launch over a lookup
+  # that is meant to be optional.
+  COPILOT_TOKEN="$(secret-tool lookup service goose username secrets 2>/dev/null | sed -nE 's/.*"GITHUB_COPILOT_TOKEN"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -1 || true)"
   return 0
+}
+report_missing_copilot_credential() {
+  # Named so both launch paths tell the same story. A `gh auth token` is the
+  # tempting substitute and the reason this message exists: it looks like a
+  # GitHub credential, so a contributor reasonably assumes their gh login is
+  # enough, and then the agent dies on "failed to get api info" inside a guest
+  # they cannot read.
+  echo "! no Copilot credential found; the agent will ask for a device code." >&2
+  echo "  A 'gh auth token' is NOT a substitute — Copilot inference rejects it." >&2
+  echo "  Log in once on this host with: goose configure" >&2
+  echo "  Or export GITHUB_COPILOT_TOKEN before launching." >&2
+  return 0
+}
+hive_contributor_backend() {
+  # Reads AGENT_BACKEND out of Hive's own contributor.env. Read-only: the file
+  # belongs to upstream setup, so it is reported on, never rewritten.
+  local path="$1"
+  [[ -f "$path" ]] || return 0
+  awk -F= '$1 == "AGENT_BACKEND" {sub(/^[^=]*=/, ""); gsub(/["'"'"']/, ""); print; exit}' "$path"
 }
 gum_can_prompt() {
   command -v gum &>/dev/null || return 1
@@ -574,6 +596,20 @@ donate-clanker:
     resolve_goose_selection
     persist_goose_selection
 
+    # The guest's agent needs the same Copilot credential the container path
+    # gets, or it stalls on a device code nobody is there to type. It travels
+    # inside the bootstrap envelope over the one-shot socket, never as a runner
+    # environment variable or command-line argument.
+    COPILOT_TOKEN=""
+    if [[ "${GOOSE_PROVIDER:-}" == "github_copilot" ]]; then
+      resolve_copilot_token
+      if [[ -n "${COPILOT_TOKEN:-}" ]]; then
+        echo "✓ Copilot credential passed to the agent."
+      else
+        report_missing_copilot_credential
+      fi
+    fi
+
     # ── 2. Ensure upstream contribute-setup has run. ──
     ensure_hive_contributor_env
 
@@ -610,9 +646,9 @@ donate-clanker:
     # Timeouts: the guest must boot Linux and start its consumer before it
     # can connect, which takes far longer than a few seconds on a cold boot.
     # DONATE_CLANKER_BOOTSTRAP_TIMEOUT overrides the accept timeout.
-    printf '%s\0%s\0%s\0%s\0%s\0%s\0' \
-      "$HIVE_ENDPOINT" "$HIVE_REGISTRATION_TOKEN" "goose" "$RUN_ID" "$GOOSE_PROVIDER" "$GOOSE_MODEL" |
-      python3 -c 'import json,os,socket,sys; path=sys.argv[1]; values=sys.stdin.buffer.read().split(b"\0"); len(values) < 6 and sys.exit("bootstrap input is incomplete"); payload={"version":2,"hive_endpoint":values[0].decode(),"registration_token":values[1].decode(),"backend":values[2].decode(),"run_id":values[3].decode(), **({"goose_provider":values[4].decode()} if values[4] else {}), **({"goose_model":values[5].decode()} if values[5] else {})}; os.path.exists(path) and os.unlink(path); server=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM); server.bind(path); os.chmod(path,0o600); server.listen(1); server.settimeout(float(os.environ.get("DONATE_CLANKER_BOOTSTRAP_TIMEOUT","180"))); conn,_=server.accept(); conn.settimeout(30); conn.sendall((json.dumps(payload,separators=(",",":"))+"\n").encode()); ack=json.loads(conn.recv(65536).splitlines()[0]); ack == {"version":2,"type":"control_ack"} or sys.exit("invalid bootstrap acknowledgement"); conn.close(); server.close(); os.unlink(path)' "$BOOTSTRAP_SOCKET" &
+    printf '%s\0%s\0%s\0%s\0%s\0%s\0%s\0' \
+      "$HIVE_ENDPOINT" "$HIVE_REGISTRATION_TOKEN" "goose" "$RUN_ID" "$GOOSE_PROVIDER" "$GOOSE_MODEL" "${COPILOT_TOKEN:-}" |
+      python3 -c 'import json,os,socket,sys; path=sys.argv[1]; values=sys.stdin.buffer.read().split(b"\0"); len(values) < 7 and sys.exit("bootstrap input is incomplete"); payload={"version":2,"hive_endpoint":values[0].decode(),"registration_token":values[1].decode(),"backend":values[2].decode(),"run_id":values[3].decode(), **({"goose_provider":values[4].decode()} if values[4] else {}), **({"goose_model":values[5].decode()} if values[5] else {}), **({"provider_secret":values[6].decode()} if values[6] else {})}; os.path.exists(path) and os.unlink(path); server=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM); server.bind(path); os.chmod(path,0o600); server.listen(1); server.settimeout(float(os.environ.get("DONATE_CLANKER_BOOTSTRAP_TIMEOUT","180"))); conn,_=server.accept(); conn.settimeout(30); conn.sendall((json.dumps(payload,separators=(",",":"))+"\n").encode()); ack=json.loads(conn.recv(65536).splitlines()[0]); ack == {"version":2,"type":"control_ack"} or sys.exit("invalid bootstrap acknowledgement"); conn.close(); server.close(); os.unlink(path)' "$BOOTSTRAP_SOCKET" &
     BOOTSTRAP_PID=$!
 
     # ── 3. Run the self-contained QEMU VM in the FOREGROUND. The guest
@@ -799,8 +835,7 @@ donate-clanker-container:
         CONTAINER_ARGS+=(--env "GITHUB_COPILOT_TOKEN=${COPILOT_TOKEN}")
         echo "✓ Copilot credential passed to the agent."
       else
-        echo "! no Copilot credential found; the agent will ask for a device code." >&2
-        echo "  Log in once on this host with: goose configure" >&2
+        report_missing_copilot_credential
       fi
     fi
     CONTAINER_ARGS+=("$CONTRIBUTOR_IMAGE")
@@ -879,6 +914,25 @@ donate-clanker-doctor:
     fi
     echo ""
 
+    echo "=== Copilot credential ==="
+    # Read-only: this only looks the credential up, never prints it, and never
+    # starts anything. Both launch paths hand this exact token to the agent, so
+    # a contributor can find out here — before a launch — whether the agent
+    # will reach a model or sit on a device code.
+    resolve_copilot_token
+    if [[ -n "${COPILOT_TOKEN:-}" ]]; then
+      echo "  ✓ a Copilot credential is available (not shown)"
+      pass=$((pass+1))
+    else
+      echo "  ✗ no Copilot credential is available"
+      echo "    The agent will stop at 'enter code XXXX-XXXX' and wait for a human."
+      echo "    A 'gh auth token' is NOT a substitute — Copilot inference rejects it."
+      echo "    Run: goose configure (pick GitHub Copilot), or export GITHUB_COPILOT_TOKEN."
+      fail=$((fail+1))
+    fi
+    unset COPILOT_TOKEN
+    echo ""
+
     echo "=== Contributor image ==="
     DOCTOR_CONTRIBUTOR_IMAGE="{{contributor_image}}"
     if contributor_image_available "$DOCTOR_CONTRIBUTOR_IMAGE"; then
@@ -897,6 +951,17 @@ donate-clanker-doctor:
     if [[ -f "$HIVE_CONTRIBUTOR_ENV" ]]; then
       echo "  ✓ ${HIVE_CONTRIBUTOR_ENV} exists"
       pass=$((pass+1))
+      # Advisory only. An older contributor.env can still name a backend from
+      # before this launcher was Goose-only. Hive is told the backend at launch,
+      # so the stale line changes nothing — it just makes anyone reading the
+      # file believe something untrue. The file is upstream's, so say so and
+      # leave it alone.
+      DOCTOR_BACKEND="$(hive_contributor_backend "$HIVE_CONTRIBUTOR_ENV")"
+      if [[ -n "$DOCTOR_BACKEND" && "$DOCTOR_BACKEND" != "goose" ]]; then
+        echo "  ! ${HIVE_CONTRIBUTOR_ENV} says AGENT_BACKEND=${DOCTOR_BACKEND}, but donate-clanker always launches goose."
+        echo "    Harmless — the launcher passes AGENT_BACKEND=goose itself — but stale."
+        echo "    Edit that line yourself if you want the file to match; donate-clanker will not touch it."
+      fi
     else
       echo "  ✗ ${HIVE_CONTRIBUTOR_ENV} is missing"
       echo "    donate-clanker runs upstream 'just contribute-setup goose' from"

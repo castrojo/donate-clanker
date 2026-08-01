@@ -43,6 +43,7 @@ type dependencies struct {
 	commandRunner    setup.CommandRunner
 	environment      map[string]string
 	stdout           io.Writer
+	stderr           io.Writer
 	now              func() time.Time
 }
 
@@ -66,6 +67,7 @@ func defaultDependencies() dependencies {
 		},
 		environment: credential.HostEnvironment(),
 		stdout:      os.Stdout,
+		stderr:      os.Stderr,
 		now:         time.Now,
 	}
 }
@@ -105,6 +107,12 @@ func run(ctx context.Context, opts config.Options, deps dependencies) error {
 		return err
 	}
 	_, _ = fmt.Fprintf(deps.stdout, "✓ model credential resolved for %s (%s)\n", resolved.Provider, resolved.Source)
+	// A credential that authenticates GitHub but not Copilot inference would
+	// otherwise surface as an opaque agent failure minutes later, inside a
+	// guest the contributor cannot easily read. Say it here, where the fix is.
+	if resolved.Advisory != "" && deps.stderr != nil {
+		_, _ = fmt.Fprintf(deps.stderr, "! %s\n", resolved.Advisory)
+	}
 
 	bootstrap := vm.Bootstrap{
 		Version:           vm.BootstrapVersion,

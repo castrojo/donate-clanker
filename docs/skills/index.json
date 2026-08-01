@@ -17,8 +17,8 @@
         "config"
       ],
       "description": "Explains GOOSE_PATH_ROOT, the Context7 MCP extension, build-time skill generation from index.json, per-repo skill lookup, and CONTEXT_FILE_NAMES. Use when Goose loses its config, misses a skill, or lacks Context7.",
-      "version": "1.0",
-      "last_updated": "2026-07-31",
+      "version": "1.1",
+      "last_updated": "2026-08-01",
       "doc_type": "reference"
     },
     {
@@ -74,8 +74,8 @@
         "foreground"
       ],
       "description": "Covers the three donate-clanker just recipes, the foreground guarantee (and why there is no stop command), and the VM versus container-only modes. Use when editing just/61-donate-clanker.just, adding a recipe, or debugging a launch that exits early.",
-      "version": "1.0",
-      "last_updated": "2026-07-31",
+      "version": "1.1",
+      "last_updated": "2026-08-01",
       "doc_type": "runbook"
     },
     {

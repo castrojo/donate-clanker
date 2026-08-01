@@ -1,7 +1,7 @@
 ---
 name: goose-context
-version: "1.0"
-last_updated: 2026-07-31
+version: "1.1"
+last_updated: 2026-08-01
 id: goose-context
 one_line_purpose: Keep Goose config, Context7, and skills loaded in the guest.
 entry_point: docs/skills/goose-context.md
@@ -131,10 +131,34 @@ On a desktop Goose stores the real token in the login keyring, not in
 `~/.config/goose/githubcopilot/info.json` -- that file holds only a short-lived
 API token plus metadata and is usually expired. Mounting it into the container
 therefore does nothing. The launcher reads `GITHUB_COPILOT_TOKEN` from the
-keyring (`secret-tool lookup service goose username secrets`) and passes it as
-a single environment variable, so the container receives exactly one secret and
-no view of the rest of the host's Goose configuration.
+keyring (`secret-tool lookup service goose username secrets`), so the guest
+receives exactly one secret and no view of the rest of the host's Goose
+configuration.
+
+Both launch paths resolve the same credential, by different mechanisms,
+because they build their envelope in different places:
+
+| Path | Resolver | How the secret travels |
+|---|---|---|
+| `donate-clanker-container` | `resolve_copilot_token` in the justfile | `--env GITHUB_COPILOT_TOKEN=` |
+| `donate-clanker` (VM) | `resolve_copilot_token` in the justfile | `provider_secret` in the v2 bootstrap envelope, over the one-shot socket |
+| Go launcher (`internal/app`) | `credential.Resolve` | `provider_secret` in the bootstrap envelope |
+
+Never a command-line argument and never the runner container's environment:
+both would put a live credential where `ps` and `podman inspect` can read it.
+
+`credential.Resolve` orders its sources env var, keyring, `gh auth token`. The
+keyring read sits there and not further up the stack because it is the only
+place that knows a Copilot credential is what it is resolving; it is bounded by
+a short timeout, because `secret-tool` blocks on a locked collection waiting
+for a prompt nobody is watching, and every failure falls through silently.
 
 This is best-effort: no keyring, no `secret-tool`, or a locked session just
 means the agent runs its own device flow, and the pane waits on
-`enter code XXXX-XXXX` until a human types one in.
+`enter code XXXX-XXXX` until a human types one in. When only a `gh auth token`
+is available, both paths say so out loud -- `Resolve` returns an `Advisory` and
+the recipes print the same four lines -- rather than letting a contributor
+discover it as `failed to get api info` inside a guest they cannot read.
+
+`donate-clanker-doctor` reports whether a usable credential can be resolved,
+without printing it and without starting anything.

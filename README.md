@@ -29,6 +29,11 @@ it by Hive, and that a human can attach to and steer at any time.
   github.com --scopes repo,read:org`).
 - A credential for a Goose-supported model provider. Goose is the only agent
   backend; supply `GOOSE_PROVIDER` and, optionally, `GOOSE_MODEL`.
+- For the default GitHub Copilot provider, a Copilot login on this host
+  (`goose configure`, then complete the device flow) or an exported
+  `GITHUB_COPILOT_TOKEN`. Both launch paths hand that credential to the agent
+  so it never stalls on a device code. A `gh auth token` is *not* a
+  substitute — Copilot inference rejects it.
 
 Check all of the above with `ujust donate-clanker-doctor` before filing a
 bug.
