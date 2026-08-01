@@ -12,6 +12,8 @@ ARG HIVE_COMMIT=e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e
 ARG NODE_VERSION=24.18.1
 ARG GH_VERSION=2.97.0
 ARG TMUX_VERSION=3.7b
+# renovate: datasource=github-releases depName=aaif-goose/goose
+ARG GOOSE_VERSION=1.45.0
 
 FROM ${FSDK_RUNNER_IMAGE}
 
@@ -21,6 +23,7 @@ ARG HIVE_COMMIT
 ARG NODE_VERSION
 ARG GH_VERSION
 ARG TMUX_VERSION
+ARG GOOSE_VERSION
 
 ENV PATH=/opt/node/bin:${PATH}
 ENV NODE_PATH=/opt/hive/node_modules
@@ -41,6 +44,7 @@ RUN set -eu; \
         tmux_arch=x86_64; \
         tmux_sha='f85e6c1c412750a774eb3f370f33bad05fc726fb8b6a0b174ad6f0b6d954df58'; \
         goose_arch=x86_64; \
+        goose_sha='e0db638ac437ca0a60b0c1622f45322608d228d1a285214c3bf48fd9763346a5'; \
         loader_dir=/lib64; \
         loader_target=/usr/lib64/ld-linux-x86-64.so.2; \
         loader_name=ld-linux-x86-64.so.2 ;; \
@@ -52,6 +56,7 @@ RUN set -eu; \
         tmux_arch=arm64; \
         tmux_sha='b2955782695283fbc3682a2f77d65616f53b986ee3cf3d80618d3b1cb95b91a6'; \
         goose_arch=aarch64; \
+        goose_sha='c9894106c90e404ac8b8d67c628aea2943dd6a1bc83bfd8e2171d482fa43d72a'; \
         loader_dir=/lib; \
         loader_target=/usr/lib/ld-linux-aarch64.so.1; \
         loader_name=ld-linux-aarch64.so.1 ;; \
@@ -79,10 +84,12 @@ RUN set -eu; \
     python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.rsplit("/", 1)[-1] == "tmux"); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/tmux.tar.gz" /usr/local/bin/tmux; \
     : "$GOOSE_REFRESH"; \
     curl --fail --location --show-error --silent \
-      "https://github.com/aaif-goose/goose/releases/latest/download/goose-${goose_arch}-unknown-linux-gnu.tar.gz" \
+      "https://github.com/aaif-goose/goose/releases/download/v${GOOSE_VERSION}/goose-${goose_arch}-unknown-linux-gnu.tar.gz" \
       -o "$workdir/goose.tar.gz"; \
+    printf '%s  %s\n' "$goose_sha" "$workdir/goose.tar.gz" | sha256sum -c -; \
     python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.rsplit("/", 1)[-1] == "goose"); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/goose.tar.gz" /usr/local/bin/goose; \
-    npm --prefix /opt/hive install ws@8.18.3; \
+    npm --prefix /opt/hive install --ignore-scripts ws@8.18.3; \
+    npm --prefix /opt/hive audit --audit-level=high; \
     node --version; \
     gh --version; \
     tmux -V; \
