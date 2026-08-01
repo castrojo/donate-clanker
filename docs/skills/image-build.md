@@ -1,6 +1,6 @@
 ---
 name: image-build
-version: "1.2"
+version: "1.4"
 last_updated: 2026-08-01
 id: image-build
 one_line_purpose: Derive and pin the donate-clanker contributor image safely.
@@ -11,7 +11,7 @@ optimization_status: draft
 status: active
 dependencies: []
 tags: [containerfile, image, digest, pinning, build]
-description: "Covers deriving from the pinned KubeStellar Hive contributor image, what donate-clanker layers on top, digest pinning rules, and which registry tags each ref publishes. Use when editing image/Containerfile, a layer, or publish tagging."
+description: "Covers deriving from the Project Bluefin FSDK base, which Hive contributor runtime pieces donate-clanker layers on top, digest pinning rules, and which registry tags each ref publishes. Use when editing image/Containerfile, a layer, or publish tagging."
 metadata:
   type: procedure
 ---
@@ -28,33 +28,45 @@ Not for what the launcher does with the built image -- that is
 
 ## Core Process
 
-### Derive, do not rebuild
+### Derive, then add only the missing runtime pieces
 
 The image derives:
 
 ```dockerfile
-FROM ghcr.io/kubestellar/hive-contributor@sha256:<digest>
+FROM ghcr.io/projectbluefin/lab-runner@sha256:<digest>
 ```
 
-The base already contains the Hive entrypoint, the contributor protocol
-client, tmux, and the agent CLI launch path. Do not reinstall, patch, or
-shadow any of it. If you find yourself reimplementing base behavior, stop:
-the change probably belongs upstream in `kubestellar/hive`.
+The base provides the FSDK shell-enabled runtime: bash, curl, git, jq,
+python3, openssh, and the libc/userland we inherit from Project Bluefin.
+donate-clanker then adds only what contributor mode still needs:
+
+- Goose
+- tmux
+- Node + `ws` for Hive's relay
+- GitHub CLI
+- the pinned Hive contributor scripts (`contributor-agent.sh`,
+  `contributor-relay.sh`, `backends.conf`)
+
+Do not grow this into a second general-purpose distro. If a new package is not
+needed for Goose contributor mode, it probably does not belong here.
 
 ### What gets layered in
 
-Only the review context payload:
+Only the contributor runtime delta plus the review context payload:
 
-1. **Goose configuration** under `/opt/bluefin/goose`, referenced by
+1. **Pinned contributor runtime files** fetched from the pinned Hive commit:
+   `contributor-agent.sh`, `contributor-relay.sh`, and `backends.conf`.
+2. **Goose configuration** under `/opt/bluefin/goose`, referenced by
    `GOOSE_PATH_ROOT`, declaring the Context7 MCP extension. It lives here
    because Hive overwrites `~/.config/goose/config.yaml` at every startup.
-2. **Org skills**, generated at build time from `projectbluefin/common`'s
-   `docs/skills/index.json` into `/home/dev/.agents/skills/<id>/SKILL.md`.
-   Generated during the build, never committed to this repository.
-3. **Git hooks** at `/opt/bluefin/git-hooks`, wired through a global
+3. **Org skills**, generated at build time from a pinned
+   `projectbluefin/common` commit's `docs/skills/index.json` into
+   `/home/dev/.agents/skills/<id>/SKILL.md`. Generated during the build,
+   never committed to this repository.
+4. **Git hooks** at `/opt/bluefin/git-hooks`, wired through a global
    `core.hooksPath`. Ergonomics only — `git commit --no-verify` bypasses
    them. Enforcement is GitHub rulesets and required status checks.
-4. **Agent policy and model configuration** from `image/config/`.
+5. **Agent policy and model configuration** from `image/config/`.
 
 Nothing else. No credentials, no workspace, no host state. Credentials arrive
 at runtime as environment variables from the launcher.
@@ -70,20 +82,27 @@ still fails when you break the thing it claims to protect.
 
 Every external reference is pinned:
 
-- The base image is pinned by `@sha256:` digest, never by a floating tag such
-  as `latest` or a branch name.
+- The FSDK base image is pinned by `@sha256:` digest, never by a floating tag
+  such as `latest` or a branch name.
 - The Hive commit is pinned in `just/61-donate-clanker.just` as
   `hive_commit`, a full 40-character SHA, and is overridable at runtime with
   `DONATE_CLANKER_HIVE_COMMIT`.
+- Downloaded Node, GitHub CLI, tmux, and Goose archives use version-specific
+  URLs and are verified with their published SHA-256 checksums.
+- A Goose upgrade changes `GOOSE_VERSION` and both architecture-specific
+  checksums together; do not automate the version independently.
+- The common skill index and all of its bodies use the same full Git commit,
+  never the mutable `main` branch.
 - `DONATE_CLANKER_VM_RUNNER_IMAGE` must reference a signed, immutable runner
   image.
 
 Resolve a new digest before changing one:
 
 ```bash
-skopeo inspect docker://ghcr.io/kubestellar/hive-contributor:<tag> \
+skopeo inspect docker://ghcr.io/projectbluefin/lab-runner:<tag> \
   | jq -r '.Digest'
 git ls-remote --heads https://github.com/kubestellar/hive v2
+git ls-remote https://github.com/projectbluefin/common HEAD
 ```
 
 Bumping a pin is a human decision gate. Record what changed upstream in the
@@ -103,20 +122,20 @@ Put slow, rarely-changing layers first and the generated skills tree last;
 | Ref | Tags pushed | Platforms | Cancellable |
 |---|---|---|---|
 | `refs/tags/v*.*.*` | `sha-<commit>`, `X.Y.Z`, `vX.Y.Z`, `stable` | amd64 + arm64 | never |
-| `refs/heads/main` | `sha-<commit>`, `main` | amd64 | yes |
+| `refs/heads/main` | `sha-<commit>`, `stable` | amd64 + arm64 | yes |
 | dispatch elsewhere | `sha-<commit>` | amd64 | yes |
 
-`stable` is the released line and the launcher's default; only a version tag
-moves it. `main` is the newest merge, so a merged fix is consumable without
-cutting a release:
+`stable` moves on every merge to `main` and is the launcher's default. A
+release tag also moves it while adding immutable version aliases. Use an
+immutable `sha-<commit>` tag when a specific build is required:
 `DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:sha-<commit>`.
 `:latest` is never published — a default pointing at it dies on
 `manifest unknown`, and `tests/just-onboarding.sh` fails the build if one
 appears.
 
-Main builds skip emulated arm64 because it costs ten-plus minutes per merge.
-Never trade a release's architectures, smoke-test assertions, or digest
-verification for speed.
+Only manual dispatch builds skip emulated arm64 because they never move the
+default tag. Never trade `stable`'s architectures, smoke-test assertions, or
+digest verification for speed.
 
 The repository variable `DONATE_CLANKER_PUBLISH_STABLE` once gated the
 `stable` alias on tag builds. The workflow stopped reading it in `bc8f157`;
@@ -127,7 +146,7 @@ tagging.
 
 | Rationalization | Reality |
 |---|---|
-| "A tag is fine, the digest is a hassle to resolve." | Hive's `:latest` moves with its v2 branch. A tag makes the build irreproducible and unbisectable. |
+| "A tag is fine, the digest is a hassle to resolve." | A floating base image makes the build irreproducible and unbisectable. |
 | "Goose config belongs in `~/.config/goose`." | Hive overwrites that file at every startup. `GOOSE_PATH_ROOT` exists for exactly this reason. |
 | "I'll add the contract assertion in a follow-up." | An unasserted layer is a layer that silently disappears on the next refactor. Same PR. |
 
@@ -137,8 +156,8 @@ tagging.
   image reference.
 - Secrets, tokens, or `secrets.env` baked into a layer.
 - A committed `.agents/skills/` directory. It is build output.
-- Reinstalling tmux, the Hive entrypoint, or an agent CLI the base already
-  ships.
+- Pulling in a full distro package manager or a second general-purpose shell
+  environment just to add one more tool.
 - Adding a second agent backend. Goose is the only one.
 - Writing Goose config to `~/.config/goose`. Hive erases it at startup.
 - A new layer with no matching assertion in `tests/image-contract.sh`.
@@ -148,6 +167,7 @@ tagging.
 
 ```bash
 bash tests/image-contract.sh  # Containerfile, goose.yaml, entrypoint, hooks
+bash tests/generate-skills.sh # generated skill paths stay confined
 git diff --check
 pre-commit run --all-files
 ```
@@ -156,7 +176,7 @@ Then build and inspect:
 
 ```bash
 podman build -f image/Containerfile -t donate-clanker:dev .
-podman run --rm donate-clanker:dev sh -c \
+podman run --rm donate-clanker:dev /usr/bin/bash -lc \
   'echo "$GOOSE_PATH_ROOT"; ls /opt/bluefin/goose /opt/bluefin/git-hooks; \
    ls /home/dev/.agents/skills | head'
 ```

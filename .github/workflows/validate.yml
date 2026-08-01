@@ -8,6 +8,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -32,6 +35,11 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/check-skill-frontmatter.sh
+
+      - name: Skill generator rejects unsafe manifest paths
+        run: |
+          set -euo pipefail
+          bash tests/generate-skills.sh
 
       - name: Install just
         uses: extractions/setup-just@dd310ad5a97d8e7b41793f8ef055398d51ad4de6 # v2
