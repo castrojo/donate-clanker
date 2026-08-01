@@ -1,7 +1,7 @@
 # donate-clanker — Agent Operating Contract
 
 `donate-clanker` is a thin, foreground launcher that boots a QEMU VM running a
-derived KubeStellar Hive contributor image with Goose. It owns three things:
+self-owned FSDK-derived contributor image with Goose. It owns three things:
 booting the VM in the foreground, passing contributor credentials to Goose,
 and the review context payload. Nothing else.
 
@@ -37,8 +37,9 @@ pull request.
 
 - `just/61-donate-clanker.just` — the only file that ships or installs. All
   three user-facing commands and their private helpers live here, on purpose.
-- `image/` — `Containerfile` deriving `FROM ghcr.io/kubestellar/hive-contributor`
-  pinned by digest, plus the layered config (`image/config/`).
+- `image/` — `Containerfile` deriving `FROM ghcr.io/projectbluefin/lab-runner`
+  pinned by digest, then adding the pinned Hive contributor runtime plus the
+  layered config (`image/config/`).
 - `scripts/` — the build-time skills generator and the skill-doc linter.
 - `tests/` — Bash contract checks over the launcher and the image.
 - `docs/` — `SKILL.md` router and `skills/` catalog with `index.json`.
