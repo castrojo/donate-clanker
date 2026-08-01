@@ -19,11 +19,9 @@ FROM ${FSDK_RUNNER_IMAGE}
 
 USER root
 
-ARG HIVE_COMMIT
 ARG NODE_VERSION
 ARG GH_VERSION
 ARG TMUX_VERSION
-ARG GOOSE_VERSION
 
 ENV PATH=/opt/node/bin:${PATH}
 ENV NODE_PATH=/opt/hive/node_modules
@@ -31,8 +29,9 @@ ENV HIVE_CONTRIBUTOR_MODE=true
 
 # FSDK's shell-enabled base keeps the runtime lean but does not ship the whole
 # contributor stack. Add just the tools required for Hive contributor mode:
-# Node + ws for the relay, GitHub CLI, tmux, and Goose.
-ARG GOOSE_REFRESH=0
+# the Node runtime + ws for the relay, GitHub CLI, and tmux. npm is used only
+# while building; its package tree, headers, documentation, and cache do not
+# belong in the runtime image.
 RUN set -eu; \
     arch="$(uname -m)"; \
     case "$arch" in \
@@ -43,8 +42,6 @@ RUN set -eu; \
         gh_sha='a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112'; \
         tmux_arch=x86_64; \
         tmux_sha='f85e6c1c412750a774eb3f370f33bad05fc726fb8b6a0b174ad6f0b6d954df58'; \
-        goose_arch=x86_64; \
-        goose_sha='e0db638ac437ca0a60b0c1622f45322608d228d1a285214c3bf48fd9763346a5'; \
         loader_dir=/lib64; \
         loader_target=/usr/lib64/ld-linux-x86-64.so.2; \
         loader_name=ld-linux-x86-64.so.2 ;; \
@@ -55,13 +52,12 @@ RUN set -eu; \
         gh_sha='73ea440ecad9c9e284429997ee6f93577bc6f7bc6fba357ef62c53ad8fb641a5'; \
         tmux_arch=arm64; \
         tmux_sha='b2955782695283fbc3682a2f77d65616f53b986ee3cf3d80618d3b1cb95b91a6'; \
-        goose_arch=aarch64; \
-        goose_sha='c9894106c90e404ac8b8d67c628aea2943dd6a1bc83bfd8e2171d482fa43d72a'; \
         loader_dir=/lib; \
         loader_target=/usr/lib/ld-linux-aarch64.so.1; \
         loader_name=ld-linux-aarch64.so.1 ;; \
       *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
     esac; \
+    [ -e "$loader_target" ] || { echo "missing runtime loader: $loader_target" >&2; exit 1; }; \
     mkdir -p "$loader_dir"; \
     [ -e "${loader_dir}/${loader_name}" ] || ln -sf "$loader_target" "${loader_dir}/${loader_name}"; \
     workdir="$(mktemp -d)"; \
@@ -71,7 +67,10 @@ RUN set -eu; \
       "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" \
       -o "$workdir/node.tar.xz"; \
     printf '%s  %s\n' "$node_sha" "$workdir/node.tar.xz" | sha256sum -c -; \
-    python3 -c 'import pathlib, shutil, sys, tarfile; archive = pathlib.Path(sys.argv[1]); root = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:xz"); tf.extractall(root); tf.close(); node_dir = next(p for p in root.iterdir() if p.name.startswith("node-v") and p.is_dir()); target = root / "node"; target.exists() and shutil.rmtree(target); node_dir.rename(target)' "$workdir/node.tar.xz" /opt; \
+    python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); root = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:xz"); tf.extractall(root, filter="data"); tf.close()' "$workdir/node.tar.xz" "$workdir"; \
+    node_dir="$workdir/node-v${NODE_VERSION}-linux-${node_arch}"; \
+    install -D -m 0755 "$node_dir/bin/node" /opt/node/bin/node; \
+    install -D -m 0644 "$node_dir/LICENSE" /opt/node/LICENSE; \
     curl --fail --location --show-error --silent \
       "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${gh_arch}.tar.gz" \
       -o "$workdir/gh.tar.gz"; \
@@ -82,25 +81,44 @@ RUN set -eu; \
       -o "$workdir/tmux.tar.gz"; \
     printf '%s  %s\n' "$tmux_sha" "$workdir/tmux.tar.gz" | sha256sum -c -; \
     python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.rsplit("/", 1)[-1] == "tmux"); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/tmux.tar.gz" /usr/local/bin/tmux; \
-    : "$GOOSE_REFRESH"; \
+    npm_cli="$node_dir/lib/node_modules/npm/bin/npm-cli.js"; \
+    node "$npm_cli" --cache "$workdir/npm-cache" --prefix /opt/hive install --ignore-scripts --no-audit --no-fund ws@8.21.1; \
+    node "$npm_cli" --cache "$workdir/npm-cache" --prefix /opt/hive audit --audit-level=high; \
+    node --version; \
+    gh --version; \
+    tmux -V
+
+# Goose changes more often than the supporting tools, so keep it in its own
+# cacheable layer. Its pinned version and checksums are the cache key; a
+# per-build cache buster would only force an identical verified download.
+ARG GOOSE_VERSION
+RUN set -eu; \
+    arch="$(uname -m)"; \
+    case "$arch" in \
+      x86_64) \
+        goose_arch=x86_64; \
+        goose_sha='e0db638ac437ca0a60b0c1622f45322608d228d1a285214c3bf48fd9763346a5' ;; \
+      aarch64|arm64) \
+        goose_arch=aarch64; \
+        goose_sha='c9894106c90e404ac8b8d67c628aea2943dd6a1bc83bfd8e2171d482fa43d72a' ;; \
+      *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
+    esac; \
+    workdir="$(mktemp -d)"; \
+    trap 'rm -rf "$workdir"' EXIT; \
     curl --fail --location --show-error --silent \
       "https://github.com/aaif-goose/goose/releases/download/v${GOOSE_VERSION}/goose-${goose_arch}-unknown-linux-gnu.tar.gz" \
       -o "$workdir/goose.tar.gz"; \
     printf '%s  %s\n' "$goose_sha" "$workdir/goose.tar.gz" | sha256sum -c -; \
     python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.rsplit("/", 1)[-1] == "goose"); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/goose.tar.gz" /usr/local/bin/goose; \
-    npm --prefix /opt/hive install --ignore-scripts ws@8.21.1; \
-    npm --prefix /opt/hive audit --audit-level=high; \
-    node --version; \
-    gh --version; \
-    tmux -V; \
     /usr/local/bin/goose --version; \
     /usr/local/bin/goose run --help >/dev/null
 
 # Pull the contributor-mode runtime directly from the pinned Hive commit. The
 # launcher still depends on Hive's relay protocol and tmux contract; we just own
 # the surrounding image now.
+ARG HIVE_COMMIT
 RUN set -eu; \
-    mkdir -p /usr/local/etc/hive /etc/hive/restrictions; \
+    mkdir -p /usr/local/etc/hive; \
     curl --fail --location --show-error --silent \
       "https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/bin/contributor-agent.sh" \
       -o /usr/local/bin/contributor-agent.sh; \
@@ -116,7 +134,7 @@ RUN set -eu; \
 RUN set -eu; \
     grep -q '^dev:' /etc/group || echo 'dev:x:1000:' >> /etc/group; \
     grep -q '^dev:' /etc/passwd || echo 'dev:x:1000:1000:Developer:/home/dev:/usr/bin/bash' >> /etc/passwd; \
-    mkdir -p /run/hive-metrics /home/dev/.config/goose /home/dev/.config/gh /home/dev/.agents; \
+    mkdir -p /run/hive-metrics /home/dev/.agents; \
     chown -R 1000:1000 /run/hive-metrics /home/dev
 
 # Controlled Goose configuration. This is NOT ~/.config/goose/config.yaml:
@@ -144,10 +162,8 @@ COPY --chmod=0755 image/git-hooks/ /opt/bluefin/git-hooks/
 # (name + description only, ~2k tokens) with bodies loaded on demand, and no
 # org repository has to change.
 ARG SKILLS_COMMIT
-ARG SKILLS_REFRESH=0
 COPY --chmod=0755 scripts/generate-skills.py /usr/local/libexec/donate-clanker-generate-skills
 RUN set -eu; \
-    : "$SKILLS_REFRESH"; \
     /usr/local/libexec/donate-clanker-generate-skills \
       --index "https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/docs/skills/index.json" \
       --raw-base "https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/" \

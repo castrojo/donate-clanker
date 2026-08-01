@@ -96,8 +96,6 @@ jobs:
           file: image/Containerfile
           load: true
           tags: donate-clanker-compat:smoke
-          build-args: |
-            GOOSE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -109,6 +107,24 @@ jobs:
           test "$(docker inspect donate-clanker-compat:smoke --format '{{json .Config.Entrypoint}}')" = '["/usr/local/bin/donate-clanker-entrypoint"]'
           # /home/dev, not /workspace: there is no workspace mount any more.
           test "$(docker inspect donate-clanker-compat:smoke --format '{{.Config.WorkingDir}}')" = /home/dev
+          docker run --rm --user root --entrypoint /usr/bin/bash \
+            donate-clanker-compat:smoke -lc '
+              set -euo pipefail
+              test -x /opt/node/bin/node
+              test -f /opt/node/LICENSE
+              test ! -e /opt/node/include
+              test ! -e /opt/node/lib
+              test ! -e /root/.npm
+              ! command -v npm
+              test -s /home/dev/.agents/AGENTS.md
+              shopt -s nullglob
+              skill_docs=(/home/dev/.agents/skills/*/SKILL.md)
+              ((${#skill_docs[@]} > 0))
+              node --version
+              gh --version
+              tmux -V
+              goose --version
+            '
 
       - name: Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
@@ -126,8 +142,6 @@ jobs:
           push: true
           platforms: ${{ steps.tags.outputs.platforms }}
           tags: ${{ steps.tags.outputs.tags }}
-          build-args: |
-            GOOSE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}

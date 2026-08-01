@@ -42,7 +42,8 @@ donate-clanker then adds only what contributor mode still needs:
 
 - Goose
 - tmux
-- Node + `ws` for Hive's relay
+- the Node runtime binary + `ws` for Hive's relay; npm and Node headers remain
+  build-only
 - GitHub CLI
 - the pinned Hive contributor scripts (`contributor-agent.sh`,
   `contributor-relay.sh`, `backends.conf`)
@@ -115,6 +116,11 @@ requests so a regression bisects cleanly.
 
 Put slow, rarely-changing layers first and the generated skills tree last;
 `index.json` changes far more often than the base packages do.
+
+Version and commit build arguments are already exact cache keys. Do not add
+per-run cache-buster arguments: they force verified, identical downloads and
+invalidate every downstream layer. Keep Goose separate from the less frequently
+changed Node, GitHub CLI, and tmux layer.
 
 ### Publishing and tags
 

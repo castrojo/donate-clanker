@@ -46,16 +46,18 @@ require image/Containerfile \
   'ARG HIVE_COMMIT=e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e' \
   'ARG GOOSE_VERSION=' \
   'FROM ${FSDK_RUNNER_IMAGE}' \
-  'ARG GOOSE_REFRESH=0' \
   'ARG SKILLS_COMMIT=' \
   'https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz' \
+  'tf.extractall(root, filter="data")' \
+  'install -D -m 0755 "$node_dir/bin/node" /opt/node/bin/node;' \
+  'install -D -m 0644 "$node_dir/LICENSE" /opt/node/LICENSE;' \
   'https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${gh_arch}.tar.gz' \
   'https://github.com/tmux/tmux-builds/releases/download/v${TMUX_VERSION}/tmux-${TMUX_VERSION}-linux-${tmux_arch}.tar.gz' \
   'https://github.com/aaif-goose/goose/releases/download/v${GOOSE_VERSION}/goose-${goose_arch}-unknown-linux-gnu.tar.gz' \
   'goose_sha=' \
   'goose.tar.gz" | sha256sum -c -;' \
-  'npm --prefix /opt/hive install --ignore-scripts ws@8.21.1;' \
-  'npm --prefix /opt/hive audit --audit-level=high;' \
+  'node "$npm_cli" --cache "$workdir/npm-cache" --prefix /opt/hive install --ignore-scripts --no-audit --no-fund ws@8.21.1;' \
+  'node "$npm_cli" --cache "$workdir/npm-cache" --prefix /opt/hive audit --audit-level=high;' \
   'https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/bin/contributor-agent.sh' \
   'https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/bin/contributor-relay.sh' \
   'https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/config/backends.conf' \
@@ -79,6 +81,10 @@ forbid image/Containerfile \
   'https://github.com/aaif-goose/goose/releases/latest/download/' \
   'https://raw.githubusercontent.com/projectbluefin/common/main/' \
   '# renovate: datasource=github-releases depName=aaif-goose/goose' \
+  'ARG GOOSE_REFRESH' \
+  'ARG SKILLS_REFRESH' \
+  '/etc/hive/restrictions' \
+  'npm --prefix /opt/hive' \
   'ramalama' \
   'models.json' \
   'agent-contract.json'

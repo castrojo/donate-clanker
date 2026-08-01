@@ -28,7 +28,7 @@ opened ──▶ review ──▶ approved ──▶ merged
 - [ ] `git diff --check` is clean
 - [ ] `just --justfile just/61-donate-clanker.just --list` parses
 - [ ] `pre-commit run --all-files` passes
-- [ ] Skill doc updated if the change affects agent-facing conventions or behavior (see `docs/skills/skill-improvement.md`)
+- [ ] Skill doc updated if the change affects agent-facing conventions or behavior (see `docs/SKILL.md`)
 - [ ] `AGENTS.md` / `docs/SKILL.md` / `docs/skills/` links remain valid
 - [ ] CI is green after push: `gh run list --repo projectbluefin/donate-clanker --limit 5`
 

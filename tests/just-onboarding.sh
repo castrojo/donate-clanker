@@ -20,7 +20,7 @@ consumer="$repo_root/tests/guest-bootstrap-consumer.py"
 real_just="$(command -v just)"
 
 # Absolute scratch root: a relative TMPDIR used to leave stray
-# .just-onboarding-tmp-* directories behind in the repository.
+# .just-onboarding-scratch-* directories behind in the repository.
 scratch="${repo_root}/.just-onboarding-scratch-$$-$(date +%s%N)"
 
 # The launcher opens a UNIX socket under TMPDIR, and AF_UNIX paths are capped
@@ -523,6 +523,8 @@ assert_file_not_exists "$state_dir/donate-clanker-vm-25.08.14-x86_64.raw"
 assert_file_not_exists "$state_dir/donate-clanker-vm-25.08.14-x86_64.raw.partial"
 assert_file_not_exists "$state_dir/donate-clanker-vm-25.08.14-x86_64.raw.sha256"
 assert_file_not_exists "$state_dir/donate-clanker-vm-25.08.14-x86_64.raw.sha256.partial"
+assert_file_not_exists "$state_dir/donate-clanker-vm-25.08.14-x86_64.raw.zst"
+assert_file_not_exists "$state_dir/donate-clanker-vm-25.08.14-x86_64.raw.zst.partial"
 
 begin "verify: a cached raw disk needs a checksum sidecar before it can boot"
 mkdir -p "$state_dir"
@@ -701,7 +703,7 @@ assert_contains "there is no ':latest'" "$OUT"
 assert_file_contains "pull" "$image_log"
 assert_eq "$(wc -c <"$runner_log")" 0 "no container may start when the image is unobtainable"
 
-# ══ 8. Stop recipe ════════════════════════════════════════════════════════
+# ══ Image refresh and instance ownership ═════════════════════════════════
 begin "donate-clanker-container: an immutable reference is not re-pulled"
 # sha- tags and digests name exactly one image, so refreshing them is wasted
 # work on every launch; only moving tags need the pull.

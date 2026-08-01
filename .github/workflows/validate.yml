@@ -6,7 +6,13 @@ name: validate
 
 on:
   push:
+    branches: [main]
+    tags: ["v*.*.*"]
   pull_request:
+
+concurrency:
+  group: validate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -82,7 +88,9 @@ jobs:
           # dollar-sign syntax for the embedded shell checks.
           # shellcheck disable=SC2016
           HIVE_PIN="$(sed -n 's/^hive_commit := "\(.*\)"$/\1/p' just/61-donate-clanker.just)"
+          IMAGE_HIVE_PIN="$(sed -n 's/^ARG HIVE_COMMIT=//p' image/Containerfile)"
           test -n "$HIVE_PIN"
+          test "$HIVE_PIN" = "$IMAGE_HIVE_PIN"
           grep -Fq 'LAST_GOOSE_PROVIDER' just/61-donate-clanker.just
           grep -Fq 'last-selections.env' just/61-donate-clanker.just
           grep -Fq 'secrets.env' just/61-donate-clanker.just
@@ -95,16 +103,69 @@ jobs:
           grep -Fq 'last-selections.env' README.md
           grep -Fq 'secrets.env' README.md
 
-      - name: Compatibility image contract and build
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build compatibility image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: .
+          file: image/Containerfile
+          load: true
+          tags: donate-clanker-compat:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Inspect compatibility image
         run: |
           set -euo pipefail
-          docker build -f image/Containerfile -t donate-clanker-compat:test .
           test "$(docker inspect donate-clanker-compat:test --format '{{.Config.User}}')" = "dev"
           test "$(docker inspect donate-clanker-compat:test --format '{{json .Config.Entrypoint}}')" = '["/usr/local/bin/donate-clanker-entrypoint"]'
           # /home/dev, not /workspace: there is no workspace mount any more —
           # the agent clones what it needs inside the disposable guest, and
           # Hive's config lives under the image's home.
           test "$(docker inspect donate-clanker-compat:test --format '{{.Config.WorkingDir}}')" = "/home/dev"
+          docker run --rm --user root --entrypoint /usr/bin/bash \
+            donate-clanker-compat:test -lc '
+              set -euo pipefail
+              test -x /opt/node/bin/node
+              test -f /opt/node/LICENSE
+              test ! -e /opt/node/include
+              test ! -e /opt/node/lib
+              test ! -e /root/.npm
+              ! command -v npm
+              test -s /home/dev/.agents/AGENTS.md
+              shopt -s nullglob
+              skill_docs=(/home/dev/.agents/skills/*/SKILL.md)
+              ((${#skill_docs[@]} > 0))
+              node --version
+              gh --version
+              tmux -V
+              goose --version
+            '
 
-      # The launcher is interactive by design. CI validates image metadata and
-      # the build-time Goose command checks; attended use validates runtime.
+      - name: Entrypoint rejects an incomplete custom provider cleanly
+        run: |
+          set -euo pipefail
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+          mkdir "$tmpdir/hive"
+          : > "$tmpdir/hive/contributor.env"
+          chmod 755 "$tmpdir" "$tmpdir/hive"
+          chmod 644 "$tmpdir/hive/contributor.env"
+          set +e
+          output="$(
+            docker run --rm \
+              --env GOOSE_PROVIDER=custom \
+              --volume "$tmpdir/hive:/home/dev/.config/hive:ro" \
+              donate-clanker-compat:test 2>&1
+          )"
+          status=$?
+          set -e
+          test "$status" -ne 0
+          grep -Fq \
+            'GOOSE_MODEL must be set for GOOSE_PROVIDER=custom; no built-in default is available' \
+            <<< "$output"
+
+      # The launcher is interactive by design. CI validates the image payload
+      # and non-interactive setup; attended use validates the tmux interaction.

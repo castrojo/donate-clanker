@@ -34,14 +34,27 @@ REQUIRED_KEYS = [
     "one_line_purpose",
     "entry_point",
     "category",
+    "mcp_compliance_level",
+    "optimization_status",
     "status",
+    "dependencies",
     "tags",
     "description",
 ]
 VALID_STATUS = {"active", "deprecated", "reserved"}
 VALID_CATEGORY = {"ci-ops", "test-authoring", "meta"}
 # Fields the manifest mirrors from front-matter; must match exactly.
-MIRRORED = ["name", "description", "entry_point", "category", "status", "version", "tags"]
+MIRRORED = [
+    "name",
+    "description",
+    "one_line_purpose",
+    "entry_point",
+    "category",
+    "status",
+    "version",
+    "last_updated",
+    "tags",
+]
 
 errors = []
 warnings = []
@@ -133,7 +146,11 @@ def check_file(path):
         return None
 
     for key in REQUIRED_KEYS:
-        if key not in fm or fm[key] in ("", None, [], {}):
+        if (
+            key not in fm
+            or fm[key] in ("", None, {})
+            or (key != "dependencies" and fm[key] == [])
+        ):
             error(path, "missing required key '%s'" % key)
     metadata = fm.get("metadata")
     if not isinstance(metadata, dict) or not metadata.get("type"):
@@ -152,6 +169,9 @@ def check_file(path):
                 error(path, "tag '%s' is not lowercase" % tag)
     elif "tags" in fm:
         error(path, "tags must be a list")
+
+    if "dependencies" in fm and not isinstance(fm["dependencies"], list):
+        error(path, "dependencies must be a list")
 
     for key in ("id", "name"):
         if fm.get(key) not in (None, stem):
@@ -189,6 +209,9 @@ def check_index(front_matter, stems):
         error(INDEX, "does not parse as JSON: %s" % exc)
         return
 
+    if not isinstance(manifest, dict):
+        error(INDEX, "top level must be an object")
+        return
     entries = manifest.get("skills")
     if not isinstance(entries, list):
         error(INDEX, "missing top-level 'skills' array")
@@ -196,6 +219,9 @@ def check_index(front_matter, stems):
 
     by_id = {}
     for entry in entries:
+        if not isinstance(entry, dict):
+            error(INDEX, "skill entry is not an object: %s" % json.dumps(entry))
+            continue
         entry_id = entry.get("id")
         if not entry_id:
             error(INDEX, "entry without an 'id': %s" % json.dumps(entry, sort_keys=True))
@@ -225,6 +251,19 @@ def check_index(front_matter, stems):
                         json.dumps(fm.get(field)),
                     ),
                 )
+        metadata = fm.get("metadata")
+        doc_type = metadata.get("type") if isinstance(metadata, dict) else None
+        if entry.get("doc_type") != doc_type:
+            error(
+                INDEX,
+                "entry '%s' field 'doc_type' is %s but docs/skills/%s.md has %s"
+                % (
+                    stem,
+                    json.dumps(entry.get("doc_type")),
+                    stem,
+                    json.dumps(doc_type),
+                ),
+            )
 
 
 def main():
