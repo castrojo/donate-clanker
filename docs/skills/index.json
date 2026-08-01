@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-31",
+  "generated_at": "2026-08-01",
   "schema_version": "1.0",
   "skills": [
     {
@@ -55,7 +55,7 @@
         "build"
       ],
       "description": "Covers deriving from the pinned KubeStellar Hive contributor image, what donate-clanker layers on top, digest pinning rules, and which registry tags each ref publishes. Use when editing image/Containerfile, a layer, or publish tagging.",
-      "version": "1.1",
+      "version": "1.2",
       "last_updated": "2026-08-01",
       "doc_type": "procedure"
     },
@@ -74,7 +74,7 @@
         "foreground"
       ],
       "description": "Covers the three donate-clanker just recipes, the foreground guarantee (and why there is no stop command), the VM versus container-only modes, and why the launcher never filters Hive's work. Use when editing just/61-donate-clanker.just.",
-      "version": "1.2",
+      "version": "1.3",
       "last_updated": "2026-08-01",
       "doc_type": "runbook"
     },
@@ -93,8 +93,8 @@
         "branches"
       ],
       "description": "Defines Conventional Commit PR titles under squash-only merging, the clanker/<task_id> branch convention, the Hive-Task-Id trailer, and why git hooks are ergonomics not enforcement. Use before branching, committing, or opening a PR.",
-      "version": "1.0",
-      "last_updated": "2026-07-31",
+      "version": "1.1",
+      "last_updated": "2026-08-01",
       "doc_type": "policy"
     }
   ]

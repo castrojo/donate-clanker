@@ -81,9 +81,20 @@ writing to `~/.config/goose`.
   silently hide work the maintainers deliberately admitted hub-side.
   `tests/just-onboarding.sh` fails the build if selection logic appears in
   the launcher or the image entrypoint.
+- Never add a second implementation of what the launcher already does. A Go
+  copy of the preflight, Hive checkout, credential resolution and QEMU launch
+  once lived in `cmd/` and `internal/`; nothing built or installed it, so it
+  drifted unnoticed and was deleted. The same goes for a test harness whose
+  only exercised path is its own `--self-test`, and for a contract covering
+  artifacts no workflow publishes. If a change is not reachable from
+  `ujust donate-clanker`, `image/Containerfile`, or a CI step, it is dead on
+  arrival — do not write it.
 
 ## PR rules
 
+- `main` is protected by a repository ruleset: direct pushes are rejected and
+  every change goes through a pull request passing `validate` and
+  `conventional-title`. This includes docs-only changes.
 - Pull request titles must follow Conventional Commits. Merges are
   squash-only and the squash commit inherits the PR title, so the title is
   the permanent commit message.
