@@ -1,7 +1,7 @@
 ---
 name: pr-workflow
-version: "1.0"
-last_updated: 2026-07-31
+version: "1.1"
+last_updated: 2026-08-01
 id: pr-workflow
 one_line_purpose: Open donate-clanker pull requests that merge cleanly.
 entry_point: docs/skills/pr-workflow.md
@@ -22,6 +22,9 @@ metadata:
 
 Load this before creating a branch, writing a commit message, or opening a
 pull request in this repository — especially for work assigned by Hive.
+
+Not for what to build or which checks exist; load the skill for the area you
+are changing and read `.github/workflows/validate.yml` for the checks.
 
 ## Core Process
 
@@ -84,6 +87,26 @@ Deterministic enforcement is **GitHub rulesets and required status checks**.
 Only those block a merge. Never document a hook as a guarantee, and never
 weaken a required check on the theory that a hook already covers it.
 
+### `main` is protected — there is no direct-push path
+
+A ruleset on `refs/heads/main` rejects direct pushes outright:
+
+```
+! [remote rejected] main -> main (push declined due to repository rule violations)
+remote: - Changes must be made through a pull request.
+remote: - 2 of 2 required status checks are expected.
+```
+
+The two required checks are `validate` and `conventional-title`. This applies
+to every change, including docs-only ones: an org convention that lets skill
+updates go straight to `main` does not apply in this repository, because the
+server refuses them. Branch, open a pull request, and let the checks run.
+
+After `gh pr merge --squash`, the local post-merge fast-forward fails if the
+local branch holds the pre-squash commit. That is not a failed merge --
+confirm with `gh pr view --json state`, then `git fetch -p && git reset --hard
+origin/main`.
+
 ### Timing under Hive
 
 The scoped GitHub token expires 55 minutes after assignment and is never
@@ -91,6 +114,15 @@ refreshed. Push the branch and open the pull request early — a draft is fine
 — rather than holding everything until the end. Completion is self-reported
 and applies a 168-hour cooldown per issue regardless of outcome, so report
 only after the pull request exists and you have verified its URL.
+
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "It's docs-only, I'll push straight to main." | The ruleset rejects it. Every change branches, including docs. |
+| "The local hooks passed, so it is ready to merge." | `--no-verify` bypasses every hook. Only required checks gate a merge. |
+| "I'll tidy the branch commits before review." | They vanish on squash. Spend the effort on the PR title, which becomes permanent. |
+| "I'll report the task done, the PR is basically up." | Completion burns a 168-hour cooldown whether or not it worked. Confirm the URL first. |
 
 ## Red Flags
 
@@ -102,6 +134,8 @@ only after the pull request exists and you have verified its URL.
 - `--no-verify` used to get past a real failure rather than a broken hook.
 - Treating a green local hook run as merge readiness.
 - Reporting completion before confirming the pull request URL.
+- Attempting `git push origin main`. The ruleset rejects it; branch instead.
+- Reading a failed post-merge fast-forward as a failed merge.
 
 ## Verification
 

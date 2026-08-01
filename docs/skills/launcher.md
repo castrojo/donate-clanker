@@ -1,6 +1,6 @@
 ---
 name: launcher
-version: "1.2"
+version: "1.3"
 last_updated: 2026-08-01
 id: launcher
 one_line_purpose: Change donate-clanker just recipes without breaking foreground.
@@ -23,6 +23,10 @@ metadata:
 Load this before editing `just/61-donate-clanker.just`, adding or renaming a
 recipe, changing how the VM runner container is invoked, or diagnosing a
 launch that exits before the tmux session appears.
+
+Not for how tasks arrive or why one was assigned -- that is
+[`hive-runtime.md`](hive-runtime.md). Not for image layers or pinned digests
+-- that is [`image-build.md`](image-build.md).
 
 ## Core Process
 
@@ -47,6 +51,14 @@ than `goose`. That file is upstream's and the launcher passes
 `AGENT_BACKEND=goose` itself, so the stale line is harmless -- but it is
 reported, never rewritten. Editing a user's file to silence a warning is worse
 than the warning.
+
+The launcher is Bash, and only Bash. A Go implementation of the same
+preflight, Hive checkout, credential resolution and QEMU launch once lived
+beside it in `cmd/` and `internal/`; nothing built or installed it, so it
+drifted into a parallel universe that only its own tests visited, and it was
+deleted. Anything the launcher does belongs in this file. If a helper feels
+too big for Bash, that is a signal to make the launcher do less, not to add
+a second language.
 
 Everything else in the file is private (`_`-prefixed) recipes and variables,
 deliberately. A user browsing the repository should find one file and three
@@ -122,10 +134,19 @@ Launcher state lives in the config directory: `last-selections.env` for the
 previous run's choices and `secrets.env`, mode `0600`, for provider and model
 values.
 
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "Backgrounding it just while I test something." | The foreground guarantee is the product. A run nobody is watching is an unsupervised agent with a live GitHub token. |
+| "A stop command would be more convenient." | It advertises a daemon. Ctrl-C ends a run; `--replace` reclaims a name at launch. |
+| "This helper is too gnarly for Bash." | Then the launcher is doing too much. A second language becomes a second implementation nobody runs. |
+| "Just skipping that one noisy repo." | Hive's `selectTask` owns selection. Filter hub-side, where maintainers can see the policy. |
+
 ## Red Flags
 
 - A recipe that returns while the guest is still running.
-- A new top-level public recipe. Four commands is the contract; add private
+- A new top-level public recipe. Three commands is the contract; add private
   helpers instead.
 - A host path bind-mounted into the runner beyond the per-run control
   directory.
@@ -135,6 +156,9 @@ values.
 - Any recipe, variable or `--env` that names a repository, label, title or
   issue to accept or skip. Hive drives; the launcher does not filter.
 - Secrets echoed to stdout or written outside `secrets.env`.
+- A reimplementation of any launcher step in another language, or a test
+  harness whose only exercised path is its own `--self-test`. Both are
+  parallel implementations that no user reaches.
 
 ## Verification
 
@@ -146,7 +170,7 @@ git diff --check
 pre-commit run --all-files
 ```
 
-`--list` must show exactly the four public recipes. `doctor` must exit
+`--list` must show exactly the three public recipes. `doctor` must exit
 non-zero when a prerequisite is missing and must never start a container.
 Confirm the foreground guarantee by launching, backgrounding your terminal's
 job, and verifying nothing survives an interrupt.

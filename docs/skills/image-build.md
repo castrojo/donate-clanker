@@ -1,6 +1,6 @@
 ---
 name: image-build
-version: "1.1"
+version: "1.2"
 last_updated: 2026-08-01
 id: image-build
 one_line_purpose: Derive and pin the donate-clanker contributor image safely.
@@ -22,6 +22,9 @@ metadata:
 
 Load this before editing `image/Containerfile`, adding anything to
 `image/config/`, or changing a pinned image digest or Hive commit.
+
+Not for what the launcher does with the built image -- that is
+[`launcher.md`](launcher.md).
 
 ## Core Process
 
@@ -55,6 +58,13 @@ Only the review context payload:
 
 Nothing else. No credentials, no workspace, no host state. Credentials arrive
 at runtime as environment variables from the launcher.
+
+Each of those four is pinned down by `tests/image-contract.sh`, which asserts
+the required lines are present and the forbidden ones absent across the
+`Containerfile`, `goose.yaml`, `local-agent-policy.md`, the entrypoint and the
+git hooks. They are substring assertions over files, so they are grep and need
+no toolchain -- add to that script when you add a layer, and check that it
+still fails when you break the thing it claims to protect.
 
 ### Digest pinning
 
@@ -113,6 +123,14 @@ The repository variable `DONATE_CLANKER_PUBLISH_STABLE` once gated the
 the variable still exists but is inert. Do not repurpose it to gate branch
 tagging.
 
+## Common Rationalizations
+
+| Rationalization | Reality |
+|---|---|
+| "A tag is fine, the digest is a hassle to resolve." | Hive's `:latest` moves with its v2 branch. A tag makes the build irreproducible and unbisectable. |
+| "Goose config belongs in `~/.config/goose`." | Hive overwrites that file at every startup. `GOOSE_PATH_ROOT` exists for exactly this reason. |
+| "I'll add the contract assertion in a follow-up." | An unasserted layer is a layer that silently disappears on the next refactor. Same PR. |
+
 ## Red Flags
 
 - A floating tag, a branch name, or `:latest` anywhere in a `FROM` or an
@@ -123,6 +141,8 @@ tagging.
   ships.
 - Adding a second agent backend. Goose is the only one.
 - Writing Goose config to `~/.config/goose`. Hive erases it at startup.
+- A new layer with no matching assertion in `tests/image-contract.sh`.
+- Reaching for a language runtime to assert that a string appears in a file.
 
 ## Verification
 
