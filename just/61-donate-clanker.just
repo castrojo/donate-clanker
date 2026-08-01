@@ -31,6 +31,12 @@
 #      container directly, so the run dies with the terminal. No daemon, no
 #      systemd unit, no orphaned state to reap later.
 #
+# '--replace' is not a hole in that guarantee: --rm removes the container
+# when it exits cleanly, but a hard-killed terminal, an OOM kill or a podman
+# restart can leave the fixed name behind, and the next launch then dies with
+# 'the container name ... is already in use'. --replace makes a relaunch take
+# the name back instead of demanding a manual 'ujust donate-clanker-stop'.
+#
 # Concretely: the final process of every launch path is either 'exec'd (so
 # it replaces this shell and inherits its signals) or is the last foreground
 # command whose exit status is propagated verbatim. The only background job
@@ -649,7 +655,7 @@ donate-clanker:
     # --rm --interactive --tty and never --detach: the runner container owns
     # this terminal for as long as it lives.
     CONTAINER_ARGS=(
-      podman run --rm --interactive --tty --name donate-clanker-vm
+      podman run --rm --interactive --tty --replace --name donate-clanker-vm
       --device /dev/kvm
       --mount "type=bind,src=${RUN_DIR},dst=/run/donate-clanker,rw"
       --env "DONATE_CLANKER_BOOTSTRAP_SOCKET=/run/donate-clanker/${BOOTSTRAP_SOCKET_NAME}"
@@ -709,7 +715,7 @@ donate-clanker-container:
     # ~/.config/hive inside the image's home (/home/dev), read-only. There is
     # no /workspace and no /config mount — the agent clones what it needs.
     CONTAINER_ARGS=(
-      podman run --rm --interactive --tty --name "$CONTAINER_NAME"
+      podman run --rm --interactive --tty --replace --name "$CONTAINER_NAME"
       --volume "${HOME}/.config/hive:/home/dev/.config/hive:ro"
       --env "AGENT_BACKEND=goose"
     )

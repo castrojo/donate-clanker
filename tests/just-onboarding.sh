@@ -416,7 +416,7 @@ EOF
   assert_eq "$(stat -c '%a' "$cfg_dir/secrets.env")" 600 "secrets.env must be 0600"
 
   # The runner is foreground and gets no host secret material.
-  assert_file_contains "run --rm --interactive --tty --name donate-clanker-vm" "$runner_log"
+  assert_file_contains "run --rm --interactive --tty --replace --name donate-clanker-vm" "$runner_log"
   assert_file_contains "--mount type=bind,src=${tmp_root}/donate-clanker-" "$runner_log"
   assert_file_contains "--env DONATE_CLANKER_BOOTSTRAP_SOCKET=/run/donate-clanker/bootstrap-" "$runner_log"
   assert_file_contains "--env DONATE_CLANKER_VM=1" "$runner_log"
@@ -538,7 +538,7 @@ run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
   GUM_PROVIDER_RESPONSE=OpenAI GUM_INPUT_RESPONSE=gpt-test
 assert_nonzero_status "$STATUS" "the fake podman always exits non-zero"
 assert_eq "$(wc -l <"$runner_log")" 1 "expected exactly one podman invocation"
-assert_file_contains "run --rm --interactive --tty --name donate-clanker-container" "$runner_log"
+assert_file_contains "run --rm --interactive --tty --replace --name donate-clanker-container" "$runner_log"
 assert_file_contains "--volume ${home}/.config/hive:/home/dev/.config/hive:ro" "$runner_log"
 assert_file_contains "--env AGENT_BACKEND=goose" "$runner_log"
 assert_file_contains "--env GOOSE_PROVIDER=openai" "$runner_log"
@@ -603,6 +603,9 @@ if grep -nE '(^|[^[:alnum:]_])(nohup|setsid)([^[:alnum:]_]|$)' "$code"; then
 fi
 assert_eq "$(grep -c 'podman run --rm --interactive --tty' "$code")" 2 \
   "expected exactly two foreground podman run sites (VM runner + container)"
+# A stale container from a hard-killed terminal must never block a relaunch.
+assert_eq "$(grep -c 'podman run --rm --interactive --tty --replace --name' "$code")" 2 \
+  "every named foreground run must reclaim its name with --replace"
 
 begin "static: the verified master image is never booted directly"
 # shellcheck disable=SC2016 # the launcher source is matched literally, not expanded
