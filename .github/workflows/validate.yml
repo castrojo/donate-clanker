@@ -15,10 +15,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # 'stable', not go-version-file. go.mod declares the module's MINIMUM
+      # (go 1.22), but the pinned golangci-lint builds from source and needs a
+      # newer toolchain than that -- it fails with "unknown block type: ignore"
+      # on anything older than Go 1.25. setup-go v7 honours go-version-file
+      # strictly, which surfaced the mismatch that earlier majors happened to
+      # paper over. CI therefore installs a current toolchain; the module
+      # minimum is a separate concern and stays in go.mod.
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version-file: go.mod
+          go-version: stable
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
