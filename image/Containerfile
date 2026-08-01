@@ -10,7 +10,6 @@
 ARG FSDK_RUNNER_IMAGE=ghcr.io/projectbluefin/lab-runner@sha256:fe097bb3b85a126b9a16093fbc498b4b6fb7b24e0f74162ad3d91a402dcfa940
 ARG HIVE_COMMIT=e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e
 ARG NODE_VERSION=24.18.1
-ARG GO_VERSION=1.24.4
 ARG GH_VERSION=2.97.0
 ARG TMUX_VERSION=3.7b
 
@@ -18,13 +17,18 @@ FROM ${FSDK_RUNNER_IMAGE}
 
 USER root
 
-ENV PATH=/opt/node/bin:/usr/local/go/bin:${PATH}
+ARG HIVE_COMMIT
+ARG NODE_VERSION
+ARG GH_VERSION
+ARG TMUX_VERSION
+
+ENV PATH=/opt/node/bin:${PATH}
 ENV NODE_PATH=/opt/hive/node_modules
 ENV HIVE_CONTRIBUTOR_MODE=true
 
 # FSDK's shell-enabled base keeps the runtime lean but does not ship the whole
 # contributor stack. Add just the tools required for Hive contributor mode:
-# Node + ws for the relay, GitHub CLI, tmux, Goose, and Go for Go-based tasks.
+# Node + ws for the relay, GitHub CLI, tmux, and Goose.
 ARG GOOSE_REFRESH=0
 RUN set -eu; \
     arch="$(uname -m)"; \
@@ -34,7 +38,6 @@ RUN set -eu; \
         node_sha='d6c664df3f3f61458e8c277585571328522d705166723a7c7823a9253a4d15a0'; \
         gh_arch=amd64; \
         gh_sha='a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112'; \
-        go_arch=amd64; \
         tmux_arch=x86_64; \
         tmux_sha='f85e6c1c412750a774eb3f370f33bad05fc726fb8b6a0b174ad6f0b6d954df58'; \
         goose_arch=x86_64; \
@@ -46,7 +49,6 @@ RUN set -eu; \
         node_sha='7201e3a09dc825bac57867c81913e2b8f0ef87d04cb9082af4cda82f6ff3d88c'; \
         gh_arch=arm64; \
         gh_sha='73ea440ecad9c9e284429997ee6f93577bc6f7bc6fba357ef62c53ad8fb641a5'; \
-        go_arch=arm64; \
         tmux_arch=arm64; \
         tmux_sha='b2955782695283fbc3682a2f77d65616f53b986ee3cf3d80618d3b1cb95b91a6'; \
         goose_arch=aarch64; \
@@ -59,6 +61,7 @@ RUN set -eu; \
     [ -e "${loader_dir}/${loader_name}" ] || ln -sf "$loader_target" "${loader_dir}/${loader_name}"; \
     workdir="$(mktemp -d)"; \
     trap 'rm -rf "$workdir"' EXIT; \
+    mkdir -p /usr/local/bin /opt/hive; \
     curl --fail --location --show-error --silent \
       "https://nodejs.org/dist/latest-v24.x/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" \
       -o "$workdir/node.tar.xz"; \
@@ -70,24 +73,18 @@ RUN set -eu; \
     printf '%s  %s\n' "$gh_sha" "$workdir/gh.tar.gz" | sha256sum -c -; \
     python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.endswith("/bin/gh")); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/gh.tar.gz" /usr/local/bin/gh; \
     curl --fail --location --show-error --silent \
-      "https://go.dev/dl/go${GO_VERSION}.linux-${go_arch}.tar.gz" \
-      -o "$workdir/go.tar.gz"; \
-    python3 -c 'import pathlib, shutil, sys, tarfile; archive = pathlib.Path(sys.argv[1]); root = pathlib.Path(sys.argv[2]); target = root / "go"; target.exists() and shutil.rmtree(target); tf = tarfile.open(archive, mode="r:gz"); tf.extractall(root); tf.close()' "$workdir/go.tar.gz" /usr/local; \
-    curl --fail --location --show-error --silent \
       "https://github.com/tmux/tmux-builds/releases/download/v${TMUX_VERSION}/tmux-${TMUX_VERSION}-linux-${tmux_arch}.tar.gz" \
       -o "$workdir/tmux.tar.gz"; \
     printf '%s  %s\n' "$tmux_sha" "$workdir/tmux.tar.gz" | sha256sum -c -; \
-    python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.endswith("/tmux")); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/tmux.tar.gz" /usr/local/bin/tmux; \
+    python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.rsplit("/", 1)[-1] == "tmux"); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/tmux.tar.gz" /usr/local/bin/tmux; \
     : "$GOOSE_REFRESH"; \
     curl --fail --location --show-error --silent \
       "https://github.com/aaif-goose/goose/releases/latest/download/goose-${goose_arch}-unknown-linux-gnu.tar.gz" \
       -o "$workdir/goose.tar.gz"; \
-    python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.endswith("/goose")); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/goose.tar.gz" /usr/local/bin/goose; \
-    mkdir -p /opt/hive; \
+    python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.rsplit("/", 1)[-1] == "goose"); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/goose.tar.gz" /usr/local/bin/goose; \
     npm --prefix /opt/hive install ws@8.18.3; \
     node --version; \
     gh --version; \
-    go version; \
     tmux -V; \
     /usr/local/bin/goose --version; \
     /usr/local/bin/goose run --help >/dev/null
@@ -112,8 +109,8 @@ RUN set -eu; \
 RUN set -eu; \
     grep -q '^dev:' /etc/group || echo 'dev:x:1000:' >> /etc/group; \
     grep -q '^dev:' /etc/passwd || echo 'dev:x:1000:1000:Developer:/home/dev:/usr/bin/bash' >> /etc/passwd; \
-    mkdir -p /var/run/hive-metrics /home/dev/.config/goose /home/dev/.config/gh /home/dev/.agents; \
-    chown -R 1000:1000 /var/run/hive-metrics /home/dev
+    mkdir -p /run/hive-metrics /home/dev/.config/goose /home/dev/.config/gh /home/dev/.agents; \
+    chown -R 1000:1000 /run/hive-metrics /home/dev
 
 # Controlled Goose configuration. This is NOT ~/.config/goose/config.yaml:
 # Hive's contributor runtime overwrites that file at every startup, so the

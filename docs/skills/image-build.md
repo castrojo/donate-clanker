@@ -44,7 +44,6 @@ donate-clanker then adds only what contributor mode still needs:
 - tmux
 - Node + `ws` for Hive's relay
 - GitHub CLI
-- Go toolchain
 - the pinned Hive contributor scripts (`contributor-agent.sh`,
   `contributor-relay.sh`, `backends.conf`)
 
