@@ -1,7 +1,7 @@
 ---
 name: hive-runtime
-version: "1.0"
-last_updated: 2026-07-31
+version: "1.1"
+last_updated: 2026-08-01
 id: hive-runtime
 one_line_purpose: Operate inside Hive's tmux, token, and cooldown constraints.
 entry_point: docs/skills/hive-runtime.md
@@ -65,10 +65,54 @@ Practical rules:
   summary.
 - Do not design flows that assume a full transcript reaches the server.
 
+### The agent's GitHub identity
+
+Hive runs donate-clanker with `HIVE_CONTRIBUTOR_MODE=true`. The Hive `gh`
+wrapper at `/usr/local/bin/gh` injects the hub's GitHub App token **only when
+that variable is not `true`** -- its own comment reads "Contributors keep their
+personal token -- they fork+PR with their own identity." In contributor mode it
+injects nothing, and it additionally blocks every `gh auth ...` invocation.
+
+So the agent has no GitHub identity unless the launcher gives it one. Without
+it a task is picked up, the agent runs `gh`, is told to run `gh auth login`, is
+then forbidden from running it, and stops. Every assigned task dies on arrival.
+
+`donate-clanker-container` therefore passes `GH_TOKEN` **by value**, resolved
+in this order:
+
+1. `DONATE_CLANKER_GH_TOKEN` -- a purpose-made, narrowly scoped PAT.
+2. `GH_TOKEN` already exported on the host.
+3. `gh auth token --hostname github.com`.
+
+By value and not by mounting `~/.config/gh`, for the same reason the Copilot
+credential is passed by value: the guest receives one credential for one host,
+and no view of other accounts, other hosts, or an enterprise login sitting in
+the same file. Upstream's own `just contribute-run` passes `-e GH_TOKEN` the
+same way, so this is Hive's model, not a deviation from it.
+
+The launcher prints the token's **scopes** -- never its value -- before
+handing it over, because a desktop `gh` login routinely carries `admin:org`,
+`workflow` and `delete:packages`, and that is what the agent inherits. A
+contributor who does not want to hand all of that to an autonomous agent sets
+`DONATE_CLANKER_GH_TOKEN` to a PAT with `public_repo` or `repo` only, which is
+enough to fork, push and open a pull request.
+
+`donate-clanker-doctor` reports whether a token resolves and with which
+scopes, without printing it and without starting anything.
+
+The VM path does not carry this yet: its bootstrap envelope is consumed by the
+guest image, which lives outside this repository, so a new envelope field
+cannot be honoured from here alone.
+
 ### The 55-minute token
 
 The scoped GitHub token Hive issues expires 55 minutes after assignment and
-is **never refreshed**. Plan every task to push or open its pull request well
+is **never refreshed**. It is not a substitute for the identity above:
+`task_assign.github_token` reaches `injectGhToken` in `contributor-relay.sh`,
+which writes it to `/var/run/hive-metrics/gh-app-token.cache` -- a file the
+`gh` wrapper reads **only when not in contributor mode**. In contributor mode
+that token is written and never read, so nothing exposes it to the agent's
+shell. Plan every task to push or open its pull request well
 inside that window. A task that spends 50 minutes exploring and then tries to
 push will fail at the last step with an authentication error that looks like
 a permissions bug and is not.
@@ -91,6 +135,11 @@ create one.
 - Renaming or parameterizing the `contributor` session name.
 - A summary longer than 15 lines, or a report followed by more output.
 - Assuming the GitHub token can be refreshed, rotated, or re-requested.
+- Mounting `~/.config/gh` to give the agent an identity. Pass one token by
+  value; the directory holds credentials for hosts and accounts the task has
+  no business seeing.
+- Echoing, logging or persisting a token value anywhere. Scopes and
+  presence/absence are the only reportable facts.
 - Reporting completion to unblock yourself from a stuck state. That burns 168
   hours.
 - Treating a silent pane as a crash without attaching to look first.

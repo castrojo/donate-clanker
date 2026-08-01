@@ -270,6 +270,57 @@ hive_contributor_backend() {
   [[ -f "$path" ]] || return 0
   awk -F= '$1 == "AGENT_BACKEND" {sub(/^[^=]*=/, ""); gsub(/["'"'"']/, ""); print; exit}' "$path"
 }
+resolve_gh_token() {
+  # Hive's contributor model is fork + pull request under the contributor's
+  # OWN GitHub identity: /usr/local/bin/gh injects the hub's App token only
+  # when HIVE_CONTRIBUTOR_MODE is not "true", and we always run with it set.
+  # Upstream's own `just contribute-run` therefore passes -e GH_TOKEN from
+  # `gh auth token`; without it the agent picks up a task, runs `gh`, is told
+  # to `gh auth login` -- which the wrapper also blocks in contributor mode --
+  # and stops. Every assigned task dies on arrival.
+  #
+  # By value, never by mounting ~/.config/gh: the container gets exactly one
+  # credential for exactly one host, and no view of any other account, of
+  # ~/.config/gh/hosts.yml, or of an enterprise login that happens to sit
+  # beside it. Same reasoning as the Copilot token above.
+  #
+  # DONATE_CLANKER_GH_TOKEN comes first so a contributor can hand the agent a
+  # purpose-made, narrowly scoped PAT instead of their desktop login, which
+  # typically carries admin:org, workflow and delete:packages.
+  GH_TOKEN_VALUE="${DONATE_CLANKER_GH_TOKEN:-${GH_TOKEN:-}}"
+  GH_TOKEN_SOURCE="environment"
+  if [[ -z "$GH_TOKEN_VALUE" ]]; then
+    GH_TOKEN_SOURCE="gh auth token"
+    command -v gh &>/dev/null || { GH_TOKEN_SOURCE=""; return 0; }
+    GH_TOKEN_VALUE="$(gh auth token --hostname github.com 2>/dev/null || true)"
+  fi
+  [[ -n "$GH_TOKEN_VALUE" ]] || GH_TOKEN_SOURCE=""
+  return 0
+}
+gh_token_scopes() {
+  # Scopes, never the token. A contributor is about to hand these powers to an
+  # autonomous agent, so the launcher says out loud what it is handing over.
+  command -v gh &>/dev/null || return 0
+  gh auth status --hostname github.com 2>&1 | sed -nE "s/.*[Tt]oken scopes:[[:space:]]*(.+)/\1/p" | head -1 || true
+  return 0
+}
+report_gh_token_blast_radius() {
+  local source="$1" scopes
+  echo "✓ GitHub identity passed to the agent as GH_TOKEN (from ${source}; value not shown)."
+  scopes="$(gh_token_scopes)"
+  [[ -n "$scopes" ]] && echo "  The agent can do anything this token can: ${scopes}"
+  echo "  Narrow that with: DONATE_CLANKER_GH_TOKEN=<scoped PAT> (public_repo or repo is enough to fork and open a PR)."
+  return 0
+}
+report_missing_gh_token() {
+  echo "! no GitHub token found; the agent has no GitHub identity." >&2
+  echo "  It cannot fork, clone, push or open a pull request, and will stop on" >&2
+  echo "  'To get started with GitHub CLI, please run: gh auth login' — which it" >&2
+  echo "  is not allowed to run. Every assigned task will die on arrival." >&2
+  echo "  Fix it with: gh auth login --web --hostname github.com --scopes repo,read:org" >&2
+  echo "  Or export DONATE_CLANKER_GH_TOKEN with a scoped PAT." >&2
+  return 0
+}
 gum_can_prompt() {
   command -v gum &>/dev/null || return 1
   [[ "${DONATE_CLANKER_TEST_GUM_TTY:-}" == "1" ]] || [[ -t 0 ]]
@@ -838,6 +889,17 @@ donate-clanker-container:
         report_missing_copilot_credential
       fi
     fi
+    # Hive's contributor model is fork + pull request under the contributor's
+    # own identity, so the agent needs a GitHub token of its own. Passed by
+    # value rather than by mounting ~/.config/gh, so the container sees one
+    # credential for one host and nothing else that directory holds.
+    resolve_gh_token
+    if [[ -n "${GH_TOKEN_VALUE:-}" ]]; then
+      CONTAINER_ARGS+=(--env "GH_TOKEN=${GH_TOKEN_VALUE}")
+      report_gh_token_blast_radius "${GH_TOKEN_SOURCE}"
+    else
+      report_missing_gh_token
+    fi
     CONTAINER_ARGS+=("$CONTRIBUTOR_IMAGE")
 
     echo "✓ starting the donate-clanker contributor container (no VM)."
@@ -897,6 +959,23 @@ donate-clanker-doctor:
       echo "    Run: ${GITHUB_LOGIN_COMMAND}"
       fail=$((fail+1))
     fi
+    # Read-only: resolves the token, prints its scopes, never its value, and
+    # starts nothing. Without one the agent has no GitHub identity at all and
+    # every assigned task stops at 'gh auth login'.
+    resolve_gh_token
+    if [[ -n "${GH_TOKEN_VALUE:-}" ]]; then
+      echo "  ✓ a GitHub token is available for the agent (from ${GH_TOKEN_SOURCE}; not shown)"
+      DOCTOR_GH_SCOPES="$(gh_token_scopes)"
+      [[ -n "$DOCTOR_GH_SCOPES" ]] && echo "    The agent will be able to do anything this token can: ${DOCTOR_GH_SCOPES}"
+      echo "    Narrow that with DONATE_CLANKER_GH_TOKEN=<scoped PAT> if that is wider than you want."
+      pass=$((pass+1))
+    else
+      echo "  ✗ no GitHub token is available for the agent"
+      echo "    It could not fork, push, or open a pull request, and would stop at 'gh auth login'."
+      echo "    Run: ${GITHUB_LOGIN_COMMAND}, or export DONATE_CLANKER_GH_TOKEN."
+      fail=$((fail+1))
+    fi
+    unset GH_TOKEN_VALUE
     echo ""
 
     echo "=== Agent backend (Goose only) ==="

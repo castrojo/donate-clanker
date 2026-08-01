@@ -38,6 +38,16 @@ it by Hive, and that a human can attach to and steer at any time.
 Check all of the above with `ujust donate-clanker-doctor` before filing a
 bug.
 
+> **The agent acts as you on GitHub.** Hive's contributor model is fork +
+> pull request under the contributor's own identity, so
+> `ujust donate-clanker-container` passes your `gh auth token` to the agent as
+> `GH_TOKEN`. The agent inherits every scope that token holds — a desktop `gh`
+> login often carries `admin:org`, `workflow` and `delete:packages`. The
+> launcher prints the scopes (never the value) before handing them over. To
+> narrow that, export `DONATE_CLANKER_GH_TOKEN` with a PAT scoped to
+> `public_repo` or `repo`, which is enough to fork, push and open a pull
+> request.
+
 ## Installation
 
 `just/61-donate-clanker.just` is the only file that ships or installs.
