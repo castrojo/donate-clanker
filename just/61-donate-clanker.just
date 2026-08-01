@@ -83,7 +83,7 @@ hive_commit := "e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e"
 vm_runner_image := env("DONATE_CLANKER_VM_RUNNER_IMAGE", "")
 vm_raw_image := env("DONATE_CLANKER_VM_RAW", "")
 vm_version := env("DONATE_CLANKER_VM_VERSION", "25.08.14")
-# The derived KubeStellar Hive contributor image. Used by
+# The fsdk-derived contributor image. Used by
 # donate-clanker-container; the VM path gets the same image from inside the
 # guest, so this only matters for local development.
 #
@@ -93,8 +93,9 @@ vm_version := env("DONATE_CLANKER_VM_VERSION", "25.08.14")
 # yesterday.
 #
 # ':latest' is deliberately absent from the registry — the workflow publishes
-# 'sha-<commit>' and 'stable' on every build, plus the version tags on a
-# 'v*.*.*' release. Asking for ':latest' dies on 'manifest unknown'.
+# 'sha-<commit>' on every build, 'stable' on each main or release build, and
+# version tags on a 'v*.*.*' release. Asking for ':latest' dies on 'manifest
+# unknown'.
 # DONATE_CLANKER_CONTRIBUTOR_IMAGE overrides this when you need a specific
 # 'sha-' tag or digest.
 contributor_image := env("DONATE_CLANKER_CONTRIBUTOR_IMAGE", "ghcr.io/projectbluefin/donate-clanker:stable")
@@ -1047,7 +1048,7 @@ donate-clanker-doctor:
       pass=$((pass+1))
     else
       echo "  ✗ ${DOCTOR_CONTRIBUTOR_IMAGE} cannot be resolved"
-      echo "    Published tags are 'stable', 'main', the version tags and 'sha-<commit>'; ':latest' does not exist."
+      echo "    Published tags are 'stable', the version tags and 'sha-<commit>'; ':latest' does not exist."
       echo "    Override with DONATE_CLANKER_CONTRIBUTOR_IMAGE (a 'sha-' tag or digest pins a build), or build image/Containerfile locally."
       fail=$((fail+1))
     fi

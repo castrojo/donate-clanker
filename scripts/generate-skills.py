@@ -24,18 +24,25 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import re
 import sys
 import urllib.error
 import urllib.request
 
+DEFAULT_COMMON_COMMIT = "56944ddddfe55811428f3287f5e3533f3e1c05e1"
 DEFAULT_INDEX = (
-    "https://raw.githubusercontent.com/projectbluefin/common/main/docs/skills/index.json"
+    "https://raw.githubusercontent.com/projectbluefin/common/"
+    f"{DEFAULT_COMMON_COMMIT}/docs/skills/index.json"
 )
-DEFAULT_RAW_BASE = "https://raw.githubusercontent.com/projectbluefin/common/main/"
+DEFAULT_RAW_BASE = (
+    "https://raw.githubusercontent.com/projectbluefin/common/"
+    f"{DEFAULT_COMMON_COMMIT}/"
+)
 
 # Goose's own guidance is that fewer tools and shorter always-on context perform
 # better; every skill costs name+description tokens in every request.
 MAX_DESCRIPTION = 256
+SKILL_ID_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 
 
 def read_source(location: str) -> str:
@@ -82,6 +89,18 @@ def strip_frontmatter(text: str) -> str:
     return text[newline + 1 :] if newline != -1 else ""
 
 
+def is_safe_entry_point(entry_point: object) -> bool:
+    """Allow only relative skill documents beneath docs/skills."""
+    if not isinstance(entry_point, str):
+        return False
+    path = pathlib.PurePosixPath(entry_point)
+    return (
+        not path.is_absolute()
+        and path.parts[:2] == ("docs", "skills")
+        and all(part not in (".", "..") for part in path.parts)
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--index", default=DEFAULT_INDEX, help="index.json path or URL")
@@ -109,15 +128,26 @@ def main() -> int:
     except (OSError, urllib.error.URLError, json.JSONDecodeError) as err:
         print(f"generate-skills: cannot read index {args.index}: {err}", file=sys.stderr)
         return 1
+    if not isinstance(manifest, dict):
+        print("generate-skills: index must contain an object", file=sys.stderr)
+        return 1
+    skills = manifest.get("skills")
+    if not isinstance(skills, list):
+        print("generate-skills: index must contain a skills array", file=sys.stderr)
+        return 1
 
     out_root = pathlib.Path(args.out)
     out_root.mkdir(parents=True, exist_ok=True)
 
     emitted = 0
     skipped = []
-    for skill in manifest.get("skills", []):
+    for skill in skills:
+        if not isinstance(skill, dict):
+            skipped.append(("<unknown>", "not an object"))
+            continue
         skill_id = skill.get("id") or skill.get("name")
-        if not skill_id:
+        if not isinstance(skill_id, str) or not SKILL_ID_PATTERN.fullmatch(skill_id):
+            skipped.append((str(skill_id), "invalid id"))
             continue
         if skill.get("status", "active") != "active":
             skipped.append((skill_id, "status is not active"))
@@ -127,8 +157,8 @@ def main() -> int:
             continue
 
         entry_point = skill.get("entry_point")
-        if not entry_point:
-            skipped.append((skill_id, "no entry_point"))
+        if not is_safe_entry_point(entry_point):
+            skipped.append((skill_id, "invalid entry_point"))
             continue
 
         location = (

@@ -1,58 +1,133 @@
 # donate-clanker contributor image.
 #
-# Derives from Hive's contributor image and layers Bluefin review context on
-# top. Hive documents HIVE_CONTRIBUTOR_IMAGE as the supported customization
-# seam, so a derived image is the intended extension point -- but Hive itself
-# pins nothing (its launcher defaults to :latest against a moving v2 branch),
-# so we pin by digest here and let Renovate move it deliberately.
+# This image is self-owned: it derives from Project Bluefin's FSDK lab-runner
+# base and layers in only the runtime pieces donate-clanker actually needs for
+# contributor mode. We still reuse Hive's contributor runtime scripts, but we do
+# not inherit the whole Debian-based contributor container any more.
 #
-# Digest below is ghcr.io/kubestellar/hive-contributor:latest as resolved on
-# 2026-07-31. Renovate keeps it current; to re-resolve by hand (the package is
-# public, so no registry login is needed):
-#
-#   TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:kubestellar/hive-contributor:pull&service=ghcr.io" \
-#     | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
-#   curl -sI -H "Authorization: Bearer $TOKEN" \
-#     -H "Accept: application/vnd.oci.image.index.v1+json" \
-#     -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
-#     -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
-#     "https://ghcr.io/v2/kubestellar/hive-contributor/manifests/latest" \
-#     | tr -d '\r' | grep -i '^docker-content-digest'
-ARG HIVE_CONTRIBUTOR_IMAGE=ghcr.io/kubestellar/hive-contributor@sha256:221f003773e2f40fee571a6736f4584272ed462bc6b5c7dc1b34f15aa19dafad
+# Digest below is ghcr.io/projectbluefin/lab-runner:25.08 as resolved on
+# 2026-08-01.
+ARG FSDK_RUNNER_IMAGE=ghcr.io/projectbluefin/lab-runner@sha256:fe097bb3b85a126b9a16093fbc498b4b6fb7b24e0f74162ad3d91a402dcfa940
+ARG HIVE_COMMIT=e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e
+ARG NODE_VERSION=24.18.1
+ARG GH_VERSION=2.97.0
+ARG TMUX_VERSION=3.7b
+ARG GOOSE_VERSION=1.45.0
+ARG SKILLS_COMMIT=56944ddddfe55811428f3287f5e3533f3e1c05e1
 
-FROM ${HIVE_CONTRIBUTOR_IMAGE}
+FROM ${FSDK_RUNNER_IMAGE}
 
 USER root
 
-# Resolve the latest stable Goose on each explicitly refreshed build.
+ARG HIVE_COMMIT
+ARG NODE_VERSION
+ARG GH_VERSION
+ARG TMUX_VERSION
+ARG GOOSE_VERSION
+
+ENV PATH=/opt/node/bin:${PATH}
+ENV NODE_PATH=/opt/hive/node_modules
+ENV HIVE_CONTRIBUTOR_MODE=true
+
+# FSDK's shell-enabled base keeps the runtime lean but does not ship the whole
+# contributor stack. Add just the tools required for Hive contributor mode:
+# Node + ws for the relay, GitHub CLI, tmux, and Goose.
 ARG GOOSE_REFRESH=0
 RUN set -eu; \
-    : "$GOOSE_REFRESH"; \
-    arch="$(dpkg --print-architecture)"; \
+    arch="$(uname -m)"; \
     case "$arch" in \
-      amd64) goose_arch=x86_64 ;; \
-      arm64) goose_arch=aarch64 ;; \
-      *) echo "unsupported architecture for Goose: $arch" >&2; exit 1 ;; \
+      x86_64) \
+        node_arch=x64; \
+        node_sha='d6c664df3f3f61458e8c277585571328522d705166723a7c7823a9253a4d15a0'; \
+        gh_arch=amd64; \
+        gh_sha='a2c9b8497e1f85b1ad0dfcb78b5a622e098801b8e461e459e88e1ee12f018112'; \
+        tmux_arch=x86_64; \
+        tmux_sha='f85e6c1c412750a774eb3f370f33bad05fc726fb8b6a0b174ad6f0b6d954df58'; \
+        goose_arch=x86_64; \
+        goose_sha='e0db638ac437ca0a60b0c1622f45322608d228d1a285214c3bf48fd9763346a5'; \
+        loader_dir=/lib64; \
+        loader_target=/usr/lib64/ld-linux-x86-64.so.2; \
+        loader_name=ld-linux-x86-64.so.2 ;; \
+      aarch64|arm64) \
+        node_arch=arm64; \
+        node_sha='7201e3a09dc825bac57867c81913e2b8f0ef87d04cb9082af4cda82f6ff3d88c'; \
+        gh_arch=arm64; \
+        gh_sha='73ea440ecad9c9e284429997ee6f93577bc6f7bc6fba357ef62c53ad8fb641a5'; \
+        tmux_arch=arm64; \
+        tmux_sha='b2955782695283fbc3682a2f77d65616f53b986ee3cf3d80618d3b1cb95b91a6'; \
+        goose_arch=aarch64; \
+        goose_sha='c9894106c90e404ac8b8d67c628aea2943dd6a1bc83bfd8e2171d482fa43d72a'; \
+        loader_dir=/lib; \
+        loader_target=/usr/lib/ld-linux-aarch64.so.1; \
+        loader_name=ld-linux-aarch64.so.1 ;; \
+      *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
     esac; \
+    mkdir -p "$loader_dir"; \
+    [ -e "${loader_dir}/${loader_name}" ] || ln -sf "$loader_target" "${loader_dir}/${loader_name}"; \
     workdir="$(mktemp -d)"; \
     trap 'rm -rf "$workdir"' EXIT; \
+    mkdir -p /usr/local/bin /opt/hive; \
     curl --fail --location --show-error --silent \
-      "https://github.com/aaif-goose/goose/releases/latest/download/goose-${goose_arch}-unknown-linux-gnu.tar.gz" \
+      "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" \
+      -o "$workdir/node.tar.xz"; \
+    printf '%s  %s\n' "$node_sha" "$workdir/node.tar.xz" | sha256sum -c -; \
+    python3 -c 'import pathlib, shutil, sys, tarfile; archive = pathlib.Path(sys.argv[1]); root = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:xz"); tf.extractall(root); tf.close(); node_dir = next(p for p in root.iterdir() if p.name.startswith("node-v") and p.is_dir()); target = root / "node"; target.exists() and shutil.rmtree(target); node_dir.rename(target)' "$workdir/node.tar.xz" /opt; \
+    curl --fail --location --show-error --silent \
+      "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${gh_arch}.tar.gz" \
+      -o "$workdir/gh.tar.gz"; \
+    printf '%s  %s\n' "$gh_sha" "$workdir/gh.tar.gz" | sha256sum -c -; \
+    python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.endswith("/bin/gh")); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/gh.tar.gz" /usr/local/bin/gh; \
+    curl --fail --location --show-error --silent \
+      "https://github.com/tmux/tmux-builds/releases/download/v${TMUX_VERSION}/tmux-${TMUX_VERSION}-linux-${tmux_arch}.tar.gz" \
+      -o "$workdir/tmux.tar.gz"; \
+    printf '%s  %s\n' "$tmux_sha" "$workdir/tmux.tar.gz" | sha256sum -c -; \
+    python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.rsplit("/", 1)[-1] == "tmux"); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/tmux.tar.gz" /usr/local/bin/tmux; \
+    : "$GOOSE_REFRESH"; \
+    curl --fail --location --show-error --silent \
+      "https://github.com/aaif-goose/goose/releases/download/v${GOOSE_VERSION}/goose-${goose_arch}-unknown-linux-gnu.tar.gz" \
       -o "$workdir/goose.tar.gz"; \
-    tar -xzf "$workdir/goose.tar.gz" -C "$workdir"; \
-    install -m 0755 "$workdir/goose" /usr/local/bin/goose; \
+    printf '%s  %s\n' "$goose_sha" "$workdir/goose.tar.gz" | sha256sum -c -; \
+    python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.rsplit("/", 1)[-1] == "goose"); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/goose.tar.gz" /usr/local/bin/goose; \
+    npm --prefix /opt/hive install --ignore-scripts ws@8.21.1; \
+    npm --prefix /opt/hive audit --audit-level=high; \
+    node --version; \
+    gh --version; \
+    tmux -V; \
     /usr/local/bin/goose --version; \
     /usr/local/bin/goose run --help >/dev/null
 
+# Pull the contributor-mode runtime directly from the pinned Hive commit. The
+# launcher still depends on Hive's relay protocol and tmux contract; we just own
+# the surrounding image now.
+RUN set -eu; \
+    mkdir -p /usr/local/etc/hive /etc/hive/restrictions; \
+    curl --fail --location --show-error --silent \
+      "https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/bin/contributor-agent.sh" \
+      -o /usr/local/bin/contributor-agent.sh; \
+    curl --fail --location --show-error --silent \
+      "https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/bin/contributor-relay.sh" \
+      -o /usr/local/bin/contributor-relay.sh; \
+    curl --fail --location --show-error --silent \
+      "https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/config/backends.conf" \
+      -o /usr/local/etc/hive/backends.conf; \
+    chmod 0755 /usr/local/bin/contributor-agent.sh /usr/local/bin/contributor-relay.sh
+
+# Create the non-root runtime user expected by the launcher and workflows.
+RUN set -eu; \
+    grep -q '^dev:' /etc/group || echo 'dev:x:1000:' >> /etc/group; \
+    grep -q '^dev:' /etc/passwd || echo 'dev:x:1000:1000:Developer:/home/dev:/usr/bin/bash' >> /etc/passwd; \
+    mkdir -p /run/hive-metrics /home/dev/.config/goose /home/dev/.config/gh /home/dev/.agents; \
+    chown -R 1000:1000 /run/hive-metrics /home/dev
+
 # Controlled Goose configuration. This is NOT ~/.config/goose/config.yaml:
-# Hive's entrypoint overwrites that file at every startup, so the entrypoint
-# points Goose here with GOOSE_PATH_ROOT instead.
+# Hive's contributor runtime overwrites that file at every startup, so the
+# entrypoint points Goose here with GOOSE_PATH_ROOT instead.
 # GOOSE_PATH_ROOT relocates Goose's config AND its data/state roots, so the
 # whole tree must be writable by the runtime user or Goose fails to open its
 # log directory on startup.
 RUN mkdir -p /opt/bluefin/goose/config /opt/bluefin/goose/data /opt/bluefin/goose/state \
-    && chown -R dev:dev /opt/bluefin/goose
-COPY --chown=dev:dev image/config/goose.yaml /opt/bluefin/goose/config/config.yaml
+    && chown -R 1000:1000 /opt/bluefin/goose
+COPY --chown=1000:1000 image/config/goose.yaml /opt/bluefin/goose/config/config.yaml
 COPY image/config/local-agent-policy.md /opt/bluefin/local-agent-policy.md
 
 # Git hooks, wired via a global core.hooksPath by the entrypoint. Ergonomics
@@ -66,15 +141,16 @@ COPY --chmod=0755 image/git-hooks/ /opt/bluefin/git-hooks/
 # roots. Generating at build time means every session sees the whole inventory
 # (name + description only, ~2k tokens) with bodies loaded on demand, and no
 # org repository has to change.
-ARG SKILLS_INDEX=https://raw.githubusercontent.com/projectbluefin/common/main/docs/skills/index.json
+ARG SKILLS_COMMIT
 ARG SKILLS_REFRESH=0
 COPY --chmod=0755 scripts/generate-skills.py /usr/local/libexec/donate-clanker-generate-skills
 RUN set -eu; \
     : "$SKILLS_REFRESH"; \
     /usr/local/libexec/donate-clanker-generate-skills \
-      --index "$SKILLS_INDEX" \
+      --index "https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/docs/skills/index.json" \
+      --raw-base "https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/" \
       --out /home/dev/.agents/skills; \
-    chown -R dev:dev /home/dev/.agents
+    chown -R 1000:1000 /home/dev/.agents
 
 COPY --chmod=0755 image/entrypoint.sh /usr/local/bin/donate-clanker-entrypoint
 
