@@ -24,7 +24,6 @@ ARG NODE_VERSION
 ARG GH_VERSION
 ARG TMUX_VERSION
 ARG GOOSE_VERSION
-ARG SKILLS_COMMIT
 
 ENV PATH=/opt/node/bin:${PATH}
 ENV NODE_PATH=/opt/hive/node_modules
@@ -142,6 +141,7 @@ COPY --chmod=0755 image/git-hooks/ /opt/bluefin/git-hooks/
 # roots. Generating at build time means every session sees the whole inventory
 # (name + description only, ~2k tokens) with bodies loaded on demand, and no
 # org repository has to change.
+ARG SKILLS_COMMIT
 ARG SKILLS_REFRESH=0
 COPY --chmod=0755 scripts/generate-skills.py /usr/local/libexec/donate-clanker-generate-skills
 RUN set -eu; \
