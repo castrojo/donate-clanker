@@ -14,7 +14,6 @@
 #   donate-clanker-container  Run only the contributor container — no VM —
 #                             for quick local development. Also foreground.
 #   donate-clanker-doctor     Read-only preflight diagnostics. Starts nothing.
-#   donate-clanker-stop       Safety net that removes a stale container.
 #
 # ─────────────────────────────────────────────────────────────────────────
 # FOREGROUND GUARANTEE
@@ -31,11 +30,20 @@
 #      container directly, so the run dies with the terminal. No daemon, no
 #      systemd unit, no orphaned state to reap later.
 #
-# '--replace' is not a hole in that guarantee: --rm removes the container
-# when it exits cleanly, but a hard-killed terminal, an OOM kill or a podman
-# restart can leave the fixed name behind, and the next launch then dies with
-# 'the container name ... is already in use'. --replace makes a relaunch take
-# the name back instead of demanding a manual 'ujust donate-clanker-stop'.
+# It follows that there is NO stop command, and there must never be one.
+# Shipping 'ujust donate-clanker-stop' would be an admission that a run can
+# outlive the terminal that started it — the exact property this file exists
+# to prevent. Ctrl-C is the stop button. A run that needs a second command to
+# end it is a daemon wearing a disguise, and this repository does not ship
+# daemons. Cleanup is therefore a startup concern, never a user-facing verb:
+# a launch reclaims whatever a previous run left behind.
+#
+# '--replace' is how that reclaim works, and it is not a hole in the
+# guarantee: --rm removes the container when it exits cleanly, but a
+# hard-killed terminal, an OOM kill or a podman restart can leave the fixed
+# name behind, and the next launch would otherwise die with 'the container
+# name ... is already in use'. --replace takes the name back at launch time
+# instead of asking the user to run a lifecycle command.
 #
 # Concretely: the final process of every launch path is either 'exec'd (so
 # it replaces this shell and inherits its signals) or is the last foreground
@@ -180,7 +188,7 @@ require_no_running_instance() {
   [[ "$(podman inspect --format '{{.State.Running}}' "$name" 2>/dev/null || echo false)" == "true" ]] || return 0
   echo "ERROR: ${name} is already running." >&2
   echo "  Attach to the live session: podman exec -it ${name} tmux attach -t contributor" >&2
-  echo "  Or end it first: ujust donate-clanker-stop" >&2
+  echo "  Or press Ctrl-C in the terminal that owns it; if that terminal is gone, run: podman rm -f ${name}" >&2
   return 1
 }
 ensure_contributor_image() {
@@ -681,7 +689,7 @@ donate-clanker:
     [[ -n "$GOOSE_MODEL" ]] && CONTAINER_ARGS+=(--env "GOOSE_MODEL=${GOOSE_MODEL}")
     CONTAINER_ARGS+=("{{vm_runner_image}}")
     echo "✓ donate-clanker is running in the pinned QEMU VM runner."
-    echo "  Stop any time with Ctrl-C, or: ujust donate-clanker-stop"
+    echo "  Stop any time with Ctrl-C — that is the only way it ends."
     set +e
     "${CONTAINER_ARGS[@]}"
     status=$?
@@ -741,7 +749,7 @@ donate-clanker-container:
     echo "✓ starting the donate-clanker contributor container (no VM)."
     echo "  The entrypoint attaches to the 'contributor' tmux session for you."
     echo "  From a second terminal: podman exec -it ${CONTAINER_NAME} tmux attach -t contributor"
-    echo "  Stop any time with Ctrl-C, or: ujust donate-clanker-stop"
+    echo "  Stop any time with Ctrl-C — that is the only way it ends."
     # exec: the container replaces this shell, so Ctrl-C and every other
     # signal reach it directly and its exit status is ours. Never --detach.
     exec "${CONTAINER_ARGS[@]}"
@@ -843,33 +851,3 @@ donate-clanker-doctor:
     echo ""
     echo "${pass} checks passed, ${fail} failed."
     [[ "$fail" -eq 0 ]] || exit 1
-
-# Safety net: remove a stale VM runner or contributor container. Nothing
-# should survive a foreground run, but a hard-killed terminal can leave one.
-donate-clanker-stop:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if command -v podman &>/dev/null; then
-      podman rm -f donate-clanker-vm >/dev/null 2>&1 || true
-      podman rm -f donate-clanker-container >/dev/null 2>&1 || true
-    fi
-
-    # A foreground VM normally dies with its terminal, but a hard-killed or
-    # timed-out shell can orphan qemu. An orphan keeps a write lock on the
-    # master disk image, so the next run fails with "Failed to get write lock"
-    # — which is confusing unless you know to look for a stray process.
-    # Match only OUR bootstrap control channel so unrelated VMs (libvirt,
-    # lima, podman machine) are never touched.
-    stopped=0
-    for pid in $(pgrep -f 'org\.projectbluefin\.donate-clanker\.bootstrap' 2>/dev/null || true); do
-      kill "$pid" 2>/dev/null || continue
-      stopped=$((stopped + 1))
-    done
-    if [[ "$stopped" -gt 0 ]]; then
-      sleep 2
-      for pid in $(pgrep -f 'org\.projectbluefin\.donate-clanker\.bootstrap' 2>/dev/null || true); do
-        kill -9 "$pid" 2>/dev/null || true
-      done
-      echo "donate-clanker VM stopped (${stopped} process(es))."
-    fi
-    echo "donate-clanker guest container stopped."

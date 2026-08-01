@@ -63,11 +63,18 @@ import "/absolute/path/to/donate-clanker/just/61-donate-clanker.just"
 | `ujust donate-clanker` | Boot the pinned QEMU VM in the **foreground** and attach to the `contributor` tmux session. Ctrl-C stops it. |
 | `ujust donate-clanker-container` | Run only the container, no VM, and attach to the same tmux session. For quick local development. |
 | `ujust donate-clanker-doctor` | Read-only preflight diagnostics. Never starts anything. |
-| `ujust donate-clanker-stop` | Stop a running instance. |
 
 The launcher never backgrounds itself. If your terminal is gone, the run is
 gone. That is the foreground guarantee, and it is intentional: there is no
 daemon, no unit, and no orphaned state to reap.
+
+**There is no stop command, and there will not be one.** Ctrl-C is the stop
+button. A `ujust donate-clanker-stop` would only make sense if a run could
+outlive its terminal, which is precisely what this launcher refuses to allow —
+shipping one would advertise a daemon we do not have. If a previous run was
+killed hard enough to leave its container name behind, the next launch
+reclaims that name itself (`--replace`); cleanup is a startup concern, never
+something you have to remember to do.
 
 Attaching by hand uses Hive's own documented flow:
 
