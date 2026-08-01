@@ -11,7 +11,7 @@ optimization_status: draft
 status: active
 dependencies: []
 tags: [hive, tmux, runtime, tokens, cooldown]
-description: "Describes Hive's contributor runtime: the tmux session contract, prompt injection, the 15-line output budget, the 55-minute token, the 168-hour cooldown, and why selection is Hive's alone. Use when debugging a session or planning task-length work."
+description: "Describes Hive's contributor runtime: the tmux session contract, prompt injection, the 15-line output budget, the 55-minute token, the 168-hour cooldown, the agent's GitHub identity, and why selection is Hive's alone. Use when debugging a session."
 metadata:
   type: reference
 ---
@@ -36,20 +36,19 @@ the first admissible issue. There is no ranking and no negotiation: the
 contributor accepts what it is handed.
 
 The candidate pool comes exclusively from the repositories listed in the
-hub's config. A repository that is not listed is structurally invisible to
-the selector, and in this org admission is expressed hub-side by a queue
-label. Both are policy the maintainers set deliberately.
+hub's config; one that is not listed is structurally invisible to the
+selector, and in this org admission is expressed hub-side by a queue label.
+Both are policy the maintainers set deliberately.
 
-So client-side filtering here is not merely redundant. It would shadow a
-lifecycle Hive already owns, it would diverge silently from the hub's own
-admission policy the moment either side changes, and its only visible effect
-would be hiding work that was deliberately admitted. Whatever Hive assigns is
-what the agent works on — by repository, label, title, author, issue number,
-or anything else.
+So filtering here would not merely be redundant. It would shadow a lifecycle
+Hive already owns, diverge silently from the hub's admission policy the
+moment either side changes, and its only visible effect would be hiding work
+that was deliberately admitted. Whatever Hive assigns is what the agent works
+on — regardless of repository, label, title, author or issue number.
 
 The upstream relay behaves the same way: it accepts the first assignment and
-answers `task_failed` only when it already has an active task. Declining work
-requires speaking the contributor protocol, which is Hive's, not ours.
+answers `task_failed` only when it already has one. Declining work means
+speaking the contributor protocol, which is Hive's, not ours.
 
 ### The tmux session contract
 
@@ -191,11 +190,9 @@ gh pr view --json url,state
 git log --oneline -1
 ```
 
-Confirm the final 15 lines of the pane contain the conclusion by scrolling to
-the bottom of the pane after the run.
+Confirm the final 15 lines of the pane carry the conclusion.
 
-The no-filtering invariant is enforced statically, so it is checked without a
-running Hive:
+The no-filtering invariant is enforced statically, so it needs no live Hive:
 
 ```bash
 bash tests/just-onboarding.sh
