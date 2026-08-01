@@ -1,7 +1,7 @@
 name: validate
 
 # just/61-donate-clanker.just is the shipped launcher. This workflow validates
-# its Bash syntax, VM contract, compatibility image, and mocked attended
+# its Bash syntax, image contract, compatibility image, and mocked attended
 # selection flow without requiring a live Hive account or interactive terminal.
 
 on:
@@ -15,18 +15,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # 'stable', not go-version-file. go.mod declares the module's MINIMUM
-      # (go 1.22), but the pinned golangci-lint builds from source and needs a
-      # newer toolchain than that -- it fails with "unknown block type: ignore"
-      # on anything older than Go 1.25. setup-go v7 honours go-version-file
-      # strictly, which surfaced the mismatch that earlier majors happened to
-      # paper over. CI therefore installs a current toolchain; the module
-      # minimum is a separate concern and stays in go.mod.
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version: stable
-
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
@@ -39,21 +27,6 @@ jobs:
           set -euo pipefail
           python -m pip install --upgrade pre-commit
           pre-commit run --all-files --show-diff-on-failure
-
-      - name: Gofmt cleanliness
-        run: |
-          set -euo pipefail
-          test -z "$(gofmt -l .)"
-
-      - name: Go tests
-        run: |
-          set -euo pipefail
-          go test ./...
-
-      - name: Go vet
-        run: |
-          set -euo pipefail
-          go vet ./...
 
       - name: Skill frontmatter and index stay aligned
         run: |
@@ -73,11 +46,6 @@ jobs:
           set -euo pipefail
           bash tests/just-onboarding.sh
 
-      - name: VM boot harness host seam
-        run: |
-          set -euo pipefail
-          python3 tests/vm-boot-e2e.py --self-test
-
       - name: Recipe bodies are valid bash
         run: |
           set -euo pipefail
@@ -94,52 +62,10 @@ jobs:
           bash -n recipe_bodies.sh
           rm -f recipe_bodies.sh
 
-      - name: VM artifact contract
+      - name: Image contract — Containerfile, goose.yaml, entrypoint, hooks
         run: |
           set -euo pipefail
-          VM_VERIFY_REMOTE=false \
-          VM_RUNNER_REF=ghcr.io/example/runner@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
-          VM_GUEST_REF=ghcr.io/example/guest@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb \
-          VM_GUEST_KERNEL_REF=ghcr.io/example/kernel@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc \
-          VM_GUEST_INITRAMFS_REF=ghcr.io/example/initramfs@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd \
-          VM_GUEST_ROOTFS_REF=ghcr.io/example/rootfs@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee \
-          scripts/verify-vm-artifacts.sh
-
-      - name: Context7 image contract — goose.yaml and policy
-        run: |
-          set -euo pipefail
-          GOOSE_YAML="image/config/goose.yaml"
-          POLICY_MD="image/config/local-agent-policy.md"
-          fail=0
-
-          # Required lines in goose.yaml that prove Context7 is configured as
-          # an enabled streamable HTTP MCP extension.
-          for want in \
-            "bundled: false" \
-            "enabled: true" \
-            "name: context7" \
-            "timeout: 30" \
-            "type: streamable_http" \
-            'uri: "https://mcp.context7.com/mcp"'; do
-            if ! grep -qF "$want" "$GOOSE_YAML"; then
-              echo "::error file=${GOOSE_YAML}::missing required line: $want"
-              fail=1
-            fi
-          done
-
-          # The local-agent policy must contain an opportunistic-use phrase and
-          # a local-fallback phrase so agents do not block on Context7.
-          for want in \
-            "inspect local repository evidence first" \
-            "Context7 only when current external documentation is useful" \
-            "continue with local evidence when Context7 is unavailable"; do
-            if ! grep -qF "$want" "$POLICY_MD"; then
-              echo "::error file=${POLICY_MD}::missing required phrase: $want"
-              fail=1
-            fi
-          done
-
-          exit "$fail"
+          bash tests/image-contract.sh
 
       - name: Interactive launcher docs and shell stay aligned
         run: |

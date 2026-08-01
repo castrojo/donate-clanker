@@ -1,6 +1,6 @@
 # Deny everything, then allow only what the image build actually consumes.
-# Keeping this tight stops the Go source, .git, and local state from entering
-# the build context.
+# Keeping this tight stops .git and local state from entering the build
+# context.
 *
 !image/
 !image/**

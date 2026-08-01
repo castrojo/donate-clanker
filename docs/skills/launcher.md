@@ -141,8 +141,7 @@ values.
 ```bash
 just --justfile just/61-donate-clanker.just --list
 just --justfile just/61-donate-clanker.just donate-clanker-doctor
-go test ./...
-gofmt -l .
+bash tests/just-onboarding.sh
 git diff --check
 pre-commit run --all-files
 ```

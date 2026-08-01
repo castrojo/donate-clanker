@@ -32,18 +32,6 @@ repos:
         # `python3 "$DONATE_CLANKER_TEST_CONSUMER"`, never exec'd directly.
         exclude: ^(image/.*\.sh|tests/guest-bootstrap-consumer\.py)$
 
-  # --------------------------------------------------------------------- Go
-  # Official hooks from golangci-lint itself (the dnephin/TekWizely
-  # pre-commit-golang forks are unmaintained).
-  - repo: https://github.com/golangci/golangci-lint
-    rev: v2.12.2 # v2.12.2
-    hooks:
-      # `golangci-lint fmt` covers gofmt (and gofumpt/goimports when enabled
-      # in .golangci.yml), replacing the old local `gofmt -w` hook.
-      - id: golangci-lint-fmt
-      # Full run so whole-module linters such as `unused` behave correctly.
-      - id: golangci-lint-full
-
   # ------------------------------------------------------------------ shell
   - repo: https://github.com/koalaman/shellcheck-precommit
     rev: v0.11.0 # v0.11.0
@@ -92,15 +80,14 @@ repos:
   # ------------------------------------------------------------------ local
   - repo: local
     hooks:
-      # Deliberately pre-push only: `go test ./...` is too slow for every
-      # commit.
-      - id: go-test
-        name: go test ./...
+      # image/ is half of what this repo ships, and every assertion is a
+      # substring check over a file, so it costs nothing to run per-commit.
+      - id: image-contract
+        name: image contract holds
         language: system
-        entry: go test ./...
-        types: [go]
+        entry: bash tests/image-contract.sh
+        files: ^(image|tests/image-contract\.sh)
         pass_filenames: false
-        stages: [pre-push]
       # docs/skills/index.json is generated, so it drifts silently from the
       # front-matter it mirrors unless something checks both sides.
       - id: check-skill-frontmatter

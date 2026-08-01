@@ -127,8 +127,7 @@ tagging.
 ## Verification
 
 ```bash
-go test ./...                 # includes image config assertions
-gofmt -l .
+bash tests/image-contract.sh  # Containerfile, goose.yaml, entrypoint, hooks
 git diff --check
 pre-commit run --all-files
 ```
