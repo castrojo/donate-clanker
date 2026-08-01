@@ -104,6 +104,19 @@ assert_zero_status() { [[ "$1" -eq 0 ]] || fail "${2:-expected exit status 0, go
 cat >"$fake_bin/gh" <<'EOF'
 #!/usr/bin/env bash
 [[ "${GH_READY:-}" == "1" ]] || exit 1
+# 'auth token' and 'auth status' are faked so a scenario can say whether the
+# agent gets a GitHub identity, and with which scopes, without ever reading the
+# developer's real gh login.
+case "${1:-} ${2:-}" in
+  "auth token")
+    [[ -n "${FAKE_GH_TOKEN:-}" ]] || exit 1
+    printf '%s\n' "$FAKE_GH_TOKEN"
+    ;;
+  "auth status")
+    printf '  - Token scopes: %s\n' "${FAKE_GH_SCOPES:-'repo', 'read:org'}" >&2
+    ;;
+esac
+exit 0
 EOF
 cat >"$fake_bin/goose" <<'EOF'
 #!/usr/bin/env bash
@@ -335,6 +348,8 @@ run_recipe() {
       -u TOOL -u DONATE_CLANKER_VM_RUNNER_IMAGE -u DONATE_CLANKER_HIVE_COMMIT \
       -u AGENT_MODEL -u GOOSE_PROVIDER -u GOOSE_MODEL -u GH_READY \
       -u GITHUB_COPILOT_TOKEN -u FAKE_KEYRING_COPILOT_TOKEN \
+      -u GH_TOKEN -u GITHUB_TOKEN \
+      -u DONATE_CLANKER_GH_TOKEN -u FAKE_GH_TOKEN -u FAKE_GH_SCOPES \
       -u TEST_UNAME_M -u TEST_CURL_MODE -u DONATE_CLANKER_TEST_GUM_TTY \
       -u DONATE_CLANKER_NON_INTERACTIVE -u GOOSE_INSTALLED \
       HOME="$home" PATH="$fake_bin:/usr/bin:/bin" TMPDIR="$tmp_root" \
@@ -633,6 +648,45 @@ assert_contains "gh auth token' is NOT a substitute" "$OUT"
 assert_contains "goose configure" "$OUT"
 assert_file_not_contains "GITHUB_COPILOT_TOKEN=" "$runner_log"
 
+begin "donate-clanker-container: a GitHub identity is passed by value, never by mount"
+# Without GH_TOKEN the agent picks up a task, runs gh, is told to 'gh auth
+# login' (which the Hive wrapper blocks in contributor mode) and stops.
+reset_logs
+run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o \
+  FAKE_GH_TOKEN=gho-test-token
+assert_contains "GitHub identity passed to the agent" "$OUT"
+assert_file_contains "--env GH_TOKEN=gho-test-token" "$runner_log"
+# By value only: ~/.config/gh must never be mounted, and the value must never
+# reach this terminal.
+assert_file_not_contains ".config/gh" "$runner_log"
+assert_not_contains "gho-test-token" "$OUT"
+
+begin "donate-clanker-container: the blast radius is named, the token is not"
+reset_logs
+run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o \
+  FAKE_GH_TOKEN=gho-test-token FAKE_GH_SCOPES="'admin:org', 'repo', 'workflow'"
+assert_contains "admin:org" "$OUT"
+assert_contains "DONATE_CLANKER_GH_TOKEN" "$OUT"
+assert_not_contains "gho-test-token" "$OUT"
+
+begin "donate-clanker-container: an explicit scoped PAT beats the desktop login"
+reset_logs
+run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o \
+  FAKE_GH_TOKEN=gho-desktop-token DONATE_CLANKER_GH_TOKEN=gho-scoped-pat
+assert_file_contains "--env GH_TOKEN=gho-scoped-pat" "$runner_log"
+assert_file_not_contains "gho-desktop-token" "$runner_log"
+
+begin "donate-clanker-container: no GitHub token says so plainly and names the fix"
+reset_logs
+run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o
+assert_contains "no GitHub token found" "$OUT"
+assert_contains "gh auth login" "$OUT"
+assert_file_not_contains "GH_TOKEN=" "$runner_log"
+
 begin "donate-clanker-container: an unobtainable image is one actionable error"
 reset_logs
 run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
@@ -717,6 +771,23 @@ reset_logs
 run_recipe donate-clanker-doctor GH_READY=1 TEST_UNAME_M=x86_64 \
   FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token
 assert_not_contains "but donate-clanker always launches goose" "$OUT"
+
+begin "donate-clanker-doctor: reports the agent's GitHub token and its scopes, not its value"
+reset_logs
+run_recipe donate-clanker-doctor GH_READY=1 TEST_UNAME_M=x86_64 \
+  FAKE_GH_TOKEN=gho-test-token FAKE_GH_SCOPES="'admin:org', 'repo'"
+assert_contains "a GitHub token is available for the agent" "$OUT"
+assert_contains "admin:org" "$OUT"
+assert_not_contains "gho-test-token" "$OUT"
+assert_eq "$(wc -c <"$qemu_log")" 0 "doctor must not start a VM"
+assert_file_not_contains "run --rm" "$runner_log"
+
+begin "donate-clanker-doctor: a missing GitHub token is a failed check with the fix"
+reset_logs
+run_recipe donate-clanker-doctor GH_READY=1 TEST_UNAME_M=x86_64
+assert_nonzero_status "$STATUS" "a missing GitHub token must fail the doctor"
+assert_contains "no GitHub token is available for the agent" "$OUT"
+assert_contains "DONATE_CLANKER_GH_TOKEN" "$OUT"
 
 # ══ 5/6. Static guarantees read straight off the justfile ════════════════
 begin "static: the launcher can never background a VM or a container"
