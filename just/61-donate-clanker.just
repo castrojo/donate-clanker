@@ -87,15 +87,16 @@ vm_version := env("DONATE_CLANKER_VM_VERSION", "25.08.14")
 # donate-clanker-container; the VM path gets the same image from inside the
 # guest, so this only matters for local development.
 #
-# ':stable' and not ':latest' — .github/workflows/publish-compat-image.yml
-# only ever pushes 'sha-<commit>' (every build), 'main' (every push to the
-# main branch) and, on a 'v*.*.*' tag, the version tags plus 'stable'. So
-# ':latest' is a tag that has never existed in the registry and never will.
-# Pointing at it makes every 'ujust donate-clanker-container' die on
-# 'manifest unknown'. ':stable' is the released line and stays the default;
-# set DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:main
-# to run the newest main build, or pin a digest or an immutable 'sha-' tag
-# there when reproducibility matters.
+# ':stable' moves on every merge to main, so the default is always what the
+# repository currently says. That is the point: the people running this are
+# the people changing it, and nobody should be debugging a bug that was fixed
+# yesterday.
+#
+# ':latest' is deliberately absent from the registry — the workflow publishes
+# 'sha-<commit>' and 'stable' on every build, plus the version tags on a
+# 'v*.*.*' release. Asking for ':latest' dies on 'manifest unknown'.
+# DONATE_CLANKER_CONTRIBUTOR_IMAGE overrides this when you need a specific
+# 'sha-' tag or digest.
 contributor_image := env("DONATE_CLANKER_CONTRIBUTOR_IMAGE", "ghcr.io/projectbluefin/donate-clanker:stable")
 
 # Shared bash, 'eval''d at the top of every recipe script that needs it:
@@ -217,15 +218,39 @@ require_no_running_instance() {
   echo "  Or press Ctrl-C in the terminal that owns it." >&2
   return 1
 }
+image_ref_is_moving() {
+  # A digest is immutable and an 'sha-<commit>' tag is minted once per build,
+  # so both always name exactly one image. Anything else can be repointed at
+  # a newer build under the same name.
+  case "$1" in
+    *@sha256:*) return 1 ;;
+    *:sha-*)    return 1 ;;
+    *)          return 0 ;;
+  esac
+}
 ensure_contributor_image() {
   # A missing tag otherwise surfaces as a bare 'manifest unknown' from
   # podman at launch time, which says nothing about what to do next.
+  #
+  # A moving tag is re-pulled every launch. Treating 'present locally' as
+  # good enough is what silently pinned contributors to whatever copy they
+  # first pulled while the tag moved on underneath them -- the launcher
+  # looked healthy and ran stale code. Best-effort by design: if the registry
+  # is unreachable, an existing local copy still starts, so being offline
+  # degrades to 'possibly stale' rather than 'cannot work'.
   local ref="$1"
+  if image_ref_is_moving "$ref"; then
+    podman pull "$ref" && return 0
+    if podman image exists "$ref"; then
+      echo "! could not refresh ${ref}; using the local copy, which may be out of date." >&2
+      return 0
+    fi
+  fi
   contributor_image_available "$ref" && return 0
   podman pull "$ref" && return 0
   echo "ERROR: cannot obtain the contributor image ${ref}." >&2
-  echo "  Published tags are 'stable', 'main', the version tags and 'sha-<commit>' — there is no ':latest'." >&2
-  echo "  Pick a published tag with DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:stable (released) or ':main' (newest main build)," >&2
+  echo "  Published tags are 'stable', the version tags and 'sha-<commit>' — there is no ':latest'." >&2
+  echo "  Pick a published tag with DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:stable," >&2
   echo "  or build it yourself: podman build -f image/Containerfile -t donate-clanker:dev . && DONATE_CLANKER_CONTRIBUTOR_IMAGE=donate-clanker:dev ujust donate-clanker-container" >&2
   return 1
 }
@@ -1023,7 +1048,7 @@ donate-clanker-doctor:
     else
       echo "  ✗ ${DOCTOR_CONTRIBUTOR_IMAGE} cannot be resolved"
       echo "    Published tags are 'stable', 'main', the version tags and 'sha-<commit>'; ':latest' does not exist."
-      echo "    Override with DONATE_CLANKER_CONTRIBUTOR_IMAGE (':main' is the newest main build), or build image/Containerfile locally."
+      echo "    Override with DONATE_CLANKER_CONTRIBUTOR_IMAGE (a 'sha-' tag or digest pins a build), or build image/Containerfile locally."
       fail=$((fail+1))
     fi
     echo ""

@@ -23,15 +23,15 @@ background processes, or persistent state beyond launcher configuration.
 ## Build, test, and lint
 
 ```bash
-go test ./...
-gofmt -l .
+bash tests/image-contract.sh
+bash tests/just-onboarding.sh
 git diff --check
 just --justfile just/61-donate-clanker.just --list
 pre-commit run --all-files
 ```
 
-`gofmt -l .` and `git diff --check` must produce no output. Run all five
-before opening a pull request.
+`git diff --check` must produce no output. Run all five before opening a
+pull request.
 
 ## Architecture and package boundaries
 
@@ -39,8 +39,8 @@ before opening a pull request.
   three user-facing commands and their private helpers live here, on purpose.
 - `image/` — `Containerfile` deriving `FROM ghcr.io/kubestellar/hive-contributor`
   pinned by digest, plus the layered config (`image/config/`).
-- `cmd/`, `internal/` — Go helpers used during build and by the VM runner.
-- `vm/`, `quadlet/`, `scripts/` — VM artifact manifest and verification.
+- `scripts/` — the build-time skills generator and the skill-doc linter.
+- `tests/` — Bash contract checks over the launcher and the image.
 - `docs/` — `SKILL.md` router and `skills/` catalog with `index.json`.
 
 Hive unconditionally overwrites `~/.config/goose/config.yaml` at every
@@ -52,7 +52,7 @@ writing to `~/.config/goose`.
 
 - `just/61-donate-clanker.just`
 - `image/` including `Containerfile` and `image/config/`
-- `cmd/`, `internal/`, `tests/`
+- `tests/`
 - `docs/`, `README.md`, `AGENTS.md`
 - `.github/workflows/`
 
@@ -81,11 +81,20 @@ writing to `~/.config/goose`.
   silently hide work the maintainers deliberately admitted hub-side.
   `tests/just-onboarding.sh` fails the build if selection logic appears in
   the launcher or the image entrypoint.
-- Never unpin the Hive contributor image digest or the Hive commit without an
-  explicit human decision.
+- Never add a second implementation of what the launcher already does. A Go
+  copy of the preflight, Hive checkout, credential resolution and QEMU launch
+  once lived in `cmd/` and `internal/`; nothing built or installed it, so it
+  drifted unnoticed and was deleted. The same goes for a test harness whose
+  only exercised path is its own `--self-test`, and for a contract covering
+  artifacts no workflow publishes. If a change is not reachable from
+  `ujust donate-clanker`, `image/Containerfile`, or a CI step, it is dead on
+  arrival — do not write it.
 
 ## PR rules
 
+- `main` is protected by a repository ruleset: direct pushes are rejected and
+  every change goes through a pull request passing `validate` and
+  `conventional-title`. This includes docs-only changes.
 - Pull request titles must follow Conventional Commits. Merges are
   squash-only and the squash commit inherits the PR title, so the title is
   the permanent commit message.
@@ -102,20 +111,34 @@ are ergonomics only — `git commit --no-verify` bypasses them. Deterministic
 enforcement is GitHub rulesets and required status checks. Do not treat a
 green local hook run as a merge gate.
 
-## Human decision gates
+## This is a development tool
 
-Stop and ask a human before:
+The people running donate-clanker are the people changing it. Optimise for
+their loop, not for the ceremony a production cluster would want.
 
-- Changing the pinned Hive contributor image digest or `hive_commit`.
-- Adding a second agent backend. Goose is the only supported backend.
-- Adding any dependency, service, or background lifecycle.
-- Changing credential handling or anything that touches `secrets.env`.
-- Changing merge, ruleset, or required-status-check configuration.
+- `:stable` moves on every merge to main and is the launcher default. A
+  contributor should never be debugging a bug that was fixed yesterday, and
+  should never have to name a tag or a digest to get current code.
+- A moving tag is re-pulled on every launch. "Already present locally" is not
+  the same as current, and treating it as current silently pins people to
+  stale images.
+- Do not add gates, sign-offs, pins or manual steps to the contributor loop.
+  If something must be pinned for reproducibility, that is what `sha-<commit>`
+  tags and digests are for, via `DONATE_CLANKER_CONTRIBUTOR_IMAGE` -- an
+  opt-in, not the default path.
+- Ship it. Merge, let CI publish, test the published image. Do not invent
+  manual verification steps that CI already performs.
+
+Still worth a human conversation, because they change what the tool IS rather
+than how fast it moves: adding a second agent backend (Goose is the only one),
+and adding a dependency, service or background lifecycle.
 
 Hive facts that constrain planning: task completion is self-reported and
-places a 168-hour cooldown per issue whether the task passed or failed; the
-scoped GitHub token Hive issues expires 55 minutes after assignment and is
-never refreshed. Do not design flows that assume a longer credential life.
+places a 168-hour cooldown on that issue, while a reported *failure* records
+no cooldown at all, so an issue that keeps failing is handed straight back
+out; the scoped GitHub token Hive issues expires 55 minutes after assignment
+and is never refreshed. Do not design flows that assume a longer credential
+life.
 
 ## Canonical sources
 

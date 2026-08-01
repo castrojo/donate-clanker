@@ -23,8 +23,8 @@ opened ──▶ review ──▶ approved ──▶ merged
 ## Checklist
 
 - [ ] PR title follows Conventional Commits (`fix:`, `feat:`, `docs:`, `ci:`, `refactor:`, etc.)
-- [ ] `go test ./...` passes
-- [ ] `gofmt -l .` is empty
+- [ ] `bash tests/image-contract.sh` passes
+- [ ] `bash tests/just-onboarding.sh` passes
 - [ ] `git diff --check` is clean
 - [ ] `just --justfile just/61-donate-clanker.just --list` parses
 - [ ] `pre-commit run --all-files` passes

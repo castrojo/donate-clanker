@@ -20,6 +20,7 @@ task itself needs.
 | Choose between VM mode and container-only mode | [`launcher.md`](skills/launcher.md) |
 | Understand how tasks arrive, or debug an attached session | [`hive-runtime.md`](skills/hive-runtime.md) |
 | Reason about the 55-minute token or the 168-hour cooldown | [`hive-runtime.md`](skills/hive-runtime.md) |
+| Work out why a connected contributor is never handed a task | [`hive-triage.md`](skills/hive-triage.md) |
 | Change Goose configuration, Context7, or skill loading | [`goose-context.md`](skills/goose-context.md) |
 | Understand why per-repo skills are not auto-discovered | [`goose-context.md`](skills/goose-context.md) |
 | Modify the `Containerfile` or what gets layered into the image | [`image-build.md`](skills/image-build.md) |
