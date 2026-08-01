@@ -37,34 +37,61 @@ forbid() {
   return 0
 }
 
-# Digest-pinned, not tagged: Hive's :latest moves with its v2 branch. Assert
-# the pinned prefix only so Renovate digest bumps stay green.
+# Digest-pinned, not tagged: the FSDK shell-enabled base is an external image,
+# so assert the pinned prefix only and let explicit bumps stay green.
 # SC2016: every argument here is a literal to grep for, never an expansion.
 # shellcheck disable=SC2016
 require image/Containerfile \
-  'ARG HIVE_CONTRIBUTOR_IMAGE=ghcr.io/kubestellar/hive-contributor@sha256:' \
-  'FROM ${HIVE_CONTRIBUTOR_IMAGE}' \
+  'ARG FSDK_RUNNER_IMAGE=ghcr.io/projectbluefin/lab-runner@sha256:' \
+  'ARG HIVE_COMMIT=e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e' \
+  'ARG GOOSE_VERSION=' \
+  'FROM ${FSDK_RUNNER_IMAGE}' \
   'ARG GOOSE_REFRESH=0' \
-  'https://github.com/aaif-goose/goose/releases/latest/download/goose-${goose_arch}-unknown-linux-gnu.tar.gz' \
-  'install -m 0755 "$workdir/goose" /usr/local/bin/goose' \
+  'ARG SKILLS_COMMIT=' \
+  'https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz' \
+  'https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${gh_arch}.tar.gz' \
+  'https://github.com/tmux/tmux-builds/releases/download/v${TMUX_VERSION}/tmux-${TMUX_VERSION}-linux-${tmux_arch}.tar.gz' \
+  'https://github.com/aaif-goose/goose/releases/download/v${GOOSE_VERSION}/goose-${goose_arch}-unknown-linux-gnu.tar.gz' \
+  'goose_sha=' \
+  'goose.tar.gz" | sha256sum -c -;' \
+  'npm --prefix /opt/hive install --ignore-scripts ws@8.21.1;' \
+  'npm --prefix /opt/hive audit --audit-level=high;' \
+  'https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/bin/contributor-agent.sh' \
+  'https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/bin/contributor-relay.sh' \
+  'https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/config/backends.conf' \
   '/usr/local/bin/goose run --help >/dev/null' \
   'image/config/goose.yaml /opt/bluefin/goose/config/config.yaml' \
   'COPY --chmod=0755 image/git-hooks/ /opt/bluefin/git-hooks/' \
+  'https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/docs/skills/index.json' \
+  '--raw-base "https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/"' \
   '--out /home/dev/.agents/skills' \
   'COPY --chmod=0755 image/entrypoint.sh /usr/local/bin/donate-clanker-entrypoint' \
   'USER dev' \
   'WORKDIR /home/dev' \
   'ENTRYPOINT ["/usr/local/bin/donate-clanker-entrypoint"]'
 
-# Replacing Hive's gh wrapper would silently undo its contributor-mode
-# restrictions; the socket mounts would hand the guest the host's engine.
+# No host engine sockets or unrelated runtime glue may enter the image.
 forbid image/Containerfile \
   '/var/run/docker.sock' \
   '/run/podman/podman.sock' \
+  'https://nodejs.org/dist/latest-v24.x/' \
+  'https://github.com/aaif-goose/goose/releases/latest/download/' \
+  'https://raw.githubusercontent.com/projectbluefin/common/main/' \
+  '# renovate: datasource=github-releases depName=aaif-goose/goose' \
   'ramalama' \
   'models.json' \
-  'agent-contract.json' \
-  '/usr/local/bin/gh'
+  'agent-contract.json'
+
+# The skill generator writes into the image as root. Its source must stay
+# commit-pinned and manifest-controlled path components must not escape its
+# output root.
+require scripts/generate-skills.py \
+  'DEFAULT_COMMON_COMMIT =' \
+  'SKILL_ID_PATTERN =' \
+  'invalid id' \
+  'invalid entry_point'
+forbid scripts/generate-skills.py \
+  'projectbluefin/common/main/'
 
 # The controlled config exists only because Hive overwrites
 # ~/.config/goose/config.yaml on every start. It must not pin a provider or a
