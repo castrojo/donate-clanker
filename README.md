@@ -227,8 +227,8 @@ expires 55 minutes after assignment and is never refreshed.
 ## Development
 
 ```bash
-go test ./...
-gofmt -l .
+bash tests/image-contract.sh
+bash tests/just-onboarding.sh
 git diff --check
 just --justfile just/61-donate-clanker.just --list
 pre-commit run --all-files
@@ -239,9 +239,11 @@ documentation is routed from [`docs/SKILL.md`](docs/SKILL.md).
 
 ## Testing
 
-`go test ./...` covers the Go helpers and the image configuration assertions.
-`pre-commit run --all-files` runs the YAML/JSON/shell hygiene hooks. Run both
-before opening a pull request. `git diff --check` must be clean.
+`tests/image-contract.sh` asserts the image's Containerfile, Goose config,
+entrypoint and git hooks still hold their contract. `tests/just-onboarding.sh`
+exercises the launcher's onboarding behavior against a mocked host.
+`pre-commit run --all-files` runs the YAML/JSON/shell hygiene hooks. Run all
+three before opening a pull request. `git diff --check` must be clean.
 
 ## Contributing
 

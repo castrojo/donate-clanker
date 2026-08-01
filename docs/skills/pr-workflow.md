@@ -106,8 +106,8 @@ only after the pull request exists and you have verified its URL.
 ## Verification
 
 ```bash
-go test ./...
-gofmt -l .
+bash tests/image-contract.sh
+bash tests/just-onboarding.sh
 git diff --check
 just --justfile just/61-donate-clanker.just --list
 pre-commit run --all-files
@@ -121,5 +121,5 @@ git log -1 --format='%B'      # Hive-Task-Id trailer present
 gh pr checks
 ```
 
-`gofmt -l .` and `git diff --check` must produce no output. The pull request
+`git diff --check` must produce no output. The pull request
 title must parse as a Conventional Commit before you ask for review.

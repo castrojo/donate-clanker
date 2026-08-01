@@ -23,15 +23,15 @@ background processes, or persistent state beyond launcher configuration.
 ## Build, test, and lint
 
 ```bash
-go test ./...
-gofmt -l .
+bash tests/image-contract.sh
+bash tests/just-onboarding.sh
 git diff --check
 just --justfile just/61-donate-clanker.just --list
 pre-commit run --all-files
 ```
 
-`gofmt -l .` and `git diff --check` must produce no output. Run all five
-before opening a pull request.
+`git diff --check` must produce no output. Run all five before opening a
+pull request.
 
 ## Architecture and package boundaries
 
@@ -39,8 +39,8 @@ before opening a pull request.
   three user-facing commands and their private helpers live here, on purpose.
 - `image/` — `Containerfile` deriving `FROM ghcr.io/kubestellar/hive-contributor`
   pinned by digest, plus the layered config (`image/config/`).
-- `cmd/`, `internal/` — Go helpers used during build and by the VM runner.
-- `vm/`, `quadlet/`, `scripts/` — VM artifact manifest and verification.
+- `scripts/` — the build-time skills generator and the skill-doc linter.
+- `tests/` — Bash contract checks over the launcher and the image.
 - `docs/` — `SKILL.md` router and `skills/` catalog with `index.json`.
 
 Hive unconditionally overwrites `~/.config/goose/config.yaml` at every
@@ -52,7 +52,7 @@ writing to `~/.config/goose`.
 
 - `just/61-donate-clanker.just`
 - `image/` including `Containerfile` and `image/config/`
-- `cmd/`, `internal/`, `tests/`
+- `tests/`
 - `docs/`, `README.md`, `AGENTS.md`
 - `.github/workflows/`
 
