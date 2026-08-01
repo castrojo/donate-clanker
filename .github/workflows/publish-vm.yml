@@ -16,6 +16,18 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    # The VM runner artifacts are published out of band, and the repository
+    # variables naming them are unset until that happens. Until then there is
+    # nothing to verify: the launcher already refuses the VM path outright
+    # unless DONATE_CLANKER_VM_RUNNER_IMAGE is set, so an unset ref means the
+    # feature is not shipped, not that a signature check was skipped. Failing
+    # every release tag on absent configuration teaches people to ignore a red
+    # release pipeline, which is worse than skipping honestly.
+    #
+    # This guards on the runner ref alone on purpose: once it is configured
+    # the job runs, and verify-vm-artifacts.sh still fails hard on any other
+    # ref or cosign identity that is missing or unverifiable.
+    if: vars.DONATE_CLANKER_VM_RUNNER_REF != ''
     env:
       VM_RUNNER_REF: ${{ vars.DONATE_CLANKER_VM_RUNNER_REF }}
       VM_GUEST_REF: ${{ vars.DONATE_CLANKER_VM_GUEST_REF }}
