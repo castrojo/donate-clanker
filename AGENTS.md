@@ -134,9 +134,11 @@ than how fast it moves: adding a second agent backend (Goose is the only one),
 and adding a dependency, service or background lifecycle.
 
 Hive facts that constrain planning: task completion is self-reported and
-places a 168-hour cooldown per issue whether the task passed or failed; the
-scoped GitHub token Hive issues expires 55 minutes after assignment and is
-never refreshed. Do not design flows that assume a longer credential life.
+places a 168-hour cooldown on that issue, while a reported *failure* records
+no cooldown at all, so an issue that keeps failing is handed straight back
+out; the scoped GitHub token Hive issues expires 55 minutes after assignment
+and is never refreshed. Do not design flows that assume a longer credential
+life.
 
 ## Canonical sources
 

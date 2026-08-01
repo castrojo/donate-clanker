@@ -36,9 +36,28 @@
         "cooldown"
       ],
       "description": "Describes Hive's contributor runtime: the tmux session contract, prompt injection, the 15-line output budget, the 55-minute token, the 168-hour cooldown, the agent's GitHub identity, and why selection is Hive's alone. Use when debugging a session.",
-      "version": "1.1",
+      "version": "1.2",
       "last_updated": "2026-08-01",
       "doc_type": "reference"
+    },
+    {
+      "id": "hive-triage",
+      "name": "hive-triage",
+      "one_line_purpose": "Diagnose why an attached contributor is never handed work.",
+      "entry_point": "docs/skills/hive-triage.md",
+      "category": "ci-ops",
+      "status": "active",
+      "tags": [
+        "hive",
+        "triage",
+        "assignment",
+        "cooldown",
+        "websocket"
+      ],
+      "description": "Procedure for diagnosing a contributor that authenticates but never receives a task: the public hub endpoints to read, why the hub never pushes work, and the two wrong turns this diagnosis invites. Use when the container connects but no task arrives.",
+      "version": "1.0",
+      "last_updated": "2026-08-01",
+      "doc_type": "runbook"
     },
     {
       "id": "image-build",
@@ -93,7 +112,7 @@
         "branches"
       ],
       "description": "Defines Conventional Commit PR titles under squash-only merging, the clanker/<task_id> branch convention, the Hive-Task-Id trailer, and why git hooks are ergonomics not enforcement. Use before branching, committing, or opening a PR.",
-      "version": "1.1",
+      "version": "1.2",
       "last_updated": "2026-08-01",
       "doc_type": "policy"
     }

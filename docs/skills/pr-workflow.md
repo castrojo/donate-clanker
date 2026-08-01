@@ -1,6 +1,6 @@
 ---
 name: pr-workflow
-version: "1.1"
+version: "1.2"
 last_updated: 2026-08-01
 id: pr-workflow
 one_line_purpose: Open donate-clanker pull requests that merge cleanly.
@@ -112,8 +112,10 @@ origin/main`.
 The scoped GitHub token expires 55 minutes after assignment and is never
 refreshed. Push the branch and open the pull request early — a draft is fine
 — rather than holding everything until the end. Completion is self-reported
-and applies a 168-hour cooldown per issue regardless of outcome, so report
-only after the pull request exists and you have verified its URL.
+and applies a 168-hour cooldown to that issue, so report only after the pull
+request exists and you have verified its URL. A reported *failure* records no
+cooldown, so failing honestly costs nothing and a bogus completion costs a
+week — when you cannot finish, say so.
 
 ## Common Rationalizations
 

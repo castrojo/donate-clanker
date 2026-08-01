@@ -220,9 +220,9 @@ donate-clanker does **not**:
 - Aspire to be a platform, a service, or a daemon.
 
 Hive behaviors you should know about because they will surprise you:
-completion is self-reported and applies a 168-hour cooldown per issue,
-whether the task passed or failed; and the scoped GitHub token Hive issues
-expires 55 minutes after assignment and is never refreshed.
+completion is self-reported and applies a 168-hour cooldown to that issue,
+while a reported failure applies none at all; and the scoped GitHub token Hive
+issues expires 55 minutes after assignment and is never refreshed.
 
 ## Development
 

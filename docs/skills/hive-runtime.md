@@ -1,6 +1,6 @@
 ---
 name: hive-runtime
-version: "1.1"
+version: "1.2"
 last_updated: 2026-08-01
 id: hive-runtime
 one_line_purpose: Operate inside Hive's tmux, token, and cooldown constraints.
@@ -36,15 +36,14 @@ the first admissible issue. There is no ranking and no negotiation: the
 contributor accepts what it is handed.
 
 The candidate pool comes exclusively from the repositories listed in the
-hub's config; one that is not listed is structurally invisible to the
-selector, and in this org admission is expressed hub-side by a queue label.
-Both are policy the maintainers set deliberately.
+hub's config; one that is not listed is invisible to the selector, and in this
+org admission is expressed hub-side by a queue label. Both are policy the
+maintainers set deliberately.
 
 So filtering here would not merely be redundant. It would shadow a lifecycle
-Hive already owns, diverge silently from the hub's admission policy the
-moment either side changes, and its only visible effect would be hiding work
-that was deliberately admitted. Whatever Hive assigns is what the agent works
-on — regardless of repository, label, title, author or issue number.
+Hive already owns, diverge silently from the hub's policy the moment either
+side changes, and its only visible effect would be hiding work that was
+deliberately admitted. Whatever Hive assigns is what the agent works on.
 
 The upstream relay behaves the same way: it accepts the first assignment and
 answers `task_failed` only when it already has one. Declining work means
@@ -108,11 +107,10 @@ in this order:
 2. `GH_TOKEN` already exported on the host.
 3. `gh auth token --hostname github.com`.
 
-By value and not by mounting `~/.config/gh`, for the same reason the Copilot
-credential is passed by value: the guest receives one credential for one host,
-and no view of other accounts, other hosts, or an enterprise login sitting in
-the same file. Upstream's own `just contribute-run` passes `-e GH_TOKEN` the
-same way, so this is Hive's model, not a deviation from it.
+By value, not by mounting `~/.config/gh`: the guest gets one credential for
+one host, and no view of other accounts or an enterprise login in the same
+file. Upstream's `just contribute-run` passes `-e GH_TOKEN` the same way, so
+this is Hive's model, not a deviation.
 
 The launcher prints the token's **scopes** -- never its value -- before
 handing it over, because a desktop `gh` login routinely carries `admin:org`,
@@ -125,8 +123,7 @@ enough to fork, push and open a pull request.
 scopes, without printing it and without starting anything.
 
 The VM path does not carry this yet: its bootstrap envelope is consumed by the
-guest image, which lives outside this repository, so a new envelope field
-cannot be honoured from here alone.
+guest image, which lives outside this repository.
 
 ### The 55-minute token
 
@@ -134,19 +131,23 @@ The scoped GitHub token Hive issues expires 55 minutes after assignment and
 is **never refreshed**. It is not a substitute for the identity above:
 `task_assign.github_token` reaches `injectGhToken` in `contributor-relay.sh`,
 which writes it to `/var/run/hive-metrics/gh-app-token.cache` -- a file the
-`gh` wrapper reads **only when not in contributor mode**. In contributor mode
-that token is written and never read, so nothing exposes it to the agent's
-shell. Plan every task to push or open its pull request well
-inside that window. A task that spends 50 minutes exploring and then tries to
+`gh` wrapper reads **only when not in contributor mode**, so in contributor
+mode it is written and never read. Plan every task to push or open its pull
+request well inside that window. A task that spends 50 minutes exploring and then tries to
 push will fail at the last step with an authentication error that looks like
 a permissions bug and is not.
 
 ### Self-reported completion and the 168-hour cooldown
 
-Completion is self-reported by the agent. Once reported, the issue enters a
-**168-hour cooldown**, whether the task passed or failed. There is no retry
-loop, and a premature or mistaken completion report costs a week on that
-issue.
+Completion is self-reported by the agent. A reported *completion* puts the
+issue into a **168-hour cooldown**; a reported *failure* records no cooldown
+at all. The asymmetry is deliberate to read and easy to get backwards: a
+premature completion costs a week on that issue, while an honest failure costs
+nothing. When you cannot finish, fail — do not report success to get unstuck.
+
+It is also why one unfinishable issue can starve a hub: no cooldown plus an
+unranked scan means it is handed straight back out. See
+[`hive-triage.md`](hive-triage.md).
 
 Report completion only after the verifiable artifact exists — a pushed
 branch, an opened pull request, a green check — not after the intent to
@@ -158,9 +159,9 @@ create one.
   scrapes pane output. That is Hive's job; deleting the duplicate is the fix.
 - Any allow-list, deny-list, or conditional keyed on an assignment's
   repository, label, title, author, or issue number. Selection is Hive's.
-- A wrapper around `contributor-agent.sh`, or any code here that reads or
-  sends `task_assignment`, `task_failed`, or `task_completed`. Those are the
-  only footholds a filter could use.
+- A wrapper around `contributor-agent.sh`, or code here that reads or sends
+  `task_assignment`, `task_failed`, or `task_completed`. Those are the only
+  footholds a filter could use.
 - "We only want issues from repo X" as a request. That belongs in the hub's
   config, where it is visible to everyone, not in this launcher.
 - Renaming or parameterizing the `contributor` session name.
@@ -169,8 +170,8 @@ create one.
 - Mounting `~/.config/gh` to give the agent an identity. Pass one token by
   value; the directory holds credentials for hosts and accounts the task has
   no business seeing.
-- Echoing, logging or persisting a token value anywhere. Scopes and
-  presence/absence are the only reportable facts.
+- Echoing, logging or persisting a token value. Scopes and presence are the
+  only reportable facts.
 - Reporting completion to unblock yourself from a stuck state. That burns 168
   hours.
 - Treating a silent pane as a crash without attaching to look first.
