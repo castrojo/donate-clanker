@@ -6,43 +6,41 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
 
-const defaultReadinessTimeout = 2 * time.Minute
-
-type EnginePreference string
-
 const (
-	EngineAuto   EnginePreference = "auto"
-	EnginePodman EnginePreference = "podman"
-	EngineDocker EnginePreference = "docker"
+	defaultReadinessTimeout = 2 * time.Minute
+
+	// Backend is fixed. donate-clanker runs Goose and nothing else.
+	Backend = "goose"
+
+	// DefaultGooseProvider matches the launcher default.
+	DefaultGooseProvider = "github_copilot"
 )
 
 var (
-	ErrMissingWorkspace   = errors.New("missing workspace")
-	ErrInvalidEngine      = errors.New("invalid engine")
-	ErrProfileUnsupported = errors.New("profile selection is unavailable until the FSDK helper launch contract is published")
+	ErrMissingHiveConfig = errors.New("missing Hive configuration")
+	ErrInvalidCommit     = errors.New("invalid Hive commit")
 )
 
+var commitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+// Options is the launcher's host-side configuration. It deliberately carries no
+// container-engine, model-profile, or workspace-mount settings: donate-clanker
+// no longer runs inference and no longer mounts a workspace into the guest.
 type Options struct {
-	Engine                 EnginePreference
-	Workspace              string
-	Profile                string
-	Model                  string
-	CacheDir               string
-	HiveConfigDir          string
-	GooseConfigPath        string
-	ProfileCatalogPath     string
-	ProfileCatalogExplicit bool
-	HelperImage            string
-	ContributorImage       string
-	HiveSourceDir          string
-	HiveCommit             string
-	NonInteractive         bool
-	ReadinessTimeout       time.Duration
-	ModelContainerPort     int
+	HiveConfigDir  string
+	HiveSourceDir  string
+	HiveCommit     string
+	GooseProvider  string
+	GooseModel     string
+	RunnerImage    string
+	StateDir       string
+	NonInteractive bool
+	ReadyTimeout   time.Duration
 }
 
 func Parse(args []string, env map[string]string) (Options, error) {
@@ -50,63 +48,47 @@ func Parse(args []string, env map[string]string) (Options, error) {
 	if err != nil {
 		return Options{}, err
 	}
-	profileCatalogExplicit := strings.TrimSpace(env["DONATE_CLANKER_PROFILE_CATALOG"]) != ""
 
 	fs := flag.NewFlagSet("donate-clanker", flag.ContinueOnError)
 	fs.SetOutput(nil)
 
-	engine := fs.String("engine", string(defaults.Engine), "container engine: auto, podman, docker")
-	workspace := fs.String("workspace", defaults.Workspace, "workspace to mount read/write")
-	profile := fs.String("profile", defaults.Profile, "reserved curated profile id (currently unsupported until the FSDK helper launch contract is published)")
-	model := fs.String("model", defaults.Model, "explicit model override")
-	cacheDir := fs.String("cache-dir", defaults.CacheDir, "persistent model cache directory")
 	hiveConfigDir := fs.String("hive-config-dir", defaults.HiveConfigDir, "Hive config directory")
-	gooseConfigPath := fs.String("goose-config", defaults.GooseConfigPath, "validated Goose local config path")
-	profileCatalogPath := fs.String("profile-catalog", defaults.ProfileCatalogPath, "profile catalog path reserved for future native profile support")
-	helperImage := fs.String("helper-image", defaults.HelperImage, "helper image reference")
-	contributorImage := fs.String("contributor-image", defaults.ContributorImage, "worker image reference")
 	hiveSourceDir := fs.String("hive-source-dir", defaults.HiveSourceDir, "upstream Hive checkout location")
-	hiveCommit := fs.String("hive-commit", defaults.HiveCommit, "immutable upstream Hive commit override (40-hex SHA)")
+	hiveCommit := fs.String("hive-commit", defaults.HiveCommit, "immutable upstream Hive commit (40-hex SHA)")
+	gooseProvider := fs.String("goose-provider", defaults.GooseProvider, "Goose provider to pass through")
+	gooseModel := fs.String("goose-model", defaults.GooseModel, "Goose model to pass through (optional)")
+	runnerImage := fs.String("runner-image", defaults.RunnerImage, "pinned VM runner image reference")
+	stateDir := fs.String("state-dir", defaults.StateDir, "per-run control directory")
 	nonInteractive := fs.Bool("non-interactive", defaults.NonInteractive, "disable prompts")
-	readinessTimeout := fs.Duration("readiness-timeout", defaults.ReadinessTimeout, "model readiness timeout")
+	readyTimeout := fs.Duration("ready-timeout", defaults.ReadyTimeout, "guest readiness timeout")
 
 	if err := fs.Parse(args); err != nil {
 		return Options{}, err
 	}
-	if flagProvided(fs, "profile-catalog") {
-		profileCatalogExplicit = true
+
+	opts := Options{
+		HiveConfigDir:  normalizePath(*hiveConfigDir),
+		HiveSourceDir:  normalizePath(*hiveSourceDir),
+		HiveCommit:     strings.ToLower(strings.TrimSpace(*hiveCommit)),
+		GooseProvider:  strings.TrimSpace(*gooseProvider),
+		GooseModel:     strings.TrimSpace(*gooseModel),
+		RunnerImage:    strings.TrimSpace(*runnerImage),
+		StateDir:       normalizePath(*stateDir),
+		NonInteractive: *nonInteractive,
+		ReadyTimeout:   *readyTimeout,
 	}
 
-	if strings.TrimSpace(*workspace) == "" {
-		return Options{}, ErrMissingWorkspace
+	if opts.HiveConfigDir == "" {
+		return Options{}, ErrMissingHiveConfig
 	}
-	if trimmedProfile := strings.TrimSpace(*profile); trimmedProfile != "" {
-		return Options{}, fmt.Errorf("%w: %q", ErrProfileUnsupported, trimmedProfile)
+	if opts.HiveCommit != "" && !commitPattern.MatchString(opts.HiveCommit) {
+		return Options{}, fmt.Errorf("%w: %q is not a 40-hex SHA", ErrInvalidCommit, opts.HiveCommit)
 	}
-
-	normalizedEngine, err := parseEnginePreference(*engine)
-	if err != nil {
-		return Options{}, err
+	if opts.GooseProvider == "" {
+		opts.GooseProvider = DefaultGooseProvider
 	}
 
-	return Options{
-		Engine:                 normalizedEngine,
-		Workspace:              normalizePath(*workspace),
-		Profile:                strings.TrimSpace(*profile),
-		Model:                  strings.TrimSpace(*model),
-		CacheDir:               normalizePath(*cacheDir),
-		HiveConfigDir:          normalizePath(*hiveConfigDir),
-		GooseConfigPath:        normalizePath(*gooseConfigPath),
-		ProfileCatalogPath:     normalizePath(*profileCatalogPath),
-		ProfileCatalogExplicit: profileCatalogExplicit,
-		HelperImage:            strings.TrimSpace(*helperImage),
-		ContributorImage:       strings.TrimSpace(*contributorImage),
-		HiveSourceDir:          normalizePath(*hiveSourceDir),
-		HiveCommit:             strings.TrimSpace(*hiveCommit),
-		NonInteractive:         *nonInteractive,
-		ReadinessTimeout:       *readinessTimeout,
-		ModelContainerPort:     8000,
-	}, nil
+	return opts, nil
 }
 
 func defaultOptions(env map[string]string) (Options, error) {
@@ -119,46 +101,16 @@ func defaultOptions(env map[string]string) (Options, error) {
 		}
 	}
 
-	workspace := strings.TrimSpace(env["DONATE_CLANKER_WORKSPACE"])
-	if workspace == "" {
-		workspace = strings.TrimSpace(env["PWD"])
-	}
-
-	profile := strings.TrimSpace(env["DONATE_CLANKER_PROFILE"])
-	model := strings.TrimSpace(env["DONATE_CLANKER_MODEL"])
-	if model == "" {
-		model = strings.TrimSpace(env["GOOSE_MODEL"])
-	}
-
 	return Options{
-		Engine:             EngineAuto,
-		Workspace:          workspace,
-		Profile:            profile,
-		Model:              model,
-		CacheDir:           firstNonEmpty(env["DONATE_CLANKER_CACHE_DIR"], filepath.Join(home, ".local", "state", "donate-clanker", "cache", "ramalama")),
-		HiveConfigDir:      firstNonEmpty(env["DONATE_CLANKER_HIVE_CONFIG_DIR"], filepath.Join(home, ".config", "hive")),
-		GooseConfigPath:    firstNonEmpty(env["DONATE_CLANKER_GOOSE_CONFIG"], filepath.Join(home, ".config", "goose", "config.yaml")),
-		ProfileCatalogPath: firstNonEmpty(env["DONATE_CLANKER_PROFILE_CATALOG"], filepath.Join("image", "config", "models.json")),
-		HelperImage:        strings.TrimSpace(env["DONATE_CLANKER_HELPER_IMAGE"]),
-		ContributorImage:   strings.TrimSpace(env["DONATE_CLANKER_CONTRIBUTOR_IMAGE"]),
-		HiveSourceDir:      firstNonEmpty(env["DONATE_CLANKER_HIVE_SOURCE_DIR"], filepath.Join(home, ".local", "state", "donate-clanker", "hive-src")),
-		HiveCommit:         strings.TrimSpace(env["DONATE_CLANKER_HIVE_COMMIT"]),
-		NonInteractive:     strings.EqualFold(strings.TrimSpace(env["DONATE_CLANKER_NON_INTERACTIVE"]), "true"),
-		ReadinessTimeout:   defaultReadinessTimeout,
+		HiveConfigDir: firstNonEmpty(env["DONATE_CLANKER_HIVE_CONFIG_DIR"], filepath.Join(home, ".config", "hive")),
+		HiveSourceDir: firstNonEmpty(env["DONATE_CLANKER_HIVE_SOURCE_DIR"], filepath.Join(home, ".local", "state", "donate-clanker", "hive-src")),
+		HiveCommit:    strings.TrimSpace(env["DONATE_CLANKER_HIVE_COMMIT"]),
+		GooseProvider: firstNonEmpty(env["GOOSE_PROVIDER"], DefaultGooseProvider),
+		GooseModel:    strings.TrimSpace(env["GOOSE_MODEL"]),
+		RunnerImage:   strings.TrimSpace(env["DONATE_CLANKER_VM_RUNNER_IMAGE"]),
+		StateDir:      firstNonEmpty(env["DONATE_CLANKER_STATE_DIR"], filepath.Join(home, ".local", "state", "donate-clanker")),
+		ReadyTimeout:  defaultReadinessTimeout,
 	}, nil
-}
-
-func parseEnginePreference(raw string) (EnginePreference, error) {
-	switch EnginePreference(strings.ToLower(strings.TrimSpace(raw))) {
-	case "", EngineAuto:
-		return EngineAuto, nil
-	case EnginePodman:
-		return EnginePodman, nil
-	case EngineDocker:
-		return EngineDocker, nil
-	default:
-		return "", fmt.Errorf("%w: %s", ErrInvalidEngine, raw)
-	}
 }
 
 func normalizePath(path string) string {
@@ -179,14 +131,4 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func flagProvided(fs *flag.FlagSet, name string) bool {
-	provided := false
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == name {
-			provided = true
-		}
-	})
-	return provided
 }

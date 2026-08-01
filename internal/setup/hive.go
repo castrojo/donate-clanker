@@ -116,7 +116,7 @@ func normalizeImmutableCommit(raw string) (string, error) {
 		return "", fmt.Errorf("missing Hive commit pin; set %s to a full 40-character commit SHA", hiveCommitEnv)
 	}
 	if !immutableCommitPattern.MatchString(commit) {
-		return "", fmt.Errorf("Hive commit pin must be a full 40-character commit SHA; branch names like v2 are not allowed (set %s to override)", hiveCommitEnv)
+		return "", fmt.Errorf("hive commit pin must be a full 40-character commit SHA; branch names like v2 are not allowed (set %s to override)", hiveCommitEnv)
 	}
 	return commit, nil
 }

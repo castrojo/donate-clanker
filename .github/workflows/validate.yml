@@ -20,72 +20,38 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      # pre-commit/action is maintenance-only upstream, so run pre-commit
+      # directly instead.
       - name: Static hygiene
-        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pre-commit
+          pre-commit run --all-files --show-diff-on-failure
 
       - name: Gofmt cleanliness
         run: |
           set -euo pipefail
           test -z "$(gofmt -l .)"
 
-      - name: Agent contract manifest stays aligned
-        run: |
-          set -euo pipefail
-          # jq filters intentionally use single-quoted literals containing
-          # jq variables, not shell variables.
-          # shellcheck disable=SC2016
-          MANIFEST="image/config/agent-contract.json"
-          fail=0
-
-          require_manifest_value() {
-            local filter="$1"
-            local kind="$2"
-            local want="$3"
-            if ! jq -e --arg want "$want" "$filter" "$MANIFEST" >/dev/null; then
-              echo "::error file=${MANIFEST}::missing required ${kind}: $want"
-              fail=1
-            fi
-          }
-
-          if ! jq -e '.version == 1' "$MANIFEST" >/dev/null; then
-            echo "::error file=${MANIFEST}::missing or unsupported version"
-            fail=1
-          fi
-
-          for want in \
-            "AGENTS.md" \
-            "docs/SKILL.md" \
-            "docs/skills/skill-improvement.md"; do
-            require_manifest_value \
-              '.required_documents | any(.path == $want)' \
-              "document path" \
-              "$want"
-          done
-
-          for want in \
-            "Read AGENTS.md first, then docs/SKILL.md." \
-            "If you discover a durable workaround, pattern, or convention, update the nearest docs/skills/*.md file in the same change." \
-            "Use the repository validation command family: go test ./..., git diff --check, gofmt -l ., just --justfile just/61-donate-clanker.just --list."; do
-            require_manifest_value '.rules | any(. == $want)' "rule" "$want"
-          done
-
-          for want in \
-            "go test ./..." \
-            "git diff --check" \
-            "gofmt -l ." \
-            "just --justfile just/61-donate-clanker.just --list"; do
-            require_manifest_value \
-              '.validation_commands | any(. == $want)' \
-              "validation command" \
-              "$want"
-          done
-
-          exit "$fail"
-
       - name: Go tests
         run: |
           set -euo pipefail
           go test ./...
+
+      - name: Go vet
+        run: |
+          set -euo pipefail
+          go vet ./...
+
+      - name: Skill frontmatter and index stay aligned
+        run: |
+          set -euo pipefail
+          bash scripts/check-skill-frontmatter.sh
 
       - name: Install just
         uses: extractions/setup-just@v2
@@ -168,53 +134,6 @@ jobs:
 
           exit "$fail"
 
-      - name: Non-thinking model profiles — models.json contract
-        run: |
-          set -euo pipefail
-          MODELS_JSON="image/config/models.json"
-          fail=0
-
-          # Reject any profile that sets thinking to true.  jq exits 1 when the
-          # select() expression matches, so the pattern is: run jq and invert.
-          if thinking_profiles=$(jq -r '
-            to_entries[]
-            | select(.value.thinking == true)
-            | .key' "$MODELS_JSON") \
-            && [[ -n "$thinking_profiles" ]]; then
-            while IFS= read -r profile; do
-              echo "::error file=${MODELS_JSON}::profile $profile has thinking=true"
-            done <<< "$thinking_profiles"
-            fail=1
-          fi
-
-          # Every profile must declare thinking explicitly as false.
-          if missing_thinking=$(jq -r '
-            to_entries[]
-            | select(.value.thinking == null)
-            | .key' "$MODELS_JSON") \
-            && [[ -n "$missing_thinking" ]]; then
-            while IFS= read -r profile; do
-              echo "::error file=${MODELS_JSON}::profile $profile is missing explicit thinking: false"
-            done <<< "$missing_thinking"
-            fail=1
-          fi
-
-          # Every profile must have --thinking false in runtime_args.
-          no_thinking_flag=$(jq -r '
-            to_entries[]
-            | select(
-                (.value.runtime_args // []) | indices("--thinking") | length == 0
-              )
-            | .key' "$MODELS_JSON")
-          if [[ -n "$no_thinking_flag" ]]; then
-            while IFS= read -r profile; do
-              echo "::error file=${MODELS_JSON}::profile $profile missing --thinking false in runtime_args"
-            done <<< "$no_thinking_flag"
-            fail=1
-          fi
-
-          exit "$fail"
-
       - name: Interactive launcher docs and shell stay aligned
         run: |
           set -euo pipefail
@@ -223,19 +142,15 @@ jobs:
           # shellcheck disable=SC2016
           HIVE_PIN="$(sed -n 's/^hive_commit := "\(.*\)"$/\1/p' just/61-donate-clanker.just)"
           test -n "$HIVE_PIN"
-          grep -Fq 'tool_order := "claude copilot goose codex"' just/61-donate-clanker.just
-          grep -Fq 'Multiple AI CLIs are ready — pick one:' just/61-donate-clanker.just
-          grep -Fq 'Goose provider (Esc to leave unset' just/61-donate-clanker.just
           grep -Fq 'LAST_GOOSE_PROVIDER' just/61-donate-clanker.just
           grep -Fq 'last-selections.env' just/61-donate-clanker.just
           grep -Fq 'secrets.env' just/61-donate-clanker.just
+          # shellcheck disable=SC2016
           grep -Fq 'fetch --depth 1 origin "$HIVE_COMMIT"' just/61-donate-clanker.just
           grep -Fq 'DONATE_CLANKER_HIVE_COMMIT' just/61-donate-clanker.just
           grep -Fq 'Run: goose configure' just/61-donate-clanker.just
           grep -Fq "$HIVE_PIN" README.md
           grep -Fq 'DONATE_CLANKER_HIVE_COMMIT' README.md
-          grep -Fq 'detects every ready CLI' README.md
-          grep -Fq 'Goose prompts for its provider and optional model' README.md
           grep -Fq 'last-selections.env' README.md
           grep -Fq 'secrets.env' README.md
 
@@ -245,7 +160,10 @@ jobs:
           docker build -f image/Containerfile -t donate-clanker-compat:test .
           test "$(docker inspect donate-clanker-compat:test --format '{{.Config.User}}')" = "dev"
           test "$(docker inspect donate-clanker-compat:test --format '{{json .Config.Entrypoint}}')" = '["/usr/local/bin/donate-clanker-entrypoint"]'
-          test "$(docker inspect donate-clanker-compat:test --format '{{.Config.WorkingDir}}')" = "/workspace"
+          # /home/dev, not /workspace: there is no workspace mount any more —
+          # the agent clones what it needs inside the disposable guest, and
+          # Hive's config lives under the image's home.
+          test "$(docker inspect donate-clanker-compat:test --format '{{.Config.WorkingDir}}')" = "/home/dev"
 
       # The launcher is interactive by design. CI validates image metadata and
       # the build-time Goose command checks; attended use validates runtime.

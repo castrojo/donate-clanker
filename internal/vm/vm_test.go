@@ -80,7 +80,7 @@ func TestBootstrapRejectsUnknownFieldsAndMalformedValues(t *testing.T) {
 	if strings.Contains(err.Error(), "secret") {
 		t.Fatalf("error leaked credential: %v", err)
 	}
-	if err := (Bootstrap{Version: 1, HiveEndpoint: "http://hive", RegistrationToken: "secret", Backend: "goose", RunID: "r"}).Validate(); err == nil {
+	if err := (Bootstrap{Version: 2, HiveEndpoint: "http://hive", RegistrationToken: "secret", Backend: "goose", RunID: "r"}).Validate(); err == nil {
 		t.Fatal("expected endpoint validation error")
 	}
 }
@@ -88,14 +88,14 @@ func TestBootstrapRejectsUnknownFieldsAndMalformedValues(t *testing.T) {
 func TestWaitReadyRequiresOrderedStages(t *testing.T) {
 	var statuses strings.Builder
 	for _, stage := range readinessStages {
-		statuses.WriteString(`{"version":1,"type":"`)
+		statuses.WriteString(`{"version":2,"type":"`)
 		statuses.WriteString(stage)
 		statuses.WriteString("\"}\n")
 	}
 	if err := WaitReady(context.Background(), strings.NewReader(statuses.String()), time.Second); err != nil {
 		t.Fatal(err)
 	}
-	if err := WaitReady(context.Background(), strings.NewReader(`{"version":1,"type":"network"}`), time.Millisecond); err == nil {
+	if err := WaitReady(context.Background(), strings.NewReader(`{"version":2,"type":"network"}`), time.Millisecond); err == nil {
 		t.Fatal("expected out-of-order status error")
 	}
 }
@@ -167,11 +167,11 @@ func TestVMStartUsesFakeCommand(t *testing.T) {
 
 func TestSendBootstrap(t *testing.T) {
 	var out bytes.Buffer
-	b := Bootstrap{Version: 1, HiveEndpoint: "wss://hive", RegistrationToken: "secret", Backend: "goose", RunID: "r"}
+	b := Bootstrap{Version: 2, HiveEndpoint: "wss://hive", RegistrationToken: "secret", Backend: "goose", RunID: "r"}
 	if err := SendBootstrap(&out, b); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), `"version":1`) || !strings.Contains(out.String(), `"run_id":"r"`) {
+	if !strings.Contains(out.String(), `"version":2`) || !strings.Contains(out.String(), `"run_id":"r"`) {
 		t.Fatalf("unexpected envelope: %s", out.String())
 	}
 }

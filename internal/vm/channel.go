@@ -11,14 +11,20 @@ import (
 	"time"
 )
 
-const BootstrapVersion = 1
+const BootstrapVersion = 2
 
+// Bootstrap is the single host-to-guest control message. Version 2 adds the
+// Goose credential passthrough so a contributor's own model access reaches the
+// agent without mounting host configuration into the VM.
 type Bootstrap struct {
 	Version           int    `json:"version"`
 	HiveEndpoint      string `json:"hive_endpoint"`
 	RegistrationToken string `json:"registration_token"`
 	Backend           string `json:"backend"`
 	RunID             string `json:"run_id"`
+	GooseProvider     string `json:"goose_provider,omitempty"`
+	GooseModel        string `json:"goose_model,omitempty"`
+	ProviderSecret    string `json:"provider_secret,omitempty"`
 }
 
 type Status struct {
@@ -29,13 +35,16 @@ type Status struct {
 
 func (b Bootstrap) Validate() error {
 	if b.Version != BootstrapVersion {
-		return fmt.Errorf("unsupported bootstrap version %d", b.Version)
+		return fmt.Errorf("unsupported bootstrap version %d (this launcher speaks version %d)", b.Version, BootstrapVersion)
 	}
 	if b.HiveEndpoint == "" || b.RegistrationToken == "" || b.Backend == "" || b.RunID == "" {
 		return errors.New("bootstrap is missing a required field")
 	}
 	if !strings.HasPrefix(b.HiveEndpoint, "wss://") && !strings.HasPrefix(b.HiveEndpoint, "https://") {
 		return errors.New("bootstrap endpoint must use HTTPS or WSS")
+	}
+	if b.Backend != "goose" {
+		return fmt.Errorf("unsupported backend %q: donate-clanker runs Goose only", b.Backend)
 	}
 	return nil
 }

@@ -1,0 +1,44 @@
+# Enforce Conventional Commits on the PR title.
+#
+# The repository merges with squash only, so the squash commit subject is
+# inherited from the PR title — a bad title becomes permanent history.
+name: pr-title
+
+# 'pull_request' and NOT 'pull_request_target': a pull_request_target
+# workflow only ever runs the copy of this file on the default branch, so
+# while 'conventional-title' is a required check the rule can never be
+# satisfied by the pull request that first introduces or edits it — the
+# check simply never reports and every pull request sits blocked forever.
+#
+# 'pull_request' runs the head branch's copy, and it is the safer trigger
+# anyway: the job never checks out or executes pull request code, it reads
+# the title from the event payload, and a fork gets a read-only token.
+# Do not add a checkout step here.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  conventional-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            chore
+            docs
+            style
+            refactor
+            perf
+            test
+            ci
+            build
+            revert

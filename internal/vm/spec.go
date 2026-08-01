@@ -63,7 +63,7 @@ func (s Spec) Validate() error {
 	if strings.TrimSpace(s.GuestRootFS) == "" {
 		return errors.New("missing guest root filesystem")
 	}
-	if filepath.IsAbs(s.StateDir) == false || filepath.Clean(s.StateDir) == string(filepath.Separator) {
+	if !filepath.IsAbs(s.StateDir) || filepath.Clean(s.StateDir) == string(filepath.Separator) {
 		return errors.New("state directory must be a safe absolute path")
 	}
 	if s.Channel == "" {

@@ -27,8 +27,6 @@ jobs:
       - name: Resolve image tags
         id: tags
         shell: bash
-        env:
-          STABLE_POLICY: ${{ vars.DONATE_CLANKER_PUBLISH_STABLE }}
         run: |
           set -euo pipefail
           {
@@ -41,7 +39,7 @@ jobs:
               echo 'version='
               echo 'version_tag='
             fi
-            if [[ "${GITHUB_REF}" == refs/tags/v* && "${STABLE_POLICY,,}" == true ]]; then
+            if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
               echo 'stable=true'
             else
               echo 'stable=false'
@@ -51,9 +49,7 @@ jobs:
             if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
               echo "${IMAGE}:$version"
               echo "${IMAGE}:$GITHUB_REF_NAME"
-              if [[ "${STABLE_POLICY,,}" == true ]]; then
-                echo "${IMAGE}:stable"
-              fi
+              echo "${IMAGE}:stable"
             fi
             echo EOF
           } >> "$GITHUB_OUTPUT"
@@ -79,7 +75,8 @@ jobs:
           set -euo pipefail
           test "$(docker inspect donate-clanker-compat:smoke --format '{{.Config.User}}')" = dev
           test "$(docker inspect donate-clanker-compat:smoke --format '{{json .Config.Entrypoint}}')" = '["/usr/local/bin/donate-clanker-entrypoint"]'
-          test "$(docker inspect donate-clanker-compat:smoke --format '{{.Config.WorkingDir}}')" = /workspace
+          # /home/dev, not /workspace: there is no workspace mount any more.
+          test "$(docker inspect donate-clanker-compat:smoke --format '{{.Config.WorkingDir}}')" = /home/dev
 
       - name: Log in to GHCR
         uses: docker/login-action@v3

@@ -1,17 +1,26 @@
+// Package imageconfig embeds the container payload that must stay in lockstep
+// with the Go launcher.
+//
+// The Goose configuration lives here rather than in the image alone because
+// Hive's contributor entrypoint unconditionally overwrites
+// ~/.config/goose/config.yaml at every startup. donate-clanker therefore points
+// Goose at a controlled root via GOOSE_PATH_ROOT and ships this file there.
 package imageconfig
 
 import _ "embed"
 
-//go:embed models.json
-var bundledModelsJSON []byte
+//go:embed goose.yaml
+var bundledGooseConfig []byte
 
-//go:embed agent-contract.json
-var bundledAgentContractJSON []byte
+//go:embed local-agent-policy.md
+var bundledLocalAgentPolicy []byte
 
-func BundledModelsJSON() []byte {
-	return append([]byte(nil), bundledModelsJSON...)
+// BundledGooseConfig returns the controlled Goose configuration.
+func BundledGooseConfig() []byte {
+	return append([]byte(nil), bundledGooseConfig...)
 }
 
-func BundledAgentContractJSON() []byte {
-	return append([]byte(nil), bundledAgentContractJSON...)
+// BundledLocalAgentPolicy returns the local execution policy text.
+func BundledLocalAgentPolicy() []byte {
+	return append([]byte(nil), bundledLocalAgentPolicy...)
 }

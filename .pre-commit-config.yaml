@@ -1,18 +1,111 @@
+# Local + CI hygiene for donate-clanker.
+#
+# Install with:
+#   pre-commit install --install-hooks
+# `default_install_hook_types` makes `pre-commit install` wire up both the
+# pre-commit and commit-msg hooks, so Conventional Commit checking actually
+# runs on `git commit`.
+default_install_hook_types: [pre-commit, commit-msg]
+
 repos:
+  # ---------------------------------------------------------------- hygiene
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: 2c9f875913ee60ca25ce70243dc24d5b6415598c  # v4.6.0
+    rev: v6.0.0 # v6.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: ^docs/skills/(factory-onboarding|skill-improvement)\.md$
       - id: end-of-file-fixer
       - id: check-merge-conflict
       - id: detect-private-key
+      - id: check-added-large-files
+      - id: mixed-line-ending
+        args: [--fix=lf]
       - id: check-json
       - id: check-yaml
+        # Quadlet units and Kubernetes-style manifests are frequently
+        # multi-document; allow them rather than failing the parse.
+        args: [--allow-multiple-documents]
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+        # image/*.sh are never executed from the work tree: the Containerfile
+        # installs them with `COPY --chmod=0755`.
+        # tests/guest-bootstrap-consumer.py is always launched as
+        # `python3 "$DONATE_CLANKER_TEST_CONSUMER"`, never exec'd directly.
+        exclude: ^(image/.*\.sh|tests/guest-bootstrap-consumer\.py)$
+
+  # --------------------------------------------------------------------- Go
+  # Official hooks from golangci-lint itself (the dnephin/TekWizely
+  # pre-commit-golang forks are unmaintained).
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v2.12.2 # v2.12.2
+    hooks:
+      # `golangci-lint fmt` covers gofmt (and gofumpt/goimports when enabled
+      # in .golangci.yml), replacing the old local `gofmt -w` hook.
+      - id: golangci-lint-fmt
+      # Full run so whole-module linters such as `unused` behave correctly.
+      - id: golangci-lint-full
+
+  # ------------------------------------------------------------------ shell
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.11.0 # v0.11.0
+    hooks:
+      - id: shellcheck
+        # SC1090: the entrypoint sources a path resolved at runtime.
+        # SC2034: the onboarding harness captures launcher output into vars
+        # that are asserted on conditionally.
+        args: [--exclude=SC1090, --exclude=SC2034]
+
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.13.1-1 # shfmt v3.13.1
+    hooks:
+      # image/ scripts are tab-indented (`-i 0`); shfmt infers sh vs bash from
+      # each file's shebang, so #!/bin/sh and #!/bin/bash both stay correct.
+      - id: shfmt
+        name: shfmt (tabs, image/)
+        args: [--write, --indent=0]
+        files: ^image/.*\.sh$
+      # scripts/ and tests/ are two-space indented.
+      - id: shfmt
+        name: shfmt (2 spaces, scripts/ tests/)
+        args: [--write, --indent=2]
+        files: ^(scripts|tests)/.*\.sh$
+
+  # ---------------------------------------------------------------- secrets
+  # This repo handles GitHub tokens and Hive registration tokens.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1 # v8.30.1
+    hooks:
+      - id: gitleaks
+
+  # ---------------------------------------------------------------- actions
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12 # v1.7.12
+    hooks:
+      - id: actionlint
+
+  # --------------------------------------------------------- commit message
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.17.0 # v4.17.0
+    hooks:
+      - id: commitizen
+        stages: [commit-msg]
+
+  # ------------------------------------------------------------------ local
   - repo: local
     hooks:
-      - id: gofmt
-        name: gofmt
+      # Deliberately pre-push only: `go test ./...` is too slow for every
+      # commit.
+      - id: go-test
+        name: go test ./...
         language: system
-        entry: gofmt -w
+        entry: go test ./...
         types: [go]
+        pass_filenames: false
+        stages: [pre-push]
+      # docs/skills/index.json is generated, so it drifts silently from the
+      # front-matter it mirrors unless something checks both sides.
+      - id: check-skill-frontmatter
+        name: skill front-matter and index.json agree
+        language: system
+        entry: bash scripts/check-skill-frontmatter.sh
+        files: ^docs/skills/
+        pass_filenames: false

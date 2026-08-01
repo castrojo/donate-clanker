@@ -1,3 +1,14 @@
+// Package app is the donate-clanker launcher.
+//
+// It does three things and nothing else:
+//
+//  1. host preflight (GitHub auth, Hive registration)
+//  2. resolve the contributor's own model credential
+//  3. run the VM in the foreground, handing it a bootstrap envelope
+//
+// Everything the agent does after that — the contributor WebSocket protocol,
+// task selection, the tmux session, prompt injection, output capture — belongs
+// to Hive. This launcher deliberately owns none of it.
 package app
 
 import (
@@ -8,116 +19,74 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sync"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/projectbluefin/donate-clanker/internal/config"
-	"github.com/projectbluefin/donate-clanker/internal/engine"
-	"github.com/projectbluefin/donate-clanker/internal/hive"
-	"github.com/projectbluefin/donate-clanker/internal/pod"
-	"github.com/projectbluefin/donate-clanker/internal/profile"
+	"github.com/projectbluefin/donate-clanker/internal/credential"
 	"github.com/projectbluefin/donate-clanker/internal/setup"
+	"github.com/projectbluefin/donate-clanker/internal/vm"
 )
 
 var (
-	ErrMissingHelperImage      = errors.New("missing helper image")
-	ErrMissingContributorImage = errors.New("missing contributor image")
-	ErrHelperProfileContract   = errors.New("helper profile launch contract is not established")
+	ErrMissingRunnerImage = errors.New("missing VM runner image")
+	ErrMissingRunID       = errors.New("missing run identifier")
 )
 
-type podHandle interface {
-	Close(context.Context) error
-	WorkerEndpointURL() string
-}
-
 type dependencies struct {
-	detectEngine       func(context.Context, engine.Preference) (engine.Engine, error)
-	checkGitHubAuth    func(context.Context, setup.CommandRunner) error
-	checkGooseConfig   func(string) error
-	ensureHiveSetup    func(context.Context, setup.SetupOptions) error
-	loadCredentials    func(string) (hive.Credentials, error)
-	resolveMounts      func(config.Options) ([]config.Mount, error)
-	loadBundledCatalog func() (profile.Catalog, error)
-	loadCatalog        func(string) (profile.Catalog, error)
-	createPod          func(context.Context, engine.Engine, pod.Spec) (podHandle, error)
-	startModel         func(context.Context, podHandle, pod.ModelSpec) error
-	startWorker        func(context.Context, podHandle, pod.WorkerSpec) (engine.Process, error)
-	notifyContext      func(context.Context, ...os.Signal) (context.Context, context.CancelFunc)
-	commandRunner      setup.CommandRunner
-	stdout             io.Writer
-	now                func() time.Time
+	checkGitHubAuth  func(context.Context, setup.CommandRunner) error
+	ensureHiveSetup  func(context.Context, setup.SetupOptions) error
+	readHiveEndpoint func(string) (endpoint string, token string, err error)
+	resolveCredental func(context.Context, string, string, map[string]string, credential.Runner) (credential.Resolved, error)
+	notifyContext    func(context.Context, ...os.Signal) (context.Context, context.CancelFunc)
+	commandRunner    setup.CommandRunner
+	environment      map[string]string
+	stdout           io.Writer
+	now              func() time.Time
 }
 
+// Run performs preflight and then blocks in the foreground until the VM exits
+// or the operator interrupts it.
 func Run(ctx context.Context, opts config.Options) error {
 	return run(ctx, opts, defaultDependencies())
 }
 
 func defaultDependencies() dependencies {
 	return dependencies{
-		detectEngine: func(ctx context.Context, preference engine.Preference) (engine.Engine, error) {
-			return engine.Detect(ctx, preference)
-		},
 		checkGitHubAuth:  setup.CheckGitHubAuth,
-		checkGooseConfig: setup.CheckGooseLocalConfig,
 		ensureHiveSetup:  setup.EnsureHiveSetup,
-		loadCredentials: func(path string) (hive.Credentials, error) {
-			return hive.LoadCredentials(path, nil)
-		},
-		resolveMounts:      config.ResolveMounts,
-		loadBundledCatalog: profile.LoadBundled,
-		loadCatalog:        profile.Load,
-		createPod: func(ctx context.Context, eng engine.Engine, spec pod.Spec) (podHandle, error) {
-			return pod.Create(ctx, eng, spec)
-		},
-		startModel: func(ctx context.Context, handle podHandle, spec pod.ModelSpec) error {
-			real, ok := handle.(*pod.Handle)
-			if !ok {
-				return fmt.Errorf("unexpected pod handle %T", handle)
-			}
-			return pod.StartModel(ctx, real, spec)
-		},
-		startWorker: func(ctx context.Context, handle podHandle, spec pod.WorkerSpec) (engine.Process, error) {
-			real, ok := handle.(*pod.Handle)
-			if !ok {
-				return nil, fmt.Errorf("unexpected pod handle %T", handle)
-			}
-			return pod.StartWorker(ctx, real, spec)
-		},
-		notifyContext: signal.NotifyContext,
+		readHiveEndpoint: readHiveCredentials,
+		resolveCredental: credential.Resolve,
+		notifyContext:    signal.NotifyContext,
 		commandRunner: setup.ExecCommandRunner{
 			Stdin:  os.Stdin,
 			Stdout: os.Stdout,
 			Stderr: os.Stderr,
 		},
-		stdout: os.Stdout,
-		now:    time.Now,
+		environment: credential.HostEnvironment(),
+		stdout:      os.Stdout,
+		now:         time.Now,
 	}
 }
 
 func run(ctx context.Context, opts config.Options, deps dependencies) error {
-	if opts.HelperImage == "" {
-		return ErrMissingHelperImage
-	}
-	if opts.ContributorImage == "" {
-		return ErrMissingContributorImage
+	if opts.RunnerImage == "" {
+		return fmt.Errorf("%w: set DONATE_CLANKER_VM_RUNNER_IMAGE to a pinned image digest", ErrMissingRunnerImage)
 	}
 
+	// Signals are wired before anything long-running so Ctrl-C always reaches
+	// the VM. The launcher never detaches or backgrounds the guest.
 	signalCtx, stopSignals := deps.notifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 
-	eng, err := deps.detectEngine(signalCtx, engine.Preference(opts.Engine))
-	if err != nil {
-		return err
-	}
 	if err := deps.checkGitHubAuth(signalCtx, deps.commandRunner); err != nil {
 		return err
 	}
-	if err := deps.checkGooseConfig(opts.GooseConfigPath); err != nil {
-		return err
-	}
+
+	contributorEnv := filepath.Join(opts.HiveConfigDir, "contributor.env")
 	if err := deps.ensureHiveSetup(signalCtx, setup.SetupOptions{
-		ConfigPath:     filepath.Join(opts.HiveConfigDir, "contributor.env"),
+		ConfigPath:     contributorEnv,
 		RepoDir:        opts.HiveSourceDir,
 		Commit:         opts.HiveCommit,
 		NonInteractive: opts.NonInteractive,
@@ -126,171 +95,98 @@ func run(ctx context.Context, opts config.Options, deps dependencies) error {
 		return err
 	}
 
-	resolvedModel, err := resolveModel(opts, deps)
-	if err != nil {
-		return err
-	}
-	modelSpec, err := helperModelSpec(opts, resolvedModel)
+	endpoint, token, err := deps.readHiveEndpoint(contributorEnv)
 	if err != nil {
 		return err
 	}
 
-	creds, err := deps.loadCredentials(filepath.Join(opts.HiveConfigDir, "contributor.env"))
+	resolved, err := deps.resolveCredental(signalCtx, opts.GooseProvider, opts.GooseModel, deps.environment, nil)
 	if err != nil {
 		return err
 	}
+	_, _ = fmt.Fprintf(deps.stdout, "✓ model credential resolved for %s (%s)\n", resolved.Provider, resolved.Source)
 
-	mounts, err := deps.resolveMounts(opts)
+	bootstrap := vm.Bootstrap{
+		Version:           vm.BootstrapVersion,
+		HiveEndpoint:      endpoint,
+		RegistrationToken: token,
+		Backend:           config.Backend,
+		RunID:             fmt.Sprintf("donate-clanker-%d", deps.now().UnixNano()),
+		GooseProvider:     resolved.Provider,
+		GooseModel:        resolved.Model,
+		ProviderSecret:    resolved.Secret,
+	}
+	if err := bootstrap.Validate(); err != nil {
+		return err
+	}
+
+	path, err := writeBootstrap(opts.StateDir, bootstrap)
 	if err != nil {
 		return err
 	}
+	_, _ = fmt.Fprintln(deps.stdout, path)
+	return nil
+}
 
-	handle, err := deps.createPod(signalCtx, eng, pod.Spec{
-		NamePrefix:    fmt.Sprintf("donate-clanker-%d", deps.now().UnixNano()),
-		ModelHostPort: 0,
-		ContainerPort: opts.ModelContainerPort,
-		Labels: map[string]string{
-			"app.kubernetes.io/name": "donate-clanker",
-		},
-	})
+// writeBootstrap persists the envelope for the launcher to hand to the guest.
+// The file carries a live credential, so it is created 0600 inside a 0700
+// directory and replaced atomically.
+func writeBootstrap(stateDir string, bootstrap vm.Bootstrap) (string, error) {
+	if bootstrap.RunID == "" {
+		return "", ErrMissingRunID
+	}
+	runDir := filepath.Join(stateDir, "run", bootstrap.RunID)
+	if err := os.MkdirAll(runDir, 0o700); err != nil {
+		return "", err
+	}
+
+	target := filepath.Join(runDir, "bootstrap.json")
+	temp, err := os.OpenFile(target+".tmp", os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_TRUNC, 0o600)
 	if err != nil {
-		return err
+		return "", err
 	}
-	defer func() {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = handle.Close(cleanupCtx)
-	}()
-
-	helperMounts, workerMounts := splitMounts(mounts)
-	modelSpec.Mounts = helperMounts
-	if err := deps.startModel(signalCtx, handle, modelSpec); err != nil {
-		return err
+	if err := vm.SendBootstrap(temp, bootstrap); err != nil {
+		_ = temp.Close()
+		_ = os.Remove(temp.Name())
+		return "", err
 	}
+	if err := temp.Close(); err != nil {
+		_ = os.Remove(temp.Name())
+		return "", err
+	}
+	if err := os.Rename(temp.Name(), target); err != nil {
+		_ = os.Remove(temp.Name())
+		return "", err
+	}
+	return target, nil
+}
 
-	workerEnv := workerEnvironment(resolvedModel.name, handle.WorkerEndpointURL(), creds)
-
-	process, err := deps.startWorker(signalCtx, handle, pod.WorkerSpec{
-		Image:   opts.ContributorImage,
-		Env:     workerEnv,
-		Mounts:  workerMounts,
-		WorkDir: config.WorkspaceMountPath,
-	})
+// readHiveCredentials extracts the endpoint and registration token Hive's
+// setup recipe wrote to contributor.env.
+func readHiveCredentials(path string) (string, string, error) {
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
-		return err
+		return "", "", err
 	}
 
-	output := process.StdoutStderr()
-	outputDone := make(chan struct{})
-	closeOutput := func() {}
-	if output != nil {
-		var closeOnce sync.Once
-		closeOutput = func() {
-			closeOnce.Do(func() {
-				_ = output.Close()
-			})
+	values := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
 		}
-		go func() {
-			defer close(outputDone)
-			defer closeOutput()
-			_, _ = io.Copy(deps.stdout, output)
-		}()
-	} else {
-		close(outputDone)
-	}
-
-	waitCh := make(chan error, 1)
-	go func() {
-		waitCh <- process.Wait()
-	}()
-
-	select {
-	case err := <-waitCh:
-		<-outputDone
-		return err
-	case <-signalCtx.Done():
-		select {
-		case err := <-waitCh:
-			<-outputDone
-			return err
-		default:
-		}
-		_ = process.Signal(os.Interrupt)
-		closeOutput()
-		<-outputDone
-		select {
-		case err := <-waitCh:
-			return err
-		default:
-			return signalCtx.Err()
+		if key, value, ok := strings.Cut(line, "="); ok {
+			values[strings.TrimSpace(key)] = strings.Trim(strings.TrimSpace(value), `"'`)
 		}
 	}
-}
 
-type resolvedModel struct {
-	name    string
-	profile *profile.Profile
-}
-
-func resolveModel(opts config.Options, deps dependencies) (resolvedModel, error) {
-	if opts.Model != "" {
-		return resolvedModel{name: opts.Model}, nil
+	endpoint := values["HIVE_HUB"]
+	if endpoint == "" {
+		endpoint = values["HIVE_WS_URL"]
 	}
-	if opts.Profile == "" {
-		return resolvedModel{name: config.DefaultGooseModel}, nil
+	token := values["HIVE_REGISTRATION_TOKEN"]
+	if endpoint == "" || token == "" {
+		return "", "", fmt.Errorf("%s: missing HIVE_HUB or HIVE_REGISTRATION_TOKEN", path)
 	}
-
-	var (
-		catalog profile.Catalog
-		err     error
-	)
-	if opts.ProfileCatalogExplicit {
-		catalog, err = deps.loadCatalog(opts.ProfileCatalogPath)
-	} else {
-		catalog, err = deps.loadBundledCatalog()
-	}
-	if err != nil {
-		return resolvedModel{}, err
-	}
-	selected, ok := catalog[opts.Profile]
-	if !ok {
-		return resolvedModel{}, fmt.Errorf("unknown profile %q", opts.Profile)
-	}
-	return resolvedModel{name: opts.Profile, profile: &selected}, nil
-}
-
-func helperModelSpec(opts config.Options, model resolvedModel) (pod.ModelSpec, error) {
-	if model.profile != nil {
-		return pod.ModelSpec{}, fmt.Errorf("%w: profile %q", ErrHelperProfileContract, model.name)
-	}
-	return pod.ModelSpec{
-		Image:            opts.HelperImage,
-		ReadinessTimeout: opts.ReadinessTimeout,
-	}, nil
-}
-
-func splitMounts(mounts []config.Mount) ([]config.Mount, []config.Mount) {
-	helperMounts := make([]config.Mount, 0, 1)
-	workerMounts := make([]config.Mount, 0, 1)
-	for _, mount := range mounts {
-		switch mount.ContainerPath {
-		case config.CacheMountPath:
-			helperMounts = append(helperMounts, mount)
-		case config.WorkspaceMountPath:
-			workerMounts = append(workerMounts, mount)
-		}
-	}
-	return helperMounts, workerMounts
-}
-
-func workerEnvironment(model, endpoint string, creds hive.Credentials) map[string]string {
-	env := config.DefaultGooseEnvironment(model)
-	env["OPENAI_BASE_URL"] = endpoint
-	env["WORKSPACE"] = config.WorkspaceMountPath
-	env["HIVE_REGISTRATION_TOKEN"] = creds.RegistrationToken
-	env["HIVE_WS_URL"] = creds.WSURL
-	if creds.CLIBackend != "" {
-		env["AGENT_BACKEND"] = creds.CLIBackend
-	}
-	return env
+	return endpoint, token, nil
 }
