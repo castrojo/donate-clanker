@@ -72,7 +72,14 @@ vm_version := env("DONATE_CLANKER_VM_VERSION", "25.08.14")
 # The derived KubeStellar Hive contributor image. Used by
 # donate-clanker-container; the VM path gets the same image from inside the
 # guest, so this only matters for local development.
-contributor_image := env("DONATE_CLANKER_CONTRIBUTOR_IMAGE", "ghcr.io/projectbluefin/donate-clanker:latest")
+#
+# ':stable' and not ':latest' — .github/workflows/publish-compat-image.yml
+# only ever pushes 'sha-<commit>', the version tags and 'stable', so
+# ':latest' is a tag that has never existed in the registry and never will.
+# Pointing at it makes every 'ujust donate-clanker-container' die on
+# 'manifest unknown'. Pin a digest or an immutable 'sha-' tag via
+# DONATE_CLANKER_CONTRIBUTOR_IMAGE when reproducibility matters.
+contributor_image := env("DONATE_CLANKER_CONTRIBUTOR_IMAGE", "ghcr.io/projectbluefin/donate-clanker:stable")
 
 # Shared bash, 'eval''d at the top of every recipe script that needs it:
 # host preflight, Goose selection, and the pinned Hive checkout. Keeping
@@ -150,6 +157,26 @@ preflight_agent() {
     echo "  $(tool_fixit_hint goose)" >&2
     return 1
   }
+}
+contributor_image_available() {
+  # Locally present is enough; otherwise the tag has to exist in the
+  # registry. Both probes are read-only, so donate-clanker-doctor can call
+  # this without starting anything.
+  local ref="$1"
+  podman image exists "$ref" && return 0
+  podman manifest inspect "$ref" &>/dev/null
+}
+ensure_contributor_image() {
+  # A missing tag otherwise surfaces as a bare 'manifest unknown' from
+  # podman at launch time, which says nothing about what to do next.
+  local ref="$1"
+  contributor_image_available "$ref" && return 0
+  podman pull "$ref" && return 0
+  echo "ERROR: cannot obtain the contributor image ${ref}." >&2
+  echo "  Published tags are 'stable', the version tags and 'sha-<commit>' — there is no ':latest'." >&2
+  echo "  Pick a published tag with DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:stable," >&2
+  echo "  or build it yourself: podman build -f image/Containerfile -t donate-clanker:dev . && DONATE_CLANKER_CONTRIBUTOR_IMAGE=donate-clanker:dev ujust donate-clanker-container" >&2
+  return 1
 }
 gum_can_prompt() {
   command -v gum &>/dev/null || return 1
@@ -676,6 +703,7 @@ donate-clanker-container:
 
     CONTAINER_NAME="donate-clanker-container"
     CONTRIBUTOR_IMAGE="{{contributor_image}}"
+    ensure_contributor_image "$CONTRIBUTOR_IMAGE"
 
     # Hive's own convention: the contributor config lives at
     # ~/.config/hive inside the image's home (/home/dev), read-only. There is
@@ -761,6 +789,19 @@ donate-clanker-doctor:
       fi
     else
       echo "  ✗ goose: not installed — $(tool_install_hint goose)"
+      fail=$((fail+1))
+    fi
+    echo ""
+
+    echo "=== Contributor image ==="
+    DOCTOR_CONTRIBUTOR_IMAGE="{{contributor_image}}"
+    if contributor_image_available "$DOCTOR_CONTRIBUTOR_IMAGE"; then
+      echo "  ✓ ${DOCTOR_CONTRIBUTOR_IMAGE} is resolvable"
+      pass=$((pass+1))
+    else
+      echo "  ✗ ${DOCTOR_CONTRIBUTOR_IMAGE} cannot be resolved"
+      echo "    Published tags are 'stable', the version tags and 'sha-<commit>'; ':latest' does not exist."
+      echo "    Override with DONATE_CLANKER_CONTRIBUTOR_IMAGE, or build image/Containerfile locally."
       fail=$((fail+1))
     fi
     echo ""

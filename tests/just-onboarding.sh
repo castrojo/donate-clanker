@@ -43,6 +43,7 @@ state_dir="$home/.local/state/donate-clanker"
 firmware_dir="$scratch/firmware"
 gum_log="$scratch/gum.log"
 runner_log="$scratch/runner.log"
+image_log="$scratch/image.log"
 qemu_log="$scratch/qemu.log"
 qemu_img_log="$scratch/qemu-img.log"
 curl_log="$scratch/curl.log"
@@ -225,6 +226,16 @@ cp "$fake_bin/qemu-system-x86_64" "$fake_bin/qemu-system-aarch64"
 cat >"$fake_bin/podman" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+# Image resolution is a separate concern from launching: it gets its own log
+# so the 'exactly one foreground run' assertions stay meaningful, and it
+# fails on demand so the missing-tag path can be exercised.
+case "${1:-}" in
+  image | manifest | pull)
+    printf '%s\n' "$*" >>"${IMAGE_LOG:?}"
+    [[ "${FAKE_PODMAN_IMAGE_MISSING:-0}" == 1 ]] && exit 1
+    exit 0
+    ;;
+esac
 printf '%s\n' "$*" >> "${RUNNER_LOG:?}"
 mount_arg=""
 bootstrap_socket=""
@@ -286,6 +297,7 @@ write_goose_config
 reset_logs() {
   : >"$gum_log"
   : >"$runner_log"
+  : >"$image_log"
   : >"$qemu_log"
   : >"$qemu_img_log"
   : >"$curl_log"
@@ -309,6 +321,7 @@ run_recipe() {
       -u DONATE_CLANKER_NON_INTERACTIVE -u GOOSE_INSTALLED \
       HOME="$home" PATH="$fake_bin:/usr/bin:/bin" TMPDIR="$tmp_root" \
       GUM_LOG="$gum_log" RUNNER_LOG="$runner_log" QEMU_LOG="$qemu_log" \
+      IMAGE_LOG="$image_log" \
       QEMU_IMG_LOG="$qemu_img_log" CURL_LOG="$curl_log" FIND_LOG="$find_log" \
       RUNNER_CONSUMED="$consumed_marker" \
       DONATE_CLANKER_TEST_CONSUMER="$consumer" \
@@ -539,6 +552,19 @@ assert_file_not_contains "/workspace" "$runner_log"
 assert_file_not_contains "qemu" "$runner_log"
 assert_file_not_contains "super-secret-registration-token" "$runner_log"
 assert_eq "$(wc -c <"$qemu_log")" 0 "the container recipe must not start a VM"
+assert_file_contains "image exists" "$image_log"
+
+begin "donate-clanker-container: an unobtainable image is one actionable error"
+reset_logs
+run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+  GUM_PROVIDER_RESPONSE=OpenAI GUM_INPUT_RESPONSE=gpt-test \
+  FAKE_PODMAN_IMAGE_MISSING=1
+assert_nonzero_status "$STATUS" "an unobtainable contributor image must fail the run"
+assert_eq "$(error_line_count "$OUT")" 1 "expected exactly one ERROR line"
+assert_contains "cannot obtain the contributor image" "$OUT"
+assert_contains "there is no ':latest'" "$OUT"
+assert_file_contains "pull" "$image_log"
+assert_eq "$(wc -c <"$runner_log")" 0 "no container may start when the image is unobtainable"
 
 # ══ 8. Stop recipe ════════════════════════════════════════════════════════
 begin "donate-clanker-stop: succeeds when nothing is running"
@@ -589,6 +615,15 @@ grep -q 'VM_DISK_ARGS=(-drive "file=\${VM_OVERLAY},format=qcow2,if=virtio")' "$c
 if grep -n 'file=\${VM_RAW},format=raw' "$code"; then
   fail "the qemu invocation must never attach the master raw image"
 fi
+
+begin "static: the container never defaults to an unpublished ':latest' tag"
+# publish-compat-image.yml only pushes sha-<commit>, the version tags and
+# 'stable', so a ':latest' default is guaranteed 'manifest unknown'.
+if grep -n 'donate-clanker:latest' "$code"; then
+  fail "the default contributor image must be a tag the publish workflow actually pushes"
+fi
+grep -q 'ghcr.io/projectbluefin/donate-clanker:stable' "$code" ||
+  fail "the default contributor image must be the published ':stable' tag"
 
 begin "static: no legacy backends survive in the launcher"
 for legacy in copilot_live_models 'Multiple AI CLIs' LAST_TOOL AGENT_MODEL=; do
