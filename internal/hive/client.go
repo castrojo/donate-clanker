@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -55,18 +56,20 @@ type Client struct {
 	HeartbeatInterval time.Duration
 	HeartbeatTimeout  time.Duration
 	WriteTimeout      time.Duration
+	Readiness         io.Writer
 	Now               func() time.Time
 
-	writeMu  sync.Mutex
-	taskMu   sync.Mutex
-	mu       sync.Mutex
-	conn     *websocket.Conn
-	connDone chan struct{}
-	authed   bool
-	lastPong time.Time
-	seq      int
-	active   *taskExecution
-	pending  *wsMessage
+	writeMu     sync.Mutex
+	readinessMu sync.Mutex
+	taskMu      sync.Mutex
+	mu          sync.Mutex
+	conn        *websocket.Conn
+	connDone    chan struct{}
+	authed      bool
+	lastPong    time.Time
+	seq         int
+	active      *taskExecution
+	pending     *wsMessage
 }
 
 type taskExecution struct {
@@ -214,6 +217,8 @@ func (c *Client) handleConnection(ctx context.Context, conn *websocket.Conn, cre
 
 			case "auth_ok":
 				c.setAuthenticated(conn, true)
+				c.reportReadiness("hive")
+				c.reportReadiness("worker_ready")
 				if err := c.resumeAfterAuth(); err != nil {
 					return err
 				}
@@ -264,6 +269,19 @@ func (c *Client) handleConnection(ctx context.Context, conn *websocket.Conn, cre
 			return ctx.Err()
 		}
 	}
+}
+
+func (c *Client) reportReadiness(statusType string) {
+	if c.Readiness == nil {
+		return
+	}
+
+	c.readinessMu.Lock()
+	defer c.readinessMu.Unlock()
+	_ = json.NewEncoder(c.Readiness).Encode(map[string]any{
+		"version": BootstrapStatusVersion,
+		"type":    statusType,
+	})
 }
 
 func (c *Client) handleTaskAssign(ctx context.Context, handler AssignmentHandler, msg wsMessage) error {

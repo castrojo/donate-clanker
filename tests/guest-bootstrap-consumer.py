@@ -5,6 +5,7 @@ import json
 import os
 import socket
 import sys
+import time
 
 
 def fail(message):
@@ -18,6 +19,7 @@ if not socket_path or not marker:
 
 client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 client.connect(socket_path)
+time.sleep(float(os.environ.get("DONATE_CLANKER_TEST_CONSUMER_DELAY", "0")))
 payload = json.loads(client.recv(65536).splitlines()[0])
 
 if set(payload) != {

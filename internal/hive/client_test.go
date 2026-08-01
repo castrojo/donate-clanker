@@ -1,6 +1,7 @@
 package hive
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -142,7 +143,9 @@ func TestClientRespondsToPingAndCompletesTask(t *testing.T) {
 	defer cleanup()
 
 	handler := newBlockingHandler()
+	var readiness bytes.Buffer
 	client := NewClient()
+	client.Readiness = &readiness
 	client.ReconnectDelay = 10 * time.Millisecond
 	client.MaxReconnectDelay = 20 * time.Millisecond
 	ctx, cancel := context.WithCancel(context.Background())
@@ -164,6 +167,9 @@ func TestClientRespondsToPingAndCompletesTask(t *testing.T) {
 	ready := readWSMessage(t, conn)
 	if ready.Type != "ready" {
 		t.Fatalf("message after auth_ok = %q, want ready", ready.Type)
+	}
+	if got, want := readiness.String(), "{\"type\":\"hive\",\"version\":1}\n{\"type\":\"worker_ready\",\"version\":1}\n"; got != want {
+		t.Fatalf("readiness output = %q, want %q", got, want)
 	}
 
 	writeWSMessage(t, conn, wsMessage{

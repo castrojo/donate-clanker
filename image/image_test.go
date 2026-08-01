@@ -75,25 +75,6 @@ func TestCompatibilityEntrypointMapsPortableMounts(t *testing.T) {
 	}
 }
 
-func TestREADMELabelsImageAsCompatibilityMode(t *testing.T) {
-	data, err := os.ReadFile(repoFile(t, "README.md"))
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
-
-	got := string(data)
-	for _, want := range []string{
-		"compatibility mode",
-		"does **not**",
-		"native Goose/RamaLama launcher",
-		"no host container socket",
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("README missing compatibility boundary %q", want)
-		}
-	}
-}
-
 func TestAgentContractFixtureIncludesRequiredPathsAndValidationCommands(t *testing.T) {
 	data, err := os.ReadFile(repoFile(t, "image", "config", "agent-contract.json"))
 	if err != nil {

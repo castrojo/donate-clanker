@@ -100,6 +100,11 @@ jobs:
           set -euo pipefail
           bash tests/just-onboarding.sh
 
+      - name: VM boot harness host seam
+        run: |
+          set -euo pipefail
+          python3 tests/vm-boot-e2e.py --self-test
+
       - name: Recipe bodies are valid bash
         run: |
           set -euo pipefail
