@@ -115,3 +115,26 @@ wc -l AGENTS.md docs/skills/*.md            # each under 200
 go test ./...
 pre-commit run --all-files
 ```
+
+## The Copilot credential
+
+Goose's `github_copilot` provider needs the long-lived OAuth token minted by
+the Copilot editor device flow -- a `ghu_` user-to-server token. It is the only
+credential its API accepts.
+
+A `gh auth token` (`gho_`) is **not** a substitute. It is a different OAuth
+client with different scopes, and Goose fails at the first model call with
+`failed to get api info`. Verified against the contributor image; do not
+"simplify" the launcher by passing the gh token here.
+
+On a desktop Goose stores the real token in the login keyring, not in
+`~/.config/goose/githubcopilot/info.json` -- that file holds only a short-lived
+API token plus metadata and is usually expired. Mounting it into the container
+therefore does nothing. The launcher reads `GITHUB_COPILOT_TOKEN` from the
+keyring (`secret-tool lookup service goose username secrets`) and passes it as
+a single environment variable, so the container receives exactly one secret and
+no view of the rest of the host's Goose configuration.
+
+This is best-effort: no keyring, no `secret-tool`, or a locked session just
+means the agent runs its own device flow, and the pane waits on
+`enter code XXXX-XXXX` until a human types one in.
