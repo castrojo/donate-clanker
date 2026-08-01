@@ -856,6 +856,47 @@ done
 assert_eq "$(grep -c '^tool_order := "goose"$' "$justfile")" 1 \
   "goose must be the only backend in tool_order"
 
+begin "static: nothing here filters the work Hive assigns"
+# Hive's selectTask is the sole authority on what gets worked on: the hub's
+# config decides the repository pool, the deny-lists and the cooldown. Filter
+# any of that here and this repository shadows a lifecycle Hive owns, diverges
+# from the hub's admission policy the moment either side changes, and silently
+# hides work the maintainers deliberately admitted.
+#
+# Filtering needs one of two footholds: speaking the contributor protocol, or
+# gating on issue metadata. Both are checked, on the launcher and on the
+# entrypoint that hands over to Hive. Comments in both legitimately discuss
+# task selection, so they are stripped first, exactly as above.
+entry_code="$scratch/entrypoint-code"
+policy_code="$scratch/policy-text"
+sed -E 's/^[[:space:]]*#.*$//' "$repo_root/image/entrypoint.sh" >"$entry_code"
+sed -E 's/^[[:space:]]*#.*$//' "$repo_root/image/config/local-agent-policy.md" >"$policy_code"
+
+# Declining an assignment means answering Hive's contributor protocol, so the
+# message names may not appear here at all. The relay is Hive's too.
+if grep -nEi '(task_assignment|task_completed|task_failed|request_task|contributor-relay)' \
+  "$code" "$entry_code" "$policy_code"; then
+  fail "nothing here may speak Hive's contributor protocol — selection is Hive's alone"
+fi
+# The other foothold: an allow/deny list or a conditional keyed on the
+# repository, label, title, author or issue number of an assignment.
+if grep -nEi \
+  '(allow|deny|skip|exclude|ignore|block|reject|decline|only)[_-](repo|repos|issue|issues|label|labels|title|titles|author|authors|task|tasks)|(repo|repos|issue|issues|label|labels|title|author|task|tasks)[_-](filter|filters|allowlist|denylist|whitelist|blacklist|pattern|patterns|mode)|(allow|deny|white|black)list|clanker-queue' \
+  "$code" "$entry_code" "$policy_code"; then
+  fail "nothing here may filter Hive-selected work by repo, label, title, author or issue"
+fi
+# An env passthrough is the quietest way to smuggle a selector into the guest.
+if grep -nE '[A-Z0-9_]*(FILTER|ALLOWLIST|DENYLIST|WHITELIST|BLACKLIST)[A-Z0-9_]*' \
+  "$code" "$entry_code"; then
+  fail "no selector may be passed into the guest through the environment"
+fi
+# Positive control: the handover stays a bare launch of Hive's own agent. A
+# wrapper, pipe or redirection around it is precisely where an interception
+# filter would land, and would not trip the greps above.
+# shellcheck disable=SC2016 # the entrypoint source is matched literally, not expanded
+grep -q '^/usr/local/bin/contributor-agent.sh "\$@" &$' "$entry_code" ||
+  fail "the entrypoint must hand straight over to Hive's contributor-agent.sh, unwrapped"
+
 # ══ result ════════════════════════════════════════════════════════════════
 if [[ "$failures" -gt 0 ]]; then
   printf '\n%d assertion(s) FAILED.\n' "$failures" >&2

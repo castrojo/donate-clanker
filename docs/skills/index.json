@@ -35,7 +35,7 @@
         "tokens",
         "cooldown"
       ],
-      "description": "Describes Hive's contributor runtime: the tmux session contract, prompt injection, the 15-line output budget, the 55-minute token, and the 168-hour cooldown. Use when debugging an attached session or planning task-length work.",
+      "description": "Describes Hive's contributor runtime: the tmux session contract, prompt injection, the 15-line output budget, the 55-minute token, the 168-hour cooldown, the agent's GitHub identity, and why selection is Hive's alone. Use when debugging a session.",
       "version": "1.1",
       "last_updated": "2026-08-01",
       "doc_type": "reference"
@@ -73,8 +73,8 @@
         "podman",
         "foreground"
       ],
-      "description": "Covers the three donate-clanker just recipes, the foreground guarantee (and why there is no stop command), and the VM versus container-only modes. Use when editing just/61-donate-clanker.just, adding a recipe, or debugging a launch that exits early.",
-      "version": "1.1",
+      "description": "Covers the three donate-clanker just recipes, the foreground guarantee (and why there is no stop command), the VM versus container-only modes, and why the launcher never filters Hive's work. Use when editing just/61-donate-clanker.just.",
+      "version": "1.2",
       "last_updated": "2026-08-01",
       "doc_type": "runbook"
     },
