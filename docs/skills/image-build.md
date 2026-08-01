@@ -1,6 +1,6 @@
 ---
 name: image-build
-version: "1.3"
+version: "1.4"
 last_updated: 2026-08-01
 id: image-build
 one_line_purpose: Derive and pin the donate-clanker contributor image safely.
@@ -59,9 +59,10 @@ Only the contributor runtime delta plus the review context payload:
 2. **Goose configuration** under `/opt/bluefin/goose`, referenced by
    `GOOSE_PATH_ROOT`, declaring the Context7 MCP extension. It lives here
    because Hive overwrites `~/.config/goose/config.yaml` at every startup.
-3. **Org skills**, generated at build time from `projectbluefin/common`'s
-   `docs/skills/index.json` into `/home/dev/.agents/skills/<id>/SKILL.md`.
-   Generated during the build, never committed to this repository.
+3. **Org skills**, generated at build time from a pinned
+   `projectbluefin/common` commit's `docs/skills/index.json` into
+   `/home/dev/.agents/skills/<id>/SKILL.md`. Generated during the build,
+   never committed to this repository.
 4. **Git hooks** at `/opt/bluefin/git-hooks`, wired through a global
    `core.hooksPath`. Ergonomics only — `git commit --no-verify` bypasses
    them. Enforcement is GitHub rulesets and required status checks.
@@ -86,6 +87,12 @@ Every external reference is pinned:
 - The Hive commit is pinned in `just/61-donate-clanker.just` as
   `hive_commit`, a full 40-character SHA, and is overridable at runtime with
   `DONATE_CLANKER_HIVE_COMMIT`.
+- Downloaded Node, GitHub CLI, tmux, and Goose archives use version-specific
+  URLs and are verified with their published SHA-256 checksums.
+- A Goose upgrade changes `GOOSE_VERSION` and both architecture-specific
+  checksums together; do not automate the version independently.
+- The common skill index and all of its bodies use the same full Git commit,
+  never the mutable `main` branch.
 - `DONATE_CLANKER_VM_RUNNER_IMAGE` must reference a signed, immutable runner
   image.
 
@@ -95,6 +102,7 @@ Resolve a new digest before changing one:
 skopeo inspect docker://ghcr.io/projectbluefin/lab-runner:<tag> \
   | jq -r '.Digest'
 git ls-remote --heads https://github.com/kubestellar/hive v2
+git ls-remote https://github.com/projectbluefin/common HEAD
 ```
 
 Bumping a pin is a human decision gate. Record what changed upstream in the
@@ -114,20 +122,20 @@ Put slow, rarely-changing layers first and the generated skills tree last;
 | Ref | Tags pushed | Platforms | Cancellable |
 |---|---|---|---|
 | `refs/tags/v*.*.*` | `sha-<commit>`, `X.Y.Z`, `vX.Y.Z`, `stable` | amd64 + arm64 | never |
-| `refs/heads/main` | `sha-<commit>`, `main` | amd64 | yes |
+| `refs/heads/main` | `sha-<commit>`, `stable` | amd64 + arm64 | yes |
 | dispatch elsewhere | `sha-<commit>` | amd64 | yes |
 
-`stable` is the released line and the launcher's default; only a version tag
-moves it. `main` is the newest merge, so a merged fix is consumable without
-cutting a release:
+`stable` moves on every merge to `main` and is the launcher's default. A
+release tag also moves it while adding immutable version aliases. Use an
+immutable `sha-<commit>` tag when a specific build is required:
 `DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:sha-<commit>`.
 `:latest` is never published — a default pointing at it dies on
 `manifest unknown`, and `tests/just-onboarding.sh` fails the build if one
 appears.
 
-Main builds skip emulated arm64 because it costs ten-plus minutes per merge.
-Never trade a release's architectures, smoke-test assertions, or digest
-verification for speed.
+Only manual dispatch builds skip emulated arm64 because they never move the
+default tag. Never trade `stable`'s architectures, smoke-test assertions, or
+digest verification for speed.
 
 The repository variable `DONATE_CLANKER_PUBLISH_STABLE` once gated the
 `stable` alias on tag builds. The workflow stopped reading it in `bc8f157`;
@@ -159,6 +167,7 @@ tagging.
 
 ```bash
 bash tests/image-contract.sh  # Containerfile, goose.yaml, entrypoint, hooks
+bash tests/generate-skills.sh # generated skill paths stay confined
 git diff --check
 pre-commit run --all-files
 ```

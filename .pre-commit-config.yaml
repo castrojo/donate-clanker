@@ -96,3 +96,9 @@ repos:
         entry: bash scripts/check-skill-frontmatter.sh
         files: ^docs/skills/
         pass_filenames: false
+      - id: generate-skills
+        name: skill generator rejects unsafe manifest paths
+        language: system
+        entry: bash tests/generate-skills.sh
+        files: ^(scripts/generate-skills\.py|tests/generate-skills\.sh)$
+        pass_filenames: false

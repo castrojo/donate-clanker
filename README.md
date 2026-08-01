@@ -125,28 +125,24 @@ to `ghcr.io/projectbluefin/donate-clanker`:
 
 | Tag | Moves? | Published by | Architectures |
 |---|---|---|---|
-| `stable` | Yes | a `v*.*.*` tag push | `linux/amd64`, `linux/arm64` |
+| `stable` | Yes | every push to `main` and `v*.*.*` tag push | `linux/amd64`, `linux/arm64` |
 | `X.Y.Z` and `vX.Y.Z` | No | a `v*.*.*` tag push | `linux/amd64`, `linux/arm64` |
-| `main` | Yes | every push to `main` | `linux/amd64` |
-| `sha-<commit>` | No | every build | as above, per build |
+| `sha-<commit>` | No | every build | `linux/amd64`, `linux/arm64` on `main` and release builds; `linux/amd64` on manual dispatches |
 
 There is no `:latest`, and there never will be — pointing at it fails with
 `manifest unknown`.
 
-`stable` is the released line and the launcher's default; it is not changed
-by merges to `main`. To run the newest `main` build instead — which is what
-you want when a fix has merged but has not been released — override the
-image:
+`stable` moves on every merge to `main` and is the launcher's default. A
+release tag also updates it alongside immutable version tags. To run a
+reproducible build, override the image with its immutable `sha-<commit>` tag:
 
 ```bash
 DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:sha-<commit> \
   ujust donate-clanker-container
 ```
 
-`main` builds `linux/amd64` only, because emulated `arm64` adds ten-plus
-minutes to every merge. On `arm64`, use `stable` or build
-`image/Containerfile` locally. For a reproducible run, pin
-`sha-<commit>` or an `@sha256:` digest instead of a moving tag.
+For a reproducible run, pin `sha-<commit>` or an `@sha256:` digest instead of
+a moving tag.
 
 ## Review context
 
@@ -243,8 +239,9 @@ documentation is routed from [`docs/SKILL.md`](docs/SKILL.md).
 `tests/image-contract.sh` asserts the image's Containerfile, Goose config,
 entrypoint and git hooks still hold their contract. `tests/just-onboarding.sh`
 exercises the launcher's onboarding behavior against a mocked host.
-`pre-commit run --all-files` runs the YAML/JSON/shell hygiene hooks. Run all
-three before opening a pull request. `git diff --check` must be clean.
+`tests/generate-skills.sh` ensures a skills manifest cannot escape its output
+root. `pre-commit run --all-files` runs the YAML/JSON/shell hygiene hooks and
+the generator regression test. `git diff --check` must be clean.
 
 ## Contributing
 
