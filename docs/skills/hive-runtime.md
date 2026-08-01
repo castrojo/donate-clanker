@@ -1,6 +1,6 @@
 ---
 name: hive-runtime
-version: "1.1"
+version: "1.2"
 last_updated: 2026-08-01
 id: hive-runtime
 one_line_purpose: Operate inside Hive's tmux, token, and cooldown constraints.
@@ -91,40 +91,41 @@ Practical rules:
 
 ### The agent's GitHub identity
 
-Hive runs donate-clanker with `HIVE_CONTRIBUTOR_MODE=true`. The Hive `gh`
-wrapper at `/usr/local/bin/gh` injects the hub's GitHub App token **only when
-that variable is not `true`** -- its own comment reads "Contributors keep their
-personal token -- they fork+PR with their own identity." In contributor mode it
-injects nothing, and it additionally blocks every `gh auth ...` invocation.
-
-So the agent has no GitHub identity unless the launcher gives it one. Without
-it a task is picked up, the agent runs `gh`, is told to run `gh auth login`, is
-then forbidden from running it, and stops. Every assigned task dies on arrival.
+Hive runs donate-clanker with `HIVE_CONTRIBUTOR_MODE=true`, and the Hive `gh`
+wrapper at `/usr/local/bin/gh` injects the hub's App token **only when that is
+not `true`** -- "Contributors keep their personal token -- they fork+PR with
+their own identity." In contributor mode it injects nothing and blocks every
+`gh auth ...` call. So the agent has no identity unless the launcher gives it
+one: it picks up a task, runs `gh`, is told to run `gh auth login`, is
+forbidden from running it, and stops. Every assigned task dies on arrival.
 
 `donate-clanker-container` therefore passes `GH_TOKEN` **by value**, resolved
-in this order:
-
-1. `DONATE_CLANKER_GH_TOKEN` -- a purpose-made, narrowly scoped PAT.
-2. `GH_TOKEN` already exported on the host.
-3. `gh auth token --hostname github.com`.
+in order: `DONATE_CLANKER_GH_TOKEN` (a purpose-made, narrowly scoped PAT), an
+exported `GH_TOKEN`, then `gh auth token --hostname github.com`.
 
 By value and not by mounting `~/.config/gh`, for the same reason the Copilot
-credential is passed by value: the guest receives one credential for one host,
-and no view of other accounts, other hosts, or an enterprise login sitting in
-the same file. Upstream's own `just contribute-run` passes `-e GH_TOKEN` the
-same way, so this is Hive's model, not a deviation from it.
+credential is: one credential for one host, and no view of other accounts,
+hosts, or an enterprise login in the same file. Upstream's own
+`just contribute-run` passes `-e GH_TOKEN` the same way.
 
-The launcher prints the token's **scopes** -- never its value -- before
-handing it over, because a desktop `gh` login routinely carries `admin:org`,
-`workflow` and `delete:packages`, and that is what the agent inherits. A
-contributor who does not want to hand all of that to an autonomous agent sets
-`DONATE_CLANKER_GH_TOKEN` to a PAT with `public_repo` or `repo` only, which is
-enough to fork, push and open a pull request.
+The launcher prints the token's **scopes** -- never its value -- and warns, by
+name, on any of `admin:org`, `admin:public_key`, `delete:packages`,
+`write:packages`, `workflow`. None is needed to fork, push and open a pull
+request; each is a power a runaway or prompt-injected agent could use to do
+damage no review would catch -- rewriting org membership, deleting published
+packages, dispatching workflows, registering a lasting SSH key.
 
-`donate-clanker-doctor` reports whether a token resolves and with which
-scopes, without printing it and without starting anything.
+It warns, never refuses: a desktop `gh` login routinely carries all of those
+and must stay usable. Narrow it with `DONATE_CLANKER_GH_TOKEN`.
 
-The VM path does not carry this yet: its bootstrap envelope is consumed by the
+Scopes come from `gh auth status` with the outgoing token in gh's environment,
+so the *right* credential is inspected and not whatever sits in the keyring.
+`gh` is already required, so this adds no dependency. Detection is best-effort:
+an unreadable scope line prints "reach unknown" and proceeds, rather than
+failing the launch or implying the token is narrow.
+
+`donate-clanker-doctor` reports and warns identically, read-only. The VM path
+does not carry this yet: its bootstrap envelope is consumed by the
 guest image, which lives outside this repository, so a new envelope field
 cannot be honoured from here alone.
 

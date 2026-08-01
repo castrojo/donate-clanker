@@ -43,8 +43,11 @@ bug.
 > `ujust donate-clanker-container` passes your `gh auth token` to the agent as
 > `GH_TOKEN`. The agent inherits every scope that token holds — a desktop `gh`
 > login often carries `admin:org`, `workflow` and `delete:packages`. The
-> launcher prints the scopes (never the value) before handing them over. To
-> narrow that, export `DONATE_CLANKER_GH_TOKEN` with a PAT scoped to
+> launcher prints the scopes (never the value) before handing them over, and
+> warns — without refusing — when the token carries `admin:org`,
+> `admin:public_key`, `delete:packages`, `write:packages` or `workflow`, none
+> of which an agent needs to open a pull request. To narrow that, export
+> `DONATE_CLANKER_GH_TOKEN` with a PAT scoped to
 > `public_repo` or `repo`, which is enough to fork, push and open a pull
 > request.
 

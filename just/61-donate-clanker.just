@@ -300,15 +300,66 @@ resolve_gh_token() {
 gh_token_scopes() {
   # Scopes, never the token. A contributor is about to hand these powers to an
   # autonomous agent, so the launcher says out loud what it is handing over.
+  #
+  # The token is passed in and handed to gh through its environment, because
+  # `gh auth status` on its own reports whatever is in the keyring -- which is
+  # the wrong credential whenever DONATE_CLANKER_GH_TOKEN overrides it. gh
+  # lists the environment token first, so head -1 is the one we are about to
+  # give away. Only the scope list ever leaves this function.
+  #
+  # gh is used rather than reading X-OAuth-Scopes off an API response because
+  # it is already a hard requirement of this launcher: no new dependency, no
+  # second HTTP client, and no hand-rolled header parsing.
+  local token="${1:-}"
   command -v gh &>/dev/null || return 0
-  gh auth status --hostname github.com 2>&1 | sed -nE "s/.*[Tt]oken scopes:[[:space:]]*(.+)/\1/p" | head -1 || true
+  GH_TOKEN="$token" GITHUB_TOKEN="$token" gh auth status --hostname github.com 2>&1 | sed -nE "s/.*[Tt]oken scopes:[[:space:]]*(.+)/\1/p" | head -1 || true
+  return 0
+}
+excess_gh_scopes() {
+  # Scopes an agent cannot plausibly need to fork a repository, push a branch
+  # and open a pull request. Each one is a power a runaway or prompt-injected
+  # agent could use to do damage that no pull request review would catch:
+  # rewriting org membership, deleting published packages, dispatching
+  # workflows, or registering an SSH key that outlives the run.
+  #
+  # Named rather than counted, so the warning can say exactly what is
+  # excessive instead of "your token is too wide".
+  local scopes="$1" found="" scope
+  for scope in admin:org admin:public_key delete:packages write:packages workflow; do
+    case "$scopes" in *"$scope"*) found="${found:+${found}, }${scope}" ;; esac
+  done
+  printf '%s' "$found"
+  return 0
+}
+warn_excess_gh_scopes() {
+  # Non-fatal by design. A contributor whose only token is their desktop login
+  # must still be able to run; they just may not do it unaware.
+  local scopes="$1" excess
+  excess="$(excess_gh_scopes "$scopes")"
+  [[ -n "$excess" ]] || return 0
+  echo "! WARNING: this token is much wider than the agent needs: ${excess}" >&2
+  echo "  To fork, push and open a pull request an agent needs no more than 'repo'." >&2
+  echo "  With the scopes above it could also change organization membership and settings," >&2
+  echo "  delete or publish packages, dispatch workflows, or register an SSH key." >&2
+  echo "  Narrow it with: DONATE_CLANKER_GH_TOKEN=<PAT scoped to public_repo or repo>." >&2
+  echo "  Continuing anyway — this is a warning, not a refusal." >&2
   return 0
 }
 report_gh_token_blast_radius() {
   local source="$1" scopes
   echo "✓ GitHub identity passed to the agent as GH_TOKEN (from ${source}; value not shown)."
-  scopes="$(gh_token_scopes)"
-  [[ -n "$scopes" ]] && echo "  The agent can do anything this token can: ${scopes}"
+  scopes="$(gh_token_scopes "${GH_TOKEN_VALUE:-}")"
+  if [[ -z "$scopes" ]]; then
+    # Scope detection is best-effort: an offline host, a rate limit or a future
+    # gh output change must not stop a launch. Say the reach is unknown rather
+    # than implying it is small.
+    echo "! this token's scopes could not be read, so its reach is unknown." >&2
+    echo "  Assume it is as wide as your GitHub account until you check." >&2
+    echo "  Narrow it with: DONATE_CLANKER_GH_TOKEN=<PAT scoped to public_repo or repo>." >&2
+    return 0
+  fi
+  echo "  The agent can do anything this token can: ${scopes}"
+  warn_excess_gh_scopes "$scopes"
   echo "  Narrow that with: DONATE_CLANKER_GH_TOKEN=<scoped PAT> (public_repo or repo is enough to fork and open a PR)."
   return 0
 }
@@ -965,8 +1016,13 @@ donate-clanker-doctor:
     resolve_gh_token
     if [[ -n "${GH_TOKEN_VALUE:-}" ]]; then
       echo "  ✓ a GitHub token is available for the agent (from ${GH_TOKEN_SOURCE}; not shown)"
-      DOCTOR_GH_SCOPES="$(gh_token_scopes)"
-      [[ -n "$DOCTOR_GH_SCOPES" ]] && echo "    The agent will be able to do anything this token can: ${DOCTOR_GH_SCOPES}"
+      DOCTOR_GH_SCOPES="$(gh_token_scopes "${GH_TOKEN_VALUE}")"
+      if [[ -n "$DOCTOR_GH_SCOPES" ]]; then
+        echo "    The agent will be able to do anything this token can: ${DOCTOR_GH_SCOPES}"
+        warn_excess_gh_scopes "$DOCTOR_GH_SCOPES"
+      else
+        echo "    This token's scopes could not be read; assume its reach is as wide as your account."
+      fi
       echo "    Narrow that with DONATE_CLANKER_GH_TOKEN=<scoped PAT> if that is wider than you want."
       pass=$((pass+1))
     else

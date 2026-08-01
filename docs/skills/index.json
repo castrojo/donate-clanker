@@ -36,7 +36,7 @@
         "cooldown"
       ],
       "description": "Describes Hive's contributor runtime: the tmux session contract, prompt injection, the 15-line output budget, the 55-minute token, the 168-hour cooldown, the agent's GitHub identity, and why selection is Hive's alone. Use when debugging a session.",
-      "version": "1.1",
+      "version": "1.2",
       "last_updated": "2026-08-01",
       "doc_type": "reference"
     },

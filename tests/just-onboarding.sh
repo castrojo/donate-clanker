@@ -113,6 +113,11 @@ case "${1:-} ${2:-}" in
     printf '%s\n' "$FAKE_GH_TOKEN"
     ;;
   "auth status")
+    # FAKE_GH_NO_SCOPES simulates a gh that answers but reports no scope line
+    # (offline, rate-limited, or a future output change), so the launcher's
+    # fallback can be tested. The token itself is never echoed here: a scenario
+    # asserts on scopes, never on a value.
+    [[ -n "${FAKE_GH_NO_SCOPES:-}" ]] && exit 0
     printf '  - Token scopes: %s\n' "${FAKE_GH_SCOPES:-'repo', 'read:org'}" >&2
     ;;
 esac
@@ -350,6 +355,7 @@ run_recipe() {
       -u GITHUB_COPILOT_TOKEN -u FAKE_KEYRING_COPILOT_TOKEN \
       -u GH_TOKEN -u GITHUB_TOKEN \
       -u DONATE_CLANKER_GH_TOKEN -u FAKE_GH_TOKEN -u FAKE_GH_SCOPES \
+      -u FAKE_GH_NO_SCOPES \
       -u TEST_UNAME_M -u TEST_CURL_MODE -u DONATE_CLANKER_TEST_GUM_TTY \
       -u DONATE_CLANKER_NON_INTERACTIVE -u GOOSE_INSTALLED \
       HOME="$home" PATH="$fake_bin:/usr/bin:/bin" TMPDIR="$tmp_root" \
@@ -671,6 +677,51 @@ assert_contains "admin:org" "$OUT"
 assert_contains "DONATE_CLANKER_GH_TOKEN" "$OUT"
 assert_not_contains "gho-test-token" "$OUT"
 
+begin "donate-clanker-container: a token wider than the agent needs is warned about, not refused"
+# The repository owner may reasonably decide a desktop login is acceptable.
+# Either way nobody should hand one over without being told what it can do.
+reset_logs
+run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o \
+  FAKE_GH_TOKEN=gho-broad-token \
+  FAKE_GH_SCOPES="'admin:org', 'admin:public_key', 'delete:packages', 'gist', 'repo', 'workflow', 'write:packages'"
+assert_contains "WARNING: this token is much wider than the agent needs" "$OUT"
+# Every excessive scope is named, so the warning is actionable rather than vague.
+for excess_scope in "admin:org" "admin:public_key" "delete:packages" "write:packages" "workflow"; do
+  assert_contains "$excess_scope" "$OUT"
+done
+assert_contains "DONATE_CLANKER_GH_TOKEN" "$OUT"
+# Non-fatal: the launch still happens and the token is still passed.
+assert_contains "warning, not a refusal" "$OUT"
+# 97 is the fake foreground process's sentinel: the launch reached podman and
+# ran, which is exactly what "warns rather than refuses" has to mean here.
+assert_eq "$STATUS" 97 "a wide token must warn, never fail the launch"
+assert_file_contains "--env GH_TOKEN=gho-broad-token" "$runner_log"
+assert_not_contains "gho-broad-token" "$OUT"
+
+begin "donate-clanker-container: a narrow token draws no warning"
+reset_logs
+run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o \
+  FAKE_GH_TOKEN=gho-narrow-token FAKE_GH_SCOPES="'public_repo', 'read:org'"
+assert_not_contains "much wider than the agent needs" "$OUT"
+assert_contains "public_repo" "$OUT"
+assert_file_contains "--env GH_TOKEN=gho-narrow-token" "$runner_log"
+assert_not_contains "gho-narrow-token" "$OUT"
+
+begin "donate-clanker-container: unreadable scopes pass the token with an honest note"
+# Scope detection is best-effort. Failing to read scopes must never fail a
+# launch, and must never be reported as if the token were narrow.
+reset_logs
+run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o \
+  FAKE_GH_TOKEN=gho-opaque-token FAKE_GH_NO_SCOPES=1
+assert_eq "$STATUS" 97 "unreadable scopes must not fail the launch"
+assert_contains "scopes could not be read" "$OUT"
+assert_contains "as wide as your GitHub account" "$OUT"
+assert_file_contains "--env GH_TOKEN=gho-opaque-token" "$runner_log"
+assert_not_contains "gho-opaque-token" "$OUT"
+
 begin "donate-clanker-container: an explicit scoped PAT beats the desktop login"
 reset_logs
 run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
@@ -781,6 +832,23 @@ assert_contains "admin:org" "$OUT"
 assert_not_contains "gho-test-token" "$OUT"
 assert_eq "$(wc -c <"$qemu_log")" 0 "doctor must not start a VM"
 assert_file_not_contains "run --rm" "$runner_log"
+
+begin "donate-clanker-doctor: a token wider than the agent needs is warned about"
+reset_logs
+run_recipe donate-clanker-doctor GH_READY=1 TEST_UNAME_M=x86_64 \
+  FAKE_GH_TOKEN=gho-broad-token FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token \
+  FAKE_GH_SCOPES="'admin:org', 'delete:packages', 'repo', 'workflow'"
+assert_contains "much wider than the agent needs" "$OUT"
+assert_contains "admin:org" "$OUT"
+assert_not_contains "gho-broad-token" "$OUT"
+
+begin "donate-clanker-doctor: a narrow token draws no warning"
+reset_logs
+run_recipe donate-clanker-doctor GH_READY=1 TEST_UNAME_M=x86_64 \
+  FAKE_GH_TOKEN=gho-narrow-token FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token \
+  FAKE_GH_SCOPES="'public_repo'"
+assert_not_contains "much wider than the agent needs" "$OUT"
+assert_not_contains "gho-narrow-token" "$OUT"
 
 begin "donate-clanker-doctor: a missing GitHub token is a failed check with the fix"
 reset_logs
