@@ -63,73 +63,26 @@ RUN set -eu; \
       "https://nodejs.org/dist/latest-v24.x/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" \
       -o "$workdir/node.tar.xz"; \
     printf '%s  %s\n' "$node_sha" "$workdir/node.tar.xz" | sha256sum -c -; \
-    python3 - "$workdir/node.tar.xz" /opt <<'PY'
-import pathlib, shutil, sys, tarfile \
-archive = pathlib.Path(sys.argv[1]) \
-root = pathlib.Path(sys.argv[2]) \
-with tarfile.open(archive, mode="r:xz") as tf: \
-    tf.extractall(root) \
-node_dir, = [p for p in root.iterdir() if p.name.startswith("node-v") and p.is_dir()] \
-target = root / "node" \
-if target.exists(): \
-    shutil.rmtree(target) \
-node_dir.rename(target) \
-PY
+    python3 -c 'import pathlib, shutil, sys, tarfile; archive = pathlib.Path(sys.argv[1]); root = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:xz"); tf.extractall(root); tf.close(); node_dir = next(p for p in root.iterdir() if p.name.startswith("node-v") and p.is_dir()); target = root / "node"; target.exists() and shutil.rmtree(target); node_dir.rename(target)' "$workdir/node.tar.xz" /opt; \
     curl --fail --location --show-error --silent \
       "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${gh_arch}.tar.gz" \
       -o "$workdir/gh.tar.gz"; \
     printf '%s  %s\n' "$gh_sha" "$workdir/gh.tar.gz" | sha256sum -c -; \
-    python3 - "$workdir/gh.tar.gz" /usr/local/bin/gh <<'PY'
-import pathlib, sys, tarfile \
-archive = pathlib.Path(sys.argv[1]) \
-target = pathlib.Path(sys.argv[2]) \
-with tarfile.open(archive, mode="r:gz") as tf: \
-    member = next(m for m in tf.getmembers() if m.isfile() and m.name.endswith("/bin/gh")) \
-    with tf.extractfile(member) as src, target.open("wb") as dst: \
-        dst.write(src.read()) \
-target.chmod(0o755) \
-PY
+    python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.endswith("/bin/gh")); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/gh.tar.gz" /usr/local/bin/gh; \
     curl --fail --location --show-error --silent \
       "https://go.dev/dl/go${GO_VERSION}.linux-${go_arch}.tar.gz" \
       -o "$workdir/go.tar.gz"; \
-    python3 - "$workdir/go.tar.gz" /usr/local <<'PY'
-import pathlib, shutil, sys, tarfile \
-archive = pathlib.Path(sys.argv[1]) \
-root = pathlib.Path(sys.argv[2]) \
-target = root / "go" \
-if target.exists(): \
-    shutil.rmtree(target) \
-with tarfile.open(archive, mode="r:gz") as tf: \
-    tf.extractall(root) \
-PY
+    python3 -c 'import pathlib, shutil, sys, tarfile; archive = pathlib.Path(sys.argv[1]); root = pathlib.Path(sys.argv[2]); target = root / "go"; target.exists() and shutil.rmtree(target); tf = tarfile.open(archive, mode="r:gz"); tf.extractall(root); tf.close()' "$workdir/go.tar.gz" /usr/local; \
     curl --fail --location --show-error --silent \
       "https://github.com/tmux/tmux-builds/releases/download/v${TMUX_VERSION}/tmux-${TMUX_VERSION}-linux-${tmux_arch}.tar.gz" \
       -o "$workdir/tmux.tar.gz"; \
     printf '%s  %s\n' "$tmux_sha" "$workdir/tmux.tar.gz" | sha256sum -c -; \
-    python3 - "$workdir/tmux.tar.gz" /usr/local/bin/tmux <<'PY'
-import pathlib, sys, tarfile \
-archive = pathlib.Path(sys.argv[1]) \
-target = pathlib.Path(sys.argv[2]) \
-with tarfile.open(archive, mode="r:gz") as tf: \
-    member = next(m for m in tf.getmembers() if m.isfile() and m.name.endswith("/tmux")) \
-    with tf.extractfile(member) as src, target.open("wb") as dst: \
-        dst.write(src.read()) \
-target.chmod(0o755) \
-PY
+    python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.endswith("/tmux")); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/tmux.tar.gz" /usr/local/bin/tmux; \
     : "$GOOSE_REFRESH"; \
     curl --fail --location --show-error --silent \
       "https://github.com/aaif-goose/goose/releases/latest/download/goose-${goose_arch}-unknown-linux-gnu.tar.gz" \
       -o "$workdir/goose.tar.gz"; \
-    python3 - "$workdir/goose.tar.gz" /usr/local/bin/goose <<'PY'
-import pathlib, sys, tarfile \
-archive = pathlib.Path(sys.argv[1]) \
-target = pathlib.Path(sys.argv[2]) \
-with tarfile.open(archive, mode="r:gz") as tf: \
-    member = next(m for m in tf.getmembers() if m.isfile() and m.name.endswith("/goose")) \
-    with tf.extractfile(member) as src, target.open("wb") as dst: \
-        dst.write(src.read()) \
-target.chmod(0o755) \
-PY
+    python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.endswith("/goose")); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/goose.tar.gz" /usr/local/bin/goose; \
     mkdir -p /opt/hive; \
     npm --prefix /opt/hive install ws@8.18.3; \
     node --version; \

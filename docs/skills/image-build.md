@@ -11,7 +11,7 @@ optimization_status: draft
 status: active
 dependencies: []
 tags: [containerfile, image, digest, pinning, build]
-description: "Covers deriving from the pinned Project Bluefin FSDK base, which Hive contributor runtime pieces donate-clanker layers on top, digest pinning rules, and which registry tags each ref publishes. Use when editing image/Containerfile, a layer, or publish tagging."
+description: "Covers deriving from the Project Bluefin FSDK base, which Hive contributor runtime pieces donate-clanker layers on top, digest pinning rules, and which registry tags each ref publishes. Use when editing image/Containerfile, a layer, or publish tagging."
 metadata:
   type: procedure
 ---
