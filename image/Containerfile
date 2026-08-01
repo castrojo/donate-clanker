@@ -1,8 +1,30 @@
-ARG HIVE_CONTRIBUTOR_IMAGE=ghcr.io/kubestellar/hive-contributor@sha256:1ccbf9bdf9c5b8fb6b8d5d4b6b19ceb07852fc08f62ffa8cad7d8f00781737a4
+ARG HIVE_CONTRIBUTOR_IMAGE=ghcr.io/kubestellar/hive-contributor:latest
 
 FROM ${HIVE_CONTRIBUTOR_IMAGE}
 
 USER root
+
+# Resolve the latest Hive contributor and latest stable Goose on each
+# explicitly refreshed build.
+ARG GOOSE_REFRESH=0
+RUN set -eu; \
+    : "$GOOSE_REFRESH"; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+      amd64) goose_arch=x86_64 ;; \
+      arm64) goose_arch=aarch64 ;; \
+      *) echo "unsupported architecture for Goose: $arch" >&2; exit 1 ;; \
+    esac; \
+    workdir="$(mktemp -d)"; \
+    trap 'rm -rf "$workdir"' EXIT; \
+    curl --fail --location --show-error --silent \
+      "https://github.com/aaif-goose/goose/releases/latest/download/goose-${goose_arch}-unknown-linux-gnu.tar.gz" \
+      -o "$workdir/goose.tar.gz"; \
+    tar -xzf "$workdir/goose.tar.gz" -C "$workdir"; \
+    install -m 0755 "$workdir/goose" /usr/local/bin/goose; \
+    /usr/local/bin/goose --version; \
+    /usr/local/bin/goose run --help >/dev/null
+
 COPY --chmod=0755 image/compat-entrypoint.sh /usr/local/bin/donate-clanker-entrypoint
 
 USER dev

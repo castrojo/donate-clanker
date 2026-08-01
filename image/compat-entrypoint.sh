@@ -37,6 +37,11 @@ if [ -f "$auth_env" ]; then
 	set +a
 fi
 
+# The Hive relay receives its scoped GitHub credential after the agent starts.
+# An empty initial token is valid; the inherited agent otherwise exits under
+# `set -u` before starting the relay when no host GitHub login is mounted.
+export GH_TOKEN="${GH_TOKEN:-}"
+
 ln -s "$workspace" "$HOME/workspace"
 
 agent_pid=

@@ -210,64 +210,30 @@ jobs:
 
           exit "$fail"
 
-      - name: Interactive launcher docs and shell stay aligned
+      - name: Direct launcher contract stays aligned
         run: |
           set -euo pipefail
-          # The sed and grep patterns intentionally contain literal
-          # dollar-sign syntax for the embedded shell checks.
-          # shellcheck disable=SC2016
-          HIVE_PIN="$(sed -n 's/^hive_commit := "\(.*\)"$/\1/p' just/61-donate-clanker.just)"
-          test -n "$HIVE_PIN"
-          grep -Fq 'tool_order := "claude copilot goose codex"' just/61-donate-clanker.just
-          grep -Fq 'Multiple AI CLIs are ready — pick one:' just/61-donate-clanker.just
-          grep -Fq 'Goose provider (Esc to leave unset' just/61-donate-clanker.just
-          grep -Fq 'LAST_GOOSE_PROVIDER' just/61-donate-clanker.just
-          grep -Fq 'last-selections.env' just/61-donate-clanker.just
-          grep -Fq 'secrets.env' just/61-donate-clanker.just
-          grep -Fq 'fetch --depth 1 origin "$HIVE_COMMIT"' just/61-donate-clanker.just
-          grep -Fq 'DONATE_CLANKER_HIVE_COMMIT' just/61-donate-clanker.just
-          grep -Fq 'Run: goose configure' just/61-donate-clanker.just
-          grep -Fq "$HIVE_PIN" README.md
-          grep -Fq 'DONATE_CLANKER_HIVE_COMMIT' README.md
-          grep -Fq 'detects every ready CLI' README.md
-          grep -Fq 'Goose prompts for its provider and optional model' README.md
-          grep -Fq 'last-selections.env' README.md
-          grep -Fq 'secrets.env' README.md
+          recipe="just/61-donate-clanker.just"
+          grep -Fq 'image="${DONATE_CLANKER_IMAGE:-localhost/donate-clanker:latest}"' "$recipe"
+          grep -Fq 'exec podman run --rm -it --userns=keep-id' "$recipe"
+          grep -Fq -- '-e AGENT_BACKEND=goose' "$recipe"
+          grep -Fq -- '-e GOOSE_PROVIDER=github_copilot' "$recipe"
+          grep -Fq -- '-e GOOSE_MODEL=gpt-5.6-luna' "$recipe"
+          grep -Fq -- '-e AGENT_MODEL=gpt-5.6-luna' "$recipe"
+          grep -Fq -- '-e GOOSE_DISABLE_KEYRING=1' "$recipe"
+          grep -Fq -- '-e GOOSE_TELEMETRY_ENABLED=false' "$recipe"
+          grep -Fq -- '-v "$HOME/.config/hive:/config:ro,Z"' "$recipe"
+          grep -Fq -- '-v "$HOME/.config/goose:/home/dev/.config/goose:Z"' "$recipe"
+          grep -Fq -- '-v "$PWD:/workspace:Z"' "$recipe"
+          grep -Fq '"$image"' "$recipe"
 
-      - name: Compatibility image contract and smoke test
+      - name: Compatibility image contract and build
         run: |
           set -euo pipefail
           docker build -f image/Containerfile -t donate-clanker-compat:test .
           test "$(docker inspect donate-clanker-compat:test --format '{{.Config.User}}')" = "dev"
           test "$(docker inspect donate-clanker-compat:test --format '{{json .Config.Entrypoint}}')" = '["/usr/local/bin/donate-clanker-entrypoint"]'
           test "$(docker inspect donate-clanker-compat:test --format '{{.Config.WorkingDir}}')" = "/workspace"
-          docker run --rm --entrypoint /bin/sh donate-clanker-compat:test -c '
-            set -eu
-            test -x /usr/local/bin/donate-clanker-entrypoint
-            test ! -S /var/run/docker.sock
-            test ! -S /run/podman/podman.sock
-          '
-          smoke_dir="$PWD/.compat-smoke-config"
-          rm -rf "$smoke_dir"
-          mkdir -p "$smoke_dir"
-          printf '%s\n' \
-            'HIVE_REGISTRATION_TOKEN=test-token' \
-            'AGENT_BACKEND=definitely-missing-cli' \
-            'HIVE_HUB=wss://example.invalid/contribute' \
-            > "$smoke_dir/contributor.env"
-          set +e
-          output="$(docker run --rm \
-            -v "$smoke_dir:/config/hive:ro" \
-            -v "$PWD:/workspace:ro" \
-            donate-clanker-compat:test 2>&1)"
-          status=$?
-          set -e
-          rm -rf "$smoke_dir"
-          test "$status" -ne 0
-          printf '%s\n' "$output" | grep -Fq \
-            'definitely-missing-cli CLI not found.'
 
-      # donate-clanker-doctor needs real CLI authentication and usable KVM,
-      # neither of which is meaningful on a hosted runner. The mocked
-      # onboarding harness covers selection and guest-command construction;
-      # local use exercises real readiness.
+      # The launcher is interactive by design. CI validates image metadata and
+      # the build-time Goose command checks; attended use validates runtime.

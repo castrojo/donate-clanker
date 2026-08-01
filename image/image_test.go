@@ -17,8 +17,12 @@ func TestContainerfileIsPortableCompatibilityWrapper(t *testing.T) {
 
 	got := string(data)
 	for _, want := range []string{
-		"ARG HIVE_CONTRIBUTOR_IMAGE=ghcr.io/kubestellar/hive-contributor@sha256:1ccbf9bdf9c5b8fb6b8d5d4b6b19ceb07852fc08f62ffa8cad7d8f00781737a4",
+		"ARG HIVE_CONTRIBUTOR_IMAGE=ghcr.io/kubestellar/hive-contributor:latest",
 		"FROM ${HIVE_CONTRIBUTOR_IMAGE}",
+		"ARG GOOSE_REFRESH=0",
+		"https://github.com/aaif-goose/goose/releases/latest/download/goose-${goose_arch}-unknown-linux-gnu.tar.gz",
+		"install -m 0755 \"$workdir/goose\" /usr/local/bin/goose",
+		"/usr/local/bin/goose run --help >/dev/null",
 		"COPY --chmod=0755 image/compat-entrypoint.sh /usr/local/bin/donate-clanker-entrypoint",
 		"USER dev",
 		"WORKDIR /workspace",
@@ -53,6 +57,7 @@ func TestCompatibilityEntrypointMapsPortableMounts(t *testing.T) {
 		`ln -s "$hive_config" "$HOME/.config/hive"`,
 		`auth_env="$hive_config/gh-auth.env"`,
 		`. "$auth_env"`,
+		`export GH_TOKEN="${GH_TOKEN:-}"`,
 		`ln -s "$workspace" "$HOME/workspace"`,
 		`/usr/local/bin/contributor-agent.sh "$@" &`,
 		`tmux has-session -t contributor`,
