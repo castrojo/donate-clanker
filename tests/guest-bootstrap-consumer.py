@@ -39,5 +39,12 @@ if not all(payload[key] for key in ("registration_token", "backend", "run_id")):
 ack = {"version": 2, "type": "control_ack"}
 client.sendall((json.dumps(ack, separators=(",", ":")) + "\n").encode())
 client.close()
+# Record only whether a credential was present, never its value: the harness
+# needs to prove the VM path hands the agent a Copilot token, and proving it by
+# writing the token to a file would defeat the point.
 with open(marker, "w", encoding="utf-8") as stream:
     stream.write("acknowledged\n")
+    stream.write(
+        "provider_secret:%s\n"
+        % ("present" if payload.get("provider_secret") else "absent")
+    )

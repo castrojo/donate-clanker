@@ -142,6 +142,13 @@ cat >"$fake_bin/pgrep" <<'EOF'
 [[ "${FAKE_PODMAN_OWNED:-0}" == 1 ]] && exit 0
 exit 1
 EOF
+# secret-tool is faked so the harness can never read the developer's real login
+# keyring, and so a scenario can say whether a Copilot credential exists.
+cat >"$fake_bin/secret-tool" <<'EOF'
+#!/usr/bin/env bash
+[[ -n "${FAKE_KEYRING_COPILOT_TOKEN:-}" ]] || exit 1
+printf '{"GITHUB_COPILOT_TOKEN":"%s","OTHER":"ignored"}\n' "$FAKE_KEYRING_COPILOT_TOKEN"
+EOF
 cat >"$fake_bin/curl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -327,7 +334,7 @@ run_recipe() {
     env \
       -u TOOL -u DONATE_CLANKER_VM_RUNNER_IMAGE -u DONATE_CLANKER_HIVE_COMMIT \
       -u AGENT_MODEL -u GOOSE_PROVIDER -u GOOSE_MODEL -u GH_READY \
-      -u GITHUB_COPILOT_TOKEN \
+      -u GITHUB_COPILOT_TOKEN -u FAKE_KEYRING_COPILOT_TOKEN \
       -u TEST_UNAME_M -u TEST_CURL_MODE -u DONATE_CLANKER_TEST_GUM_TTY \
       -u DONATE_CLANKER_NON_INTERACTIVE -u GOOSE_INSTALLED \
       HOME="$home" PATH="$fake_bin:/usr/bin:/bin" TMPDIR="$tmp_root" \
@@ -451,6 +458,39 @@ EOF
   assert_not_contains "super-secret-registration-token" "$OUT"
   assert_eq "$(/usr/bin/find "$tmp_root" -maxdepth 1 -name 'donate-clanker-*' -print -quit)" "" \
     "the per-run directory must be removed on exit"
+
+  begin "VM runner: the Copilot credential rides the bootstrap envelope, not the runner"
+  # The container path already passes this token; without it here the VM path
+  # boots an agent that stalls on a device code nobody is there to type.
+  reset_logs
+  run_recipe donate-clanker GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+    GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o \
+    FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token
+  assert_contains "Copilot credential passed" "$OUT"
+  assert_file_contains "provider_secret:present" "$consumed_marker"
+  # The secret travels over the one-shot socket only: never on a command line,
+  # never in the runner environment, never in this terminal.
+  assert_not_contains "ghu-keyring-token" "$OUT"
+  for log in "$runner_log" "$qemu_log" "$qemu_img_log" "$curl_log" "$find_log" "$gum_log"; do
+    assert_file_not_contains "ghu-keyring-token" "$log"
+  done
+
+  begin "VM runner: a missing Copilot credential is named plainly, not discovered in the guest"
+  reset_logs
+  run_recipe donate-clanker GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+    GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o
+  assert_contains "no Copilot credential found" "$OUT"
+  assert_contains "gh auth token' is NOT a substitute" "$OUT"
+  assert_contains "goose configure" "$OUT"
+  assert_file_contains "provider_secret:absent" "$consumed_marker"
+
+  begin "VM runner: a non-Copilot provider is never handed a Copilot token"
+  reset_logs
+  run_recipe donate-clanker GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+    GUM_PROVIDER_RESPONSE=OpenAI GUM_INPUT_RESPONSE=gpt-test \
+    FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token
+  assert_file_contains "provider_secret:absent" "$consumed_marker"
+  assert_not_contains "ghu-keyring-token" "$OUT"
 else
   begin "VM runner: SKIPPED (/dev/kvm is not usable by this user)"
 fi
@@ -575,6 +615,24 @@ run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
 assert_contains "Copilot credential passed" "$OUT"
 assert_file_contains "--env GITHUB_COPILOT_TOKEN=ghu-test-token" "$runner_log"
 
+begin "donate-clanker-container: the credential is read from the login keyring when unexported"
+reset_logs
+run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o \
+  FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token
+assert_contains "Copilot credential passed" "$OUT"
+assert_file_contains "--env GITHUB_COPILOT_TOKEN=ghu-keyring-token" "$runner_log"
+assert_not_contains "ghu-keyring-token" "$OUT"
+
+begin "donate-clanker-container: no credential says so plainly and names the fix"
+reset_logs
+run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o
+assert_contains "no Copilot credential found" "$OUT"
+assert_contains "gh auth token' is NOT a substitute" "$OUT"
+assert_contains "goose configure" "$OUT"
+assert_file_not_contains "GITHUB_COPILOT_TOKEN=" "$runner_log"
+
 begin "donate-clanker-container: an unobtainable image is one actionable error"
 reset_logs
 run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
@@ -621,6 +679,44 @@ assert_not_contains "claude" "$OUT"
 assert_not_contains "codex" "$OUT"
 assert_eq "$(wc -c <"$qemu_log")" 0 "doctor must not start a VM"
 assert_file_not_contains "run --rm" "$runner_log"
+
+begin "donate-clanker-doctor: reports a usable Copilot credential without printing it"
+reset_logs
+run_recipe donate-clanker-doctor GH_READY=1 TEST_UNAME_M=x86_64 \
+  FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token
+assert_contains "Copilot credential" "$OUT"
+assert_contains "a Copilot credential is available" "$OUT"
+assert_not_contains "ghu-keyring-token" "$OUT"
+assert_eq "$(wc -c <"$qemu_log")" 0 "doctor must not start a VM"
+assert_file_not_contains "run --rm" "$runner_log"
+
+begin "donate-clanker-doctor: a missing Copilot credential is a failed check with the fix"
+reset_logs
+run_recipe donate-clanker-doctor GH_READY=1 TEST_UNAME_M=x86_64
+assert_nonzero_status "$STATUS" "a missing Copilot credential must fail the doctor"
+assert_contains "no Copilot credential is available" "$OUT"
+assert_contains "gh auth token' is NOT a substitute" "$OUT"
+assert_contains "goose configure" "$OUT"
+
+begin "donate-clanker-doctor: a stale AGENT_BACKEND is a warning, and the file is left alone"
+# Harmless (the launcher passes AGENT_BACKEND=goose itself) but misleading to
+# anyone who reads contributor.env, so it is reported, never rewritten.
+reset_logs
+backend_backup="$scratch/contributor.env.bak"
+cp "$home/.config/hive/contributor.env" "$backend_backup"
+sed -i 's/^AGENT_BACKEND=.*/AGENT_BACKEND=copilot/' "$home/.config/hive/contributor.env"
+run_recipe donate-clanker-doctor GH_READY=1 TEST_UNAME_M=x86_64 \
+  FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token
+assert_contains "AGENT_BACKEND=copilot" "$OUT"
+assert_contains "will not touch it" "$OUT"
+assert_file_contains "AGENT_BACKEND=copilot" "$home/.config/hive/contributor.env"
+cp "$backend_backup" "$home/.config/hive/contributor.env"
+
+begin "donate-clanker-doctor: a matching AGENT_BACKEND raises no warning"
+reset_logs
+run_recipe donate-clanker-doctor GH_READY=1 TEST_UNAME_M=x86_64 \
+  FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token
+assert_not_contains "but donate-clanker always launches goose" "$OUT"
 
 # ══ 5/6. Static guarantees read straight off the justfile ════════════════
 begin "static: the launcher can never background a VM or a container"
