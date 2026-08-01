@@ -93,6 +93,8 @@ done
 
 # Agents must not block on Context7: use it opportunistically, fall back local.
 require image/config/local-agent-policy.md \
+  'Use installed global Agent Skills when their descriptions match the task' \
+  'docs/skills/index.json' \
   'inspect local repository evidence first' \
   'Context7 only when current external documentation is useful' \
   'continue with local evidence when Context7 is unavailable'
@@ -104,6 +106,8 @@ require image/entrypoint.sh \
   'GOOSE_DISABLE_KEYRING=1' \
   'CONTEXT_FILE_NAMES' \
   'CLAUDE.md' \
+  'GOOSE_MOIM_MESSAGE_FILE' \
+  '/opt/bluefin/local-agent-policy.md' \
   'core.hooksPath /opt/bluefin/git-hooks' \
   'mcp.context7.com' \
   '/usr/local/bin/contributor-agent.sh "$@" &' \

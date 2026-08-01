@@ -59,6 +59,11 @@ export GOOSE_TELEMETRY_ENABLED="${GOOSE_TELEMETRY_ENABLED:-false}"
 # the model. Naming CLAUDE.md here makes that existing mechanism work.
 export CONTEXT_FILE_NAMES="${CONTEXT_FILE_NAMES:-[\"AGENTS.md\",\".goosehints\",\"CLAUDE.md\"]}"
 
+# Native skills advertise their descriptions at session start, but their bodies
+# load on demand. Keep this small policy in every turn so the agent routes into
+# the global inventory and each cloned repository's own skill catalog.
+export GOOSE_MOIM_MESSAGE_FILE="${GOOSE_MOIM_MESSAGE_FILE:-/opt/bluefin/local-agent-policy.md}"
+
 # --- Git hooks ---------------------------------------------------------------
 #
 # Hive's entrypoint sets user.name, user.email and credential.helper with

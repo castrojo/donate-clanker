@@ -75,9 +75,19 @@ Per-repo skills **cannot** be discovered natively. Goose starts in
 session start. By the time a repository exists, discovery has already run.
 
 The workaround: the agent is instructed to read `docs/skills/index.json`
-after cloning and open only the matching `entry_point`. This is model-driven
-behavior. It is not enforced and it is not guaranteed. Say so plainly rather
-than describing it as automatic discovery.
+after cloning and open only the matching `entry_point`. The image keeps this
+instruction in `/opt/bluefin/local-agent-policy.md` and supplies it through
+`GOOSE_MOIM_MESSAGE_FILE`, so it remains visible on every turn. The agent
+still makes the routing decision; it is not native auto-discovery. Say so
+plainly rather than describing it as automatic discovery.
+
+### Global routing policy
+
+`/opt/bluefin/local-agent-policy.md` is the concise, image-baked prompt for
+every Goose session. It tells the agent to use matching global Agent Skills,
+then consult the cloned repository's catalog. Keep it short: persistent
+instructions consume context on every turn. Override its path only with
+`GOOSE_MOIM_MESSAGE_FILE` when deliberately replacing this global policy.
 
 ### CONTEXT_FILE_NAMES
 
