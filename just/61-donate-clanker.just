@@ -180,15 +180,38 @@ contributor_image_available() {
   podman image exists "$ref" && return 0
   podman manifest inspect "$ref" &>/dev/null
 }
+container_has_owner() {
+  # Every launch here is a foreground 'podman run', so a run that is still
+  # owned has a live client process holding that terminal. When the terminal
+  # dies hard the container keeps running but the client is gone -- that is
+  # an orphan, and nobody is watching it.
+  # Anchored at the start of the command line so a wrapper shell that merely
+  # mentions the container name -- a script, an editor, this check quoted in
+  # someone's terminal -- is never mistaken for the owning client.
+  local name="$1"
+  pgrep -f "^podman run .*--name ${name}( |\$)" >/dev/null 2>&1
+}
 require_no_running_instance() {
-  # --replace reclaims a name left behind by a dead run, but it would also
-  # tear down a session that is still alive in another terminal. A live
-  # agent is never collateral: say so and hand over the attach command.
+  # 'Running' alone does not mean 'in use'. Distinguish the two cases,
+  # because they deserve opposite treatment:
+  #
+  #   owned  -- somebody is working in that terminal right now. Never touch
+  #             it; hand over the attach command instead.
+  #   orphan -- still running, but its terminal is gone, so no one can ever
+  #             reach it or Ctrl-C it again. Reclaim it silently.
+  #
+  # Telling a user to run 'podman rm -f' for the orphan case would smuggle
+  # the stop command back in through the door it was thrown out of. The
+  # launcher cleans up after itself instead.
   local name="$1"
   [[ "$(podman inspect --format '{{.State.Running}}' "$name" 2>/dev/null || echo false)" == "true" ]] || return 0
-  echo "ERROR: ${name} is already running." >&2
+  if ! container_has_owner "$name"; then
+    echo "✓ reclaiming ${name} from a run whose terminal is gone."
+    return 0
+  fi
+  echo "ERROR: ${name} is already running in another terminal." >&2
   echo "  Attach to the live session: podman exec -it ${name} tmux attach -t contributor" >&2
-  echo "  Or press Ctrl-C in the terminal that owns it; if that terminal is gone, run: podman rm -f ${name}" >&2
+  echo "  Or press Ctrl-C in the terminal that owns it." >&2
   return 1
 }
 ensure_contributor_image() {
