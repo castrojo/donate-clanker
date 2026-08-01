@@ -160,7 +160,10 @@ jobs:
           docker build -f image/Containerfile -t donate-clanker-compat:test .
           test "$(docker inspect donate-clanker-compat:test --format '{{.Config.User}}')" = "dev"
           test "$(docker inspect donate-clanker-compat:test --format '{{json .Config.Entrypoint}}')" = '["/usr/local/bin/donate-clanker-entrypoint"]'
-          test "$(docker inspect donate-clanker-compat:test --format '{{.Config.WorkingDir}}')" = "/workspace"
+          # /home/dev, not /workspace: there is no workspace mount any more —
+          # the agent clones what it needs inside the disposable guest, and
+          # Hive's config lives under the image's home.
+          test "$(docker inspect donate-clanker-compat:test --format '{{.Config.WorkingDir}}')" = "/home/dev"
 
       # The launcher is interactive by design. CI validates image metadata and
       # the build-time Goose command checks; attended use validates runtime.

@@ -75,7 +75,8 @@ jobs:
           set -euo pipefail
           test "$(docker inspect donate-clanker-compat:smoke --format '{{.Config.User}}')" = dev
           test "$(docker inspect donate-clanker-compat:smoke --format '{{json .Config.Entrypoint}}')" = '["/usr/local/bin/donate-clanker-entrypoint"]'
-          test "$(docker inspect donate-clanker-compat:smoke --format '{{.Config.WorkingDir}}')" = /workspace
+          # /home/dev, not /workspace: there is no workspace mount any more.
+          test "$(docker inspect donate-clanker-compat:smoke --format '{{.Config.WorkingDir}}')" = /home/dev
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
