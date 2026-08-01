@@ -105,6 +105,7 @@ All configuration is environment variables read at launch.
 | Variable | Purpose |
 |---|---|
 | `DONATE_CLANKER_VM_RUNNER_IMAGE` | Signed, immutable VM runner image reference. Required for VM mode. |
+| `DONATE_CLANKER_CONTRIBUTOR_IMAGE` | Contributor image to run. Defaults to `ghcr.io/projectbluefin/donate-clanker:stable`. See [Published image tags](#published-image-tags). |
 | `DONATE_CLANKER_HIVE_COMMIT` | Override the pinned Hive commit. Defaults to `e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e`. |
 | `GOOSE_PROVIDER` | Goose model provider. Passed through to the guest. |
 | `GOOSE_MODEL` | Goose model name. Optional; passed through to the guest. |
@@ -116,6 +117,36 @@ The launcher keeps a small amount of state under its config directory:
 re-prompted every launch. Neither file is mounted into the guest as a home
 or workspace directory; the VM runner receives only its per-run
 control/overlay directory.
+
+## Published image tags
+
+`.github/workflows/publish-compat-image.yml` publishes the contributor image
+to `ghcr.io/projectbluefin/donate-clanker`:
+
+| Tag | Moves? | Published by | Architectures |
+|---|---|---|---|
+| `stable` | Yes | a `v*.*.*` tag push | `linux/amd64`, `linux/arm64` |
+| `X.Y.Z` and `vX.Y.Z` | No | a `v*.*.*` tag push | `linux/amd64`, `linux/arm64` |
+| `main` | Yes | every push to `main` | `linux/amd64` |
+| `sha-<commit>` | No | every build | as above, per build |
+
+There is no `:latest`, and there never will be — pointing at it fails with
+`manifest unknown`.
+
+`stable` is the released line and the launcher's default; it is not changed
+by merges to `main`. To run the newest `main` build instead — which is what
+you want when a fix has merged but has not been released — override the
+image:
+
+```bash
+DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:main \
+  ujust donate-clanker-container
+```
+
+`main` builds `linux/amd64` only, because emulated `arm64` adds ten-plus
+minutes to every merge. On `arm64`, use `stable` or build
+`image/Containerfile` locally. For a reproducible run, pin
+`sha-<commit>` or an `@sha256:` digest instead of a moving tag.
 
 ## Review context
 

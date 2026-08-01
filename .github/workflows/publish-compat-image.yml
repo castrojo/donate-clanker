@@ -2,13 +2,18 @@ name: publish compatibility image
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*.*.*"
   workflow_dispatch:
 
+# Branch builds are a moving pointer, so a superseded run has nothing left to
+# publish and is cancelled. Tag builds are a release and must never be
+# cancelled: 'refs/tags/*' evaluates this to false.
 concurrency:
   group: publish-compat-image-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
   contents: read
@@ -29,27 +34,44 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Three shapes, decided by the ref alone:
+          #   refs/tags/v*   release: both architectures, version tags, 'stable'
+          #   refs/heads/main  integration: amd64 only, moving ':main'
+          #   anything else    dispatch from a side branch: 'sha-' only
+          release=false
+          main=false
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            release=true
+          elif [[ "${GITHUB_REF}" == refs/heads/main ]]; then
+            main=true
+          fi
           {
             echo "sha=sha-${GITHUB_SHA}"
-            if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            if [[ "$release" == true ]]; then
               version="${GITHUB_REF_NAME#v}"
               printf 'version=%s\n' "$version"
               printf 'version_tag=%s\n' "$GITHUB_REF_NAME"
+              echo 'stable=true'
+              echo 'main=false'
+              # arm64 builds under QEMU emulation; a release can afford it.
+              echo 'platforms=linux/amd64,linux/arm64'
             else
               echo 'version='
               echo 'version_tag='
-            fi
-            if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-              echo 'stable=true'
-            else
               echo 'stable=false'
+              printf 'main=%s\n' "$main"
+              # Native only: every push to main would otherwise pay 10+
+              # minutes of emulated arm64. Releases still publish both.
+              echo 'platforms=linux/amd64'
             fi
             echo "tags<<EOF"
             echo "${IMAGE}:sha-${GITHUB_SHA}"
-            if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            if [[ "$release" == true ]]; then
               echo "${IMAGE}:$version"
               echo "${IMAGE}:$GITHUB_REF_NAME"
               echo "${IMAGE}:stable"
+            elif [[ "$main" == true ]]; then
+              echo "${IMAGE}:main"
             fi
             echo EOF
           } >> "$GITHUB_OUTPUT"
@@ -92,7 +114,7 @@ jobs:
           context: .
           file: image/Containerfile
           push: true
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ steps.tags.outputs.platforms }}
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
             GOOSE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
@@ -117,10 +139,14 @@ jobs:
             echo "\`$IMAGE@$DIGEST\`"
             echo
             echo "Immutable tag: \`$IMAGE:${{ steps.tags.outputs.sha }}\`"
+            echo "Platforms: \`${{ steps.tags.outputs.platforms }}\`"
             if [[ -n "${{ steps.tags.outputs.version }}" ]]; then
               echo "Version tag: \`$IMAGE:${{ steps.tags.outputs.version }}\`"
             fi
             if [[ "${{ steps.tags.outputs.stable }}" == true ]]; then
               echo "Stable alias: \`$IMAGE:stable\` (explicitly enabled by repository policy)"
+            fi
+            if [[ "${{ steps.tags.outputs.main }}" == true ]]; then
+              echo "Main alias: \`$IMAGE:main\` (newest build of the main branch, not a release)"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
