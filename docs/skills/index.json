@@ -1,0 +1,101 @@
+{
+  "generated_at": "2026-07-31",
+  "schema_version": "1.0",
+  "skills": [
+    {
+      "id": "goose-context",
+      "name": "goose-context",
+      "one_line_purpose": "Keep Goose config, Context7, and skills loaded in the guest.",
+      "entry_point": "docs/skills/goose-context.md",
+      "category": "meta",
+      "status": "active",
+      "tags": [
+        "goose",
+        "context7",
+        "skills",
+        "mcp",
+        "config"
+      ],
+      "description": "Explains GOOSE_PATH_ROOT, the Context7 MCP extension, build-time skill generation from index.json, per-repo skill lookup, and CONTEXT_FILE_NAMES. Use when Goose loses its config, misses a skill, or lacks Context7.",
+      "version": "1.0",
+      "last_updated": "2026-07-31",
+      "doc_type": "reference"
+    },
+    {
+      "id": "hive-runtime",
+      "name": "hive-runtime",
+      "one_line_purpose": "Operate inside Hive's tmux, token, and cooldown constraints.",
+      "entry_point": "docs/skills/hive-runtime.md",
+      "category": "ci-ops",
+      "status": "active",
+      "tags": [
+        "hive",
+        "tmux",
+        "runtime",
+        "tokens",
+        "cooldown"
+      ],
+      "description": "Describes Hive's contributor runtime: the tmux session contract, prompt injection, the 15-line output budget, the 55-minute token, and the 168-hour cooldown. Use when debugging an attached session or planning task-length work.",
+      "version": "1.0",
+      "last_updated": "2026-07-31",
+      "doc_type": "reference"
+    },
+    {
+      "id": "image-build",
+      "name": "image-build",
+      "one_line_purpose": "Derive and pin the donate-clanker contributor image safely.",
+      "entry_point": "docs/skills/image-build.md",
+      "category": "ci-ops",
+      "status": "active",
+      "tags": [
+        "containerfile",
+        "image",
+        "digest",
+        "pinning",
+        "build"
+      ],
+      "description": "Covers deriving from the pinned KubeStellar Hive contributor image, what donate-clanker layers on top, and digest pinning rules. Use when editing image/Containerfile, adding a layer, or updating a pinned reference.",
+      "version": "1.0",
+      "last_updated": "2026-07-31",
+      "doc_type": "procedure"
+    },
+    {
+      "id": "launcher",
+      "name": "launcher",
+      "one_line_purpose": "Change donate-clanker just recipes without breaking foreground.",
+      "entry_point": "docs/skills/launcher.md",
+      "category": "ci-ops",
+      "status": "active",
+      "tags": [
+        "just",
+        "launcher",
+        "qemu",
+        "podman",
+        "foreground"
+      ],
+      "description": "Covers the four donate-clanker just recipes, the foreground guarantee, and the VM versus container-only modes. Use when editing just/61-donate-clanker.just, adding a recipe, or debugging a launch that exits early.",
+      "version": "1.0",
+      "last_updated": "2026-07-31",
+      "doc_type": "runbook"
+    },
+    {
+      "id": "pr-workflow",
+      "name": "pr-workflow",
+      "one_line_purpose": "Open donate-clanker pull requests that merge cleanly.",
+      "entry_point": "docs/skills/pr-workflow.md",
+      "category": "meta",
+      "status": "active",
+      "tags": [
+        "git",
+        "pullrequest",
+        "conventional",
+        "hooks",
+        "branches"
+      ],
+      "description": "Defines Conventional Commit PR titles under squash-only merging, the clanker/<task_id> branch convention, the Hive-Task-Id trailer, and why git hooks are ergonomics not enforcement. Use before branching, committing, or opening a PR.",
+      "version": "1.0",
+      "last_updated": "2026-07-31",
+      "doc_type": "policy"
+    }
+  ]
+}

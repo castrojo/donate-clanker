@@ -1,11 +1,30 @@
-ARG HIVE_CONTRIBUTOR_IMAGE=ghcr.io/kubestellar/hive-contributor:latest
+# donate-clanker contributor image.
+#
+# Derives from Hive's contributor image and layers Bluefin review context on
+# top. Hive documents HIVE_CONTRIBUTOR_IMAGE as the supported customization
+# seam, so a derived image is the intended extension point -- but Hive itself
+# pins nothing (its launcher defaults to :latest against a moving v2 branch),
+# so we pin by digest here and let Renovate move it deliberately.
+#
+# Digest below is ghcr.io/kubestellar/hive-contributor:latest as resolved on
+# 2026-07-31. Renovate keeps it current; to re-resolve by hand (the package is
+# public, so no registry login is needed):
+#
+#   TOKEN=$(curl -s "https://ghcr.io/token?scope=repository:kubestellar/hive-contributor:pull&service=ghcr.io" \
+#     | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+#   curl -sI -H "Authorization: Bearer $TOKEN" \
+#     -H "Accept: application/vnd.oci.image.index.v1+json" \
+#     -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+#     -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+#     "https://ghcr.io/v2/kubestellar/hive-contributor/manifests/latest" \
+#     | tr -d '\r' | grep -i '^docker-content-digest'
+ARG HIVE_CONTRIBUTOR_IMAGE=ghcr.io/kubestellar/hive-contributor@sha256:769a8a9c83bb6f03a82edd4986d9b51ef9541a30c3a4ad5998e942c326018eff
 
 FROM ${HIVE_CONTRIBUTOR_IMAGE}
 
 USER root
 
-# Resolve the latest Hive contributor and latest stable Goose on each
-# explicitly refreshed build.
+# Resolve the latest stable Goose on each explicitly refreshed build.
 ARG GOOSE_REFRESH=0
 RUN set -eu; \
     : "$GOOSE_REFRESH"; \
@@ -25,8 +44,40 @@ RUN set -eu; \
     /usr/local/bin/goose --version; \
     /usr/local/bin/goose run --help >/dev/null
 
-COPY --chmod=0755 image/compat-entrypoint.sh /usr/local/bin/donate-clanker-entrypoint
+# Controlled Goose configuration. This is NOT ~/.config/goose/config.yaml:
+# Hive's entrypoint overwrites that file at every startup, so the entrypoint
+# points Goose here with GOOSE_PATH_ROOT instead.
+# GOOSE_PATH_ROOT relocates Goose's config AND its data/state roots, so the
+# whole tree must be writable by the runtime user or Goose fails to open its
+# log directory on startup.
+RUN mkdir -p /opt/bluefin/goose/config /opt/bluefin/goose/data /opt/bluefin/goose/state \
+    && chown -R dev:dev /opt/bluefin/goose
+COPY --chown=dev:dev image/config/goose.yaml /opt/bluefin/goose/config/config.yaml
+COPY image/config/local-agent-policy.md /opt/bluefin/local-agent-policy.md
+
+# Git hooks, wired via a global core.hooksPath by the entrypoint. Ergonomics
+# only -- `git commit --no-verify` bypasses every one of them.
+COPY --chmod=0755 image/git-hooks/ /opt/bluefin/git-hooks/
+
+# Project the org's skill documents into Goose's native Agent Skills layout.
+#
+# projectbluefin keeps skills as docs/skills/<id>.md plus a generated
+# index.json; Goose only discovers directories containing SKILL.md, under fixed
+# roots. Generating at build time means every session sees the whole inventory
+# (name + description only, ~2k tokens) with bodies loaded on demand, and no
+# org repository has to change.
+ARG SKILLS_INDEX=https://raw.githubusercontent.com/projectbluefin/common/main/docs/skills/index.json
+ARG SKILLS_REFRESH=0
+COPY --chmod=0755 scripts/generate-skills.py /usr/local/libexec/donate-clanker-generate-skills
+RUN set -eu; \
+    : "$SKILLS_REFRESH"; \
+    /usr/local/libexec/donate-clanker-generate-skills \
+      --index "$SKILLS_INDEX" \
+      --out /home/dev/.agents/skills; \
+    chown -R dev:dev /home/dev/.agents
+
+COPY --chmod=0755 image/entrypoint.sh /usr/local/bin/donate-clanker-entrypoint
 
 USER dev
-WORKDIR /workspace
+WORKDIR /home/dev
 ENTRYPOINT ["/usr/local/bin/donate-clanker-entrypoint"]

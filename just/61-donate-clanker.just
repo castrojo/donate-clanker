@@ -2,11 +2,42 @@
 # /usr/share/ublue-os/just/61-donate-clanker.just (not done yet — see below).
 #
 # This is the ONLY file that ships/installs. Everything donate-clanker needs
-# (VM lifecycle, host CLI detection) is embedded
-# below as private (_-prefixed) recipes and variables, on purpose: a user
-# browsing the image or this repo should find one just-recipe file and the
-# three public commands it exposes, not a scattered bin/ of standalone
-# scripts they might stumble into and run directly out of context.
+# (host preflight, Goose selection, VM lifecycle, container lifecycle) is
+# embedded below as private ('_'-prefixed variables and shared shell
+# functions) on purpose: a user browsing the image or this repo should find
+# one just-recipe file and the commands it exposes, not a scattered bin/ of
+# standalone scripts they might stumble into and run directly out of context.
+#
+# Public commands:
+#   donate-clanker            Boot the pinned QEMU VM in the FOREGROUND and
+#                             hand the terminal to the contributor agent.
+#   donate-clanker-container  Run only the contributor container — no VM —
+#                             for quick local development. Also foreground.
+#   donate-clanker-doctor     Read-only preflight diagnostics. Starts nothing.
+#   donate-clanker-stop       Safety net that removes a stale container.
+#
+# ─────────────────────────────────────────────────────────────────────────
+# FOREGROUND GUARANTEE
+#
+# The VM and the container ALWAYS run in the foreground of the terminal that
+# launched them. There is no '&', no 'nohup', no 'setsid', no 'podman run
+# -d', and no '--detach' on any launch path in this file, and there never
+# should be. Two reasons, both non-negotiable:
+#
+#   1. A human must be able to steer the agent. donate-clanker is an
+#      attended tool: you watch the session, you interrupt it, you type into
+#      it. A backgrounded agent is an agent nobody is supervising.
+#   2. Ctrl-C must stop it. Signals have to reach the QEMU process or the
+#      container directly, so the run dies with the terminal. No daemon, no
+#      systemd unit, no orphaned state to reap later.
+#
+# Concretely: the final process of every launch path is either 'exec'd (so
+# it replaces this shell and inherits its signals) or is the last foreground
+# command whose exit status is propagated verbatim. The only background job
+# in this file is the short-lived, host-local bootstrap socket server, which
+# is reaped by an EXIT/INT/TERM trap and never outlives the run.
+# tests/just-onboarding.sh enforces this by grepping the launch lines.
+# ─────────────────────────────────────────────────────────────────────────
 #
 # Bluefin's root Justfile (/usr/share/ublue-os/just/00-entry.just) imports a
 # fixed list of files, NOT a glob. Getting this file under
@@ -16,19 +47,20 @@
 #
 # For local/personal use right now, run this file directly with plain
 # 'just --justfile', or import it from your own personal Justfile — see
-# README "Installing this into your own setup" for the copy-paste
-# commands. Persistent state is limited to launcher configuration; the VM
-# runner receives only its per-run control/overlay directory, never a
-# workspace or host home/configuration mount.
+# README "Installing this into your own setup" for the copy-paste commands.
+# Persistent state is limited to launcher configuration; the VM runner
+# receives only its per-run control/overlay directory, never a workspace or
+# host home/configuration mount.
 
-# Deterministic detection order for every supported CLI. The launcher selects
-# the only ready tool silently, or asks the user to choose when several are
-# ready.
-tool_order := "claude copilot goose codex"
+# Goose is the only agent backend. There is no local inference, no model
+# profile catalogue, and no multi-CLI auto-detection: one backend means one
+# readiness check and one fix-it message when it fails.
+tool_order := "goose"
 
-# TOOL is read from the environment so 'TOOL=copilot ujust donate-clanker'
+# TOOL is read from the environment so 'TOOL=goose ujust donate-clanker'
 # works as documented — 'just' recipe parameters are positional, not
-# KEY=VALUE, so it cannot be a plain recipe parameter.
+# KEY=VALUE, so it cannot be a plain recipe parameter. Any value other than
+# 'goose' is a hard error rather than a silent fallback.
 tool_env := env("TOOL", "")
 hive_repo_url := "https://github.com/kubestellar/hive"
 # origin/v2 via `git ls-remote --heads https://github.com/kubestellar/hive v2`
@@ -37,11 +69,15 @@ hive_commit := "e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e"
 vm_runner_image := env("DONATE_CLANKER_VM_RUNNER_IMAGE", "")
 vm_raw_image := env("DONATE_CLANKER_VM_RAW", "")
 vm_version := env("DONATE_CLANKER_VM_VERSION", "25.08.14")
+# The derived KubeStellar Hive contributor image. Used by
+# donate-clanker-container; the VM path gets the same image from inside the
+# guest, so this only matters for local development.
+contributor_image := env("DONATE_CLANKER_CONTRIBUTOR_IMAGE", "ghcr.io/projectbluefin/donate-clanker:latest")
 
 # Shared bash, 'eval''d at the top of every recipe script that needs it:
-# host CLI detection + the selected tool's container mounts. Keeping this in
-# one place instead of duplicating it per-recipe is the only concession to
-# DRY here — it never leaves the Justfile as a file of its own.
+# host preflight, Goose selection, and the pinned Hive checkout. Keeping
+# this in one place instead of duplicating it per-recipe is the only
+# concession to DRY here — it never leaves the Justfile as a file of its own.
 shared_functions := '''
 GITHUB_LOGIN_COMMAND="gh auth login --web --hostname github.com --scopes repo,read:org"
 
@@ -58,61 +94,217 @@ print_missing_hive_setup_guidance() {
 }
 tool_installed() {
   case "$1" in
-    claude)  command -v claude &>/dev/null ;;
-    copilot) command -v gh &>/dev/null ;;
-    goose)   command -v goose &>/dev/null ;;
-    codex)   command -v codex &>/dev/null ;;
-    *)       return 1 ;;
+    goose) command -v goose &>/dev/null ;;
+    *)     return 1 ;;
   esac
 }
 tool_authenticated() {
+  # An explicit GOOSE_PROVIDER counts as configured because the launcher
+  # passes it straight through to the guest; otherwise Goose's own config
+  # must name a provider. A GitHub login alone is deliberately NOT enough:
+  # Goose still needs a provider selected before it can talk to a model.
   case "$1" in
-    claude)  [[ -d "${HOME}/.claude" || -f "${HOME}/.claude.json" ]] ;;
-    copilot) gh auth status --hostname github.com &>/dev/null ;;
-    goose)   [[ -n "${GOOSE_PROVIDER:-}" || -f "${HOME}/.config/goose/config.yaml" ]] || { command -v gh &>/dev/null && gh auth status --hostname github.com &>/dev/null; } ;;
-    codex)   [[ -n "${OPENAI_API_KEY:-}" || -d "${HOME}/.codex" ]] ;;
-    *)       return 1 ;;
+    goose)
+      [[ -n "${GOOSE_PROVIDER:-}" ]] && return 0
+      local cfg="${HOME}/.config/goose/config.yaml"
+      [[ -s "$cfg" ]] && grep -Eq '^[[:space:]]*(GOOSE_PROVIDER|provider):[[:space:]]*[^[:space:]#]' "$cfg"
+      ;;
+    *) return 1 ;;
   esac
 }
 tool_fixit_hint() {
   case "$1" in
-    claude)  echo "Run: claude   (then type /login and follow the prompts)" ;;
-    copilot) echo "Run: ${GITHUB_LOGIN_COMMAND}" ;;
-    goose)   echo "Run: goose configure, select GitHub Copilot, and complete the device flow." ;;
-    codex)   echo "Run: codex login   (or: export OPENAI_API_KEY=...)" ;;
-    *)       echo "Unknown tool: $1" ;;
+    goose) echo "Run: goose configure, select GitHub Copilot, and complete the device flow." ;;
+    *)     echo "Unknown tool: $1" ;;
   esac
 }
 tool_install_hint() {
   case "$1" in
-    claude)  echo "Install: npm i -g @anthropic-ai/claude-code" ;;
-    copilot) echo "Install: see https://cli.github.com" ;;
-    goose)   echo "Install: https://github.com/block/goose/releases" ;;
-    codex)   echo "Install: npm i -g @openai/codex" ;;
-    *)       echo "" ;;
+    goose) echo "Install: https://github.com/block/goose/releases" ;;
+    *)     echo "" ;;
   esac
 }
-copilot_live_models() {
-  # Queries the same model-listing endpoint the Copilot CLI/extensions use,
-  # so the picker always reflects what's actually available to this
-  # account today rather than a list baked into this file that goes stale.
-  # Best-effort: any missing dependency or request failure just returns
-  # non-zero so the caller can fall back to free-text input.
-  command -v curl &>/dev/null && command -v jq &>/dev/null && command -v gh &>/dev/null || return 1
-  local tok
-  tok="$(gh auth token 2>/dev/null)" || return 1
-  [[ -n "$tok" ]] || return 1
-  curl -fsS --max-time 5 \
-    -H "Authorization: Bearer ${tok}" \
-    -H "Editor-Version: donate-clanker/1.0" \
-    -H "Copilot-Integration-Id: vscode-chat" \
-    https://api.githubcopilot.com/models 2>/dev/null \
-    | jq -r '.data[]? | select(.model_picker_enabled == true and .capabilities.type == "chat") | .id' 2>/dev/null
+require_goose_backend() {
+  # TOOL exists only for compatibility with the documented invocation; the
+  # single supported value is the single supported backend.
+  local requested="${1:-}"
+  [[ -z "$requested" || "$requested" == "goose" ]] && return 0
+  echo "ERROR: TOOL=${requested} is not supported — donate-clanker runs Goose only." >&2
+  echo "  Unset TOOL, or pass TOOL=goose." >&2
+  return 1
 }
-is_bluefin_dx() {
-  [[ "${DONATE_CLANKER_TEST_BLUEFIN_DX:-}" == "1" ]] && return 0
-  [[ -r /usr/share/ublue-os/image-info ]] &&
-    grep -Eq '^IMAGE_NAME="?bluefin-dx"?$' /usr/share/ublue-os/image-info
+preflight_agent() {
+  # Exactly one ERROR line per failure, each with the command that fixes it.
+  tool_installed goose || {
+    echo "ERROR: goose is not installed." >&2
+    echo "  $(tool_install_hint goose)" >&2
+    return 1
+  }
+  github_auth_ready || {
+    echo "ERROR: GitHub CLI is not authenticated against github.com." >&2
+    echo "  Run: ${GITHUB_LOGIN_COMMAND}" >&2
+    return 1
+  }
+  tool_authenticated goose || {
+    echo "ERROR: Goose has no usable provider configuration." >&2
+    echo "  $(tool_fixit_hint goose)" >&2
+    return 1
+  }
+}
+gum_can_prompt() {
+  command -v gum &>/dev/null || return 1
+  [[ "${DONATE_CLANKER_TEST_GUM_TTY:-}" == "1" ]] || [[ -t 0 ]]
+}
+load_last_selections() {
+  # Only the Goose provider/model survive between runs — there is nothing
+  # else left to remember now that Goose is the only backend.
+  LAST_GOOSE_PROVIDER="" LAST_GOOSE_MODEL=""
+  [[ -f "${LAST_FILE:-}" ]] && source "$LAST_FILE"
+  return 0
+}
+goose_provider_label() {
+  case "$1" in
+    anthropic)  echo "Anthropic" ;;
+    openai)     echo "OpenAI" ;;
+    google)     echo "Google" ;;
+    ollama)     echo "Ollama" ;;
+    openrouter) echo "OpenRouter" ;;
+    *)          echo "GitHub Copilot" ;;
+  esac
+}
+goose_provider_id() {
+  case "$1" in
+    "GitHub Copilot") echo "github_copilot" ;;
+    Anthropic)        echo "anthropic" ;;
+    OpenAI)           echo "openai" ;;
+    Google)           echo "google" ;;
+    Ollama)           echo "ollama" ;;
+    OpenRouter)       echo "openrouter" ;;
+    *)                echo "$1" ;;
+  esac
+}
+resolve_goose_selection() {
+  # Env wins, then the interactive pickers, then last run's choice, then
+  # GitHub Copilot. Sets GOOSE_PROVIDER/GOOSE_MODEL for the caller.
+  GOOSE_PROVIDER="${GOOSE_PROVIDER:-}"
+  GOOSE_MODEL="${GOOSE_MODEL:-}"
+  load_last_selections
+  if gum_can_prompt; then
+    if [[ -z "$GOOSE_PROVIDER" ]]; then
+      GOOSE_PROVIDER="$(printf '%s\n' 'GitHub Copilot' Anthropic OpenAI Google Ollama OpenRouter | gum choose --selected="$(goose_provider_label "$LAST_GOOSE_PROVIDER")" --header "Goose provider (defaults to GitHub Copilot):")"
+      GOOSE_PROVIDER="$(goose_provider_id "$GOOSE_PROVIDER")"
+    fi
+    if [[ -z "$GOOSE_MODEL" ]]; then
+      GOOSE_MODEL="$(gum input --value "${LAST_GOOSE_MODEL}" --placeholder "e.g. claude-3-5-sonnet — blank for goose's default" --header "Goose model (optional):")"
+    fi
+  fi
+  [[ -n "$GOOSE_PROVIDER" ]] || GOOSE_PROVIDER="${LAST_GOOSE_PROVIDER:-github_copilot}"
+  return 0
+}
+persist_goose_selection() {
+  # last-selections.env is the picker memory; secrets.env holds the values
+  # that are handed to the guest, rewritten from scratch each run so a stale
+  # provider or model can never leak into a later launch.
+  mkdir -p "$CFG_DIR"
+  {
+    printf 'LAST_GOOSE_PROVIDER=%q\n' "$GOOSE_PROVIDER"
+    printf 'LAST_GOOSE_MODEL=%q\n' "$GOOSE_MODEL"
+  } > "$LAST_FILE"
+
+  touch "${CFG_DIR}/secrets.env"
+  chmod 600 "${CFG_DIR}/secrets.env"
+  grep -v -E '^(GOOSE_PROVIDER|GOOSE_MODEL|AGENT_MODEL)=' "${CFG_DIR}/secrets.env" > "${CFG_DIR}/secrets.env.tmp" 2>/dev/null || true
+  mv "${CFG_DIR}/secrets.env.tmp" "${CFG_DIR}/secrets.env"
+  [[ -n "$GOOSE_PROVIDER" ]] && echo "GOOSE_PROVIDER=${GOOSE_PROVIDER}" >> "${CFG_DIR}/secrets.env"
+  [[ -n "$GOOSE_MODEL" ]] && echo "GOOSE_MODEL=${GOOSE_MODEL}" >> "${CFG_DIR}/secrets.env"
+  chmod 600 "${CFG_DIR}/secrets.env"
+  return 0
+}
+normalize_git_remote() {
+  local value="$1"
+  value="${value#ssh://}"
+  value="${value%.git}"
+  value="${value%/}"
+  if [[ "$value" =~ ^git@github\.com:(.+)$ ]]; then
+    printf 'https://github.com/%s\n' "${BASH_REMATCH[1]}"
+  elif [[ "$value" =~ ^git@github\.com/(.+)$ ]]; then
+    printf 'https://github.com/%s\n' "${BASH_REMATCH[1]}"
+  else
+    printf '%s\n' "$value"
+  fi
+}
+prepare_pinned_hive_checkout() {
+  local existing_origin actual_commit
+  [[ "$HIVE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
+    echo "ERROR: DONATE_CLANKER_HIVE_COMMIT must be a full 40-character commit SHA; branch names like v2 are not allowed." >&2
+    return 1
+  }
+  if [[ -d "${HIVE_SRC_DIR}/.git" ]]; then
+    existing_origin="$(git -C "$HIVE_SRC_DIR" remote get-url origin 2>/dev/null || true)"
+    [[ -n "$existing_origin" ]] || {
+      echo "ERROR: ${HIVE_SRC_DIR} is missing an origin remote; move it aside or delete it so donate-clanker can recreate the pinned checkout." >&2
+      return 1
+    }
+    if [[ "$(normalize_git_remote "$existing_origin")" != "$(normalize_git_remote "$HIVE_REPO_URL")" ]]; then
+      echo "ERROR: ${HIVE_SRC_DIR} points at ${existing_origin}, expected ${HIVE_REPO_URL}." >&2
+      echo "  Move it aside or delete it so donate-clanker can recreate the pinned checkout." >&2
+      return 1
+    fi
+    [[ -z "$(git -C "$HIVE_SRC_DIR" status --porcelain 2>/dev/null)" ]] || {
+      echo "ERROR: ${HIVE_SRC_DIR} has local changes; refusing to execute an unverified Hive checkout." >&2
+      echo "  Use a clean checkout or delete it so donate-clanker can recreate the pinned source." >&2
+      return 1
+    }
+  else
+    if [[ -e "$HIVE_SRC_DIR" && ! -d "$HIVE_SRC_DIR" ]]; then
+      echo "ERROR: ${HIVE_SRC_DIR} exists and is not a directory." >&2
+      return 1
+    fi
+    if [[ -d "$HIVE_SRC_DIR" && -n "$(ls -A "$HIVE_SRC_DIR" 2>/dev/null)" ]]; then
+      echo "ERROR: ${HIVE_SRC_DIR} exists but is not a managed git checkout." >&2
+      echo "  Move it aside or choose an empty directory before continuing." >&2
+      return 1
+    fi
+    mkdir -p "$HIVE_SRC_DIR"
+    git init --quiet "$HIVE_SRC_DIR"
+    git -C "$HIVE_SRC_DIR" remote add origin "$HIVE_REPO_URL"
+  fi
+
+  echo "Preparing kubestellar/hive @ ${HIVE_COMMIT:0:12} -> ${HIVE_SRC_DIR}..."
+  git -C "$HIVE_SRC_DIR" fetch --depth 1 origin "$HIVE_COMMIT"
+  git -C "$HIVE_SRC_DIR" checkout --detach -f FETCH_HEAD
+  actual_commit="$(git -C "$HIVE_SRC_DIR" rev-parse HEAD)"
+  [[ "$actual_commit" == "$HIVE_COMMIT" ]] || {
+    echo "ERROR: expected Hive commit ${HIVE_COMMIT}, got ${actual_commit}." >&2
+    return 1
+  }
+}
+ensure_hive_contributor_env() {
+  # Upstream 'just contribute-setup goose' writes this file. It is the only
+  # host state the guest genuinely needs, and Hive owns its format.
+  HIVE_CONTRIBUTOR_ENV="${HOME}/.config/hive/contributor.env"
+  [[ -f "$HIVE_CONTRIBUTOR_ENV" ]] && return 0
+  if [[ "${DONATE_CLANKER_NON_INTERACTIVE:-}" == "true" ]]; then
+    print_missing_hive_setup_guidance "$HIVE_CONTRIBUTOR_ENV" "non-interactive mode cannot answer the upstream prompts" goose "$HIVE_COMMIT"
+    return 1
+  fi
+  if ! can_run_attended_hive_setup; then
+    print_missing_hive_setup_guidance "$HIVE_CONTRIBUTOR_ENV" "stdin/stdout/stderr are not attached to a terminal" goose "$HIVE_COMMIT"
+    return 1
+  fi
+  echo "Upstream contribute-setup hasn't run yet (no ${HIVE_CONTRIBUTOR_ENV})."
+  for cmd in just gh git; do
+    command -v "$cmd" &>/dev/null || { echo "ERROR: '${cmd}' is required to run contribute-setup." >&2; return 1; }
+  done
+  prepare_pinned_hive_checkout || return 1
+  echo "Running upstream pinned setup: just contribute-setup goose"
+  just --working-directory "$HIVE_SRC_DIR" --justfile "$HIVE_SRC_DIR/Justfile" contribute-setup goose
+  [[ -f "$HIVE_CONTRIBUTOR_ENV" ]] || { echo "ERROR: contribute-setup ran but ${HIVE_CONTRIBUTOR_ENV} still missing." >&2; return 1; }
+  echo "✓ Upstream contribute-setup complete."
+}
+read_hive_value() {
+  local key="$1"
+  awk -F= -v wanted="$key" '$1 == wanted {sub(/^[^=]*=/, ""); print; exit}' "$HIVE_CONTRIBUTOR_ENV"
 }
 ensure_vm_runner() {
   command -v podman &>/dev/null || {
@@ -138,24 +330,71 @@ vm_host_arch() {
   esac
 }
 vm_firmware() {
-  local arch="$1" name firmware
+  local arch="$1" name dir firmware
   command -v find &>/dev/null || return 1
+
+  # Search brew's prefix first. On an immutable host (Bluefin, Aurora) the
+  # distro's edk2/OVMF package usually is not layered, but Homebrew's `qemu`
+  # formula ships firmware alongside the emulator it will actually run --
+  # so if qemu came from brew, its matching firmware is already present.
+  # Also search next to whichever qemu is on PATH, for the same reason.
+  local -a roots=()
+  if command -v brew &>/dev/null; then
+    roots+=("$(brew --prefix 2>/dev/null)/share/qemu")
+  fi
+  if command -v "qemu-system-${arch}" &>/dev/null; then
+    roots+=("$(dirname "$(dirname "$(command -v "qemu-system-${arch}")")")/share/qemu")
+  fi
+  roots+=(/usr/share /usr/lib /var/home/"${USER}"/.local/share/donate-clanker/firmware)
+
+  # Both naming schemes are in the wild: distro packages use OVMF_CODE*.fd,
+  # while qemu's own bundled firmware uses edk2-<arch>-code.fd.
+  local -a names=()
   case "$arch" in
-    x86_64)
-      for name in OVMF_CODE.fd OVMF_CODE_4M.fd; do
-        firmware="$(find /usr/share /usr/lib -name "$name" -print -quit 2>/dev/null)"
-        [[ -n "$firmware" ]] && { printf '%s\n' "$firmware"; return 0; }
-      done
-      ;;
-    aarch64)
-      for name in AAVMF_CODE.fd QEMU_EFI.fd; do
-        firmware="$(find /usr/share /usr/lib -name "$name" -print -quit 2>/dev/null)"
-        [[ -n "$firmware" ]] && { printf '%s\n' "$firmware"; return 0; }
-      done
-      ;;
+    x86_64)  names=(edk2-x86_64-code.fd OVMF_CODE.fd OVMF_CODE_4M.fd OVMF.fd) ;;
+    aarch64) names=(edk2-aarch64-code.fd AAVMF_CODE.fd QEMU_EFI.fd) ;;
     *) return 1 ;;
   esac
+
+  for dir in "${roots[@]}"; do
+    [[ -d "$dir" ]] || continue
+    for name in "${names[@]}"; do
+      # -L is required: Homebrew symlinks share/qemu into ../Cellar/qemu/<v>/,
+      # and find does not follow symlinks without it.
+      firmware="$(find -L "$dir" -name "$name" -print -quit 2>/dev/null)"
+      [[ -n "$firmware" ]] && { printf '%s\n' "$firmware"; return 0; }
+    done
+  done
   return 1
+}
+vm_firmware_vars() {
+  # Split edk2/OVMF firmware is a pflash PAIR: a read-only CODE image plus a
+  # writable VARS image. `-bios` cannot load these; they must be attached as
+  # pflash units 0 and 1. Given the CODE path, locate its VARS template.
+  # Note x86_64 uses the i386 vars image in QEMU's own firmware tree.
+  local code="$1" dir base vars
+  dir="$(dirname "$code")"
+  base="$(basename "$code")"
+  case "$base" in
+    edk2-x86_64-code.fd|edk2-i386-code.fd|edk2-x86_64-secure-code.fd) vars="edk2-i386-vars.fd" ;;
+    edk2-aarch64-code.fd|edk2-arm-code.fd)                            vars="edk2-arm-vars.fd" ;;
+    OVMF_CODE.fd|OVMF_CODE_4M.fd)                                     vars="OVMF_VARS.fd" ;;
+    AAVMF_CODE.fd)                                                    vars="AAVMF_VARS.fd" ;;
+    *) return 1 ;;
+  esac
+  [[ -f "${dir}/${vars}" ]] && { printf '%s\n' "${dir}/${vars}"; return 0; }
+  # OVMF_CODE_4M.fd pairs with OVMF_VARS_4M.fd on some distributions.
+  [[ "$vars" == OVMF_VARS.fd && -f "${dir}/OVMF_VARS_4M.fd" ]] && {
+    printf '%s\n' "${dir}/OVMF_VARS_4M.fd"; return 0;
+  }
+  return 1
+}
+vm_firmware_hint() {
+  # brew is the one install path that works without layering or a reboot on an
+  # immutable host, and its qemu formula carries the firmware with it.
+  echo "  Install QEMU (which bundles UEFI firmware) with: brew install qemu" >&2
+  echo "  Already have brew qemu? Re-run 'brew reinstall qemu' to restore its share/qemu firmware." >&2
+  echo "  Or layer the distro package: sudo rpm-ostree install edk2-ovmf   (needs a reboot)" >&2
 }
 ensure_vm_host() {
   local arch qemu
@@ -207,251 +446,39 @@ fetch_vm_raw() {
   }
   printf '%s\n' "$raw"
 }
-gum_can_prompt() {
-  command -v gum &>/dev/null || return 1
-  [[ "${DONATE_CLANKER_TEST_GUM_TTY:-}" == "1" ]] || [[ -t 0 ]]
-}
 '''
 
 # Start donating clanker cycles to the hive — foreground, Ctrl-C to stop.
-# TOOL defaults to the supported auto-detect path: goose, but only when its
-# ordered readiness checks pass. Legacy backends remain available only via
-# explicit TOOL=<name>.
+# Goose is the only backend; TOOL=goose is accepted, anything else is an
+# error. The VM boots in the foreground and the terminal belongs to the
+# agent until you stop it.
 # Usage: ujust donate-clanker
 #        TOOL=goose ujust donate-clanker
 donate-clanker:
     #!/usr/bin/env bash
     set -euo pipefail
     {{shared_functions}}
-    TOOL_ORDER="{{tool_order}}"
     TOOL="{{tool_env}}"
 
     STATE_DIR="${HOME}/.local/state/donate-clanker"
     CFG_DIR="${HOME}/.config/donate-clanker"
+    LAST_FILE="${CFG_DIR}/last-selections.env"
     HIVE_SRC_DIR="${STATE_DIR}/hive-src"
     HIVE_REPO_URL="{{hive_repo_url}}"
     HIVE_COMMIT="${DONATE_CLANKER_HIVE_COMMIT:-{{hive_commit}}}"
     HIVE_COMMIT="${HIVE_COMMIT,,}"
     mkdir -p "${STATE_DIR}" "${CFG_DIR}"
 
-    # Remembers the last TOOL/provider/model choices made through the interactive
-    # pickers below, so re-running donate-clanker offers them back as the
-    # pre-selected default instead of starting blank every time.
-    LAST_FILE="${CFG_DIR}/last-selections.env"
-    LAST_TOOL="" LAST_MODEL_CLAUDE="" LAST_MODEL_COPILOT="" LAST_MODEL_CODEX="" LAST_GOOSE_PROVIDER="" LAST_GOOSE_MODEL=""
-    [[ -f "$LAST_FILE" ]] && source "$LAST_FILE"
+    # ── 0. Preflight: one backend, one readiness check, one fix-it line. ──
+    require_goose_backend "$TOOL"
+    preflight_agent
 
-    # ── 0. Pick TOOL: auto-detect; if exactly one CLI is ready, use it
-    #      silently; if several are ready, let the user pick with gum.
-    #      An explicit TOOL= always wins and skips detection entirely. ──
-    if [[ -z "$TOOL" ]]; then
-      READY=()
-      for t in ${TOOL_ORDER}; do
-        tool_installed "$t" && tool_authenticated "$t" && READY+=("$t")
-      done
-      case "${#READY[@]}" in
-        0)
-          echo "ERROR: no supported AI CLI is both installed and authenticated." >&2
-          for t in ${TOOL_ORDER}; do echo "  ${t}: $(tool_install_hint "$t")" >&2; done
-          echo "Then re-run, or pass explicitly: TOOL=<name> ujust donate-clanker" >&2
-          exit 1
-          ;;
-        1)
-          TOOL="${READY[0]}"
-          echo "TOOL not set — auto-detected: ${TOOL}"
-          ;;
-        *)
-          if gum_can_prompt; then
-            TOOL="$(printf '%s\n' "${READY[@]}" | gum choose --selected="${LAST_TOOL}" --header "Multiple AI CLIs are ready — pick one:")"
-            [[ -n "$TOOL" ]] || { echo "ERROR: no selection made." >&2; exit 1; }
-          elif [[ " ${READY[*]} " == *" goose "* ]]; then
-            TOOL="goose"
-            echo "gum unavailable — auto-selected: goose"
-          else
-            echo "ERROR: multiple CLIs are ready (${READY[*]}) and 'gum' isn't available to prompt." >&2
-            echo "  Install gum, or pass explicitly: TOOL=<name> ujust donate-clanker" >&2
-            exit 1
-          fi
-          ;;
-      esac
-    else
-      if ! tool_installed "$TOOL"; then
-        echo "ERROR: TOOL=${TOOL} requested but not installed." >&2
-        echo "  $(tool_install_hint "$TOOL")" >&2
-        exit 1
-      fi
-      if ! tool_authenticated "$TOOL"; then
-        echo "ERROR: TOOL=${TOOL} is installed but not ready." >&2
-        echo "  $(tool_fixit_hint "$TOOL")" >&2
-        exit 1
-      fi
-    fi
+    # ── 1. Provider/model, remembered between runs. ──
+    resolve_goose_selection
+    persist_goose_selection
 
-    # ── 0b. Optional provider/model, only prompted when not already given
-    #        via env and a terminal + gum are available. Blank = use the
-    #        tool's own default. Copilot gets a live model list fetched
-    #        from the same API its CLI/extensions use. ──
-    AGENT_MODEL="${AGENT_MODEL:-}"
-    GOOSE_PROVIDER="${GOOSE_PROVIDER:-}"
-    GOOSE_MODEL="${GOOSE_MODEL:-}"
-    LAST_MODEL_FOR_TOOL=""
-    case "$TOOL" in
-      claude)  LAST_MODEL_FOR_TOOL="$LAST_MODEL_CLAUDE" ;;
-      copilot) LAST_MODEL_FOR_TOOL="$LAST_MODEL_COPILOT" ;;
-      codex)   LAST_MODEL_FOR_TOOL="$LAST_MODEL_CODEX" ;;
-    esac
-    if gum_can_prompt; then
-      if [[ "$TOOL" == "goose" && -z "$GOOSE_PROVIDER" ]]; then
-        LAST_GOOSE_LABEL="GitHub Copilot"
-        case "$LAST_GOOSE_PROVIDER" in
-          anthropic) LAST_GOOSE_LABEL="Anthropic" ;;
-          openai) LAST_GOOSE_LABEL="OpenAI" ;;
-          google) LAST_GOOSE_LABEL="Google" ;;
-          ollama) LAST_GOOSE_LABEL="Ollama" ;;
-          openrouter) LAST_GOOSE_LABEL="OpenRouter" ;;
-        esac
-        GOOSE_PROVIDER="$(printf '%s\n' 'GitHub Copilot' Anthropic OpenAI Google Ollama OpenRouter | gum choose --selected="$LAST_GOOSE_LABEL" --header "Goose provider (Esc to leave unset — needs 'goose configure' instead):")"
-        case "$GOOSE_PROVIDER" in
-          "GitHub Copilot") GOOSE_PROVIDER="github_copilot" ;;
-          Anthropic) GOOSE_PROVIDER="anthropic" ;;
-          OpenAI) GOOSE_PROVIDER="openai" ;;
-          Google) GOOSE_PROVIDER="google" ;;
-          Ollama) GOOSE_PROVIDER="ollama" ;;
-          OpenRouter) GOOSE_PROVIDER="openrouter" ;;
-        esac
-      fi
-      [[ "$TOOL" == "goose" && -z "$GOOSE_PROVIDER" ]] && GOOSE_PROVIDER="github_copilot"
-      if [[ "$TOOL" == "goose" ]]; then
-        [[ -z "$GOOSE_MODEL" ]] && GOOSE_MODEL="$(gum input --value "${LAST_GOOSE_MODEL}" --placeholder "e.g. claude-3-5-sonnet — blank for goose's default" --header "Goose model (optional):")"
-      elif [[ "$TOOL" == "copilot" && -z "$AGENT_MODEL" ]]; then
-        MODEL_LIST="$(copilot_live_models || true)"
-        if [[ -n "$MODEL_LIST" ]]; then
-          AGENT_MODEL="$(printf '%s\n' "$MODEL_LIST" | gum choose --selected="${LAST_MODEL_FOR_TOOL}" --header "Model for copilot (Esc to leave unset — use copilot's default):")"
-        else
-          AGENT_MODEL="$(gum input --value "${LAST_MODEL_FOR_TOOL}" --placeholder "e.g. claude-sonnet-4-6 — blank for copilot's default" --header "Model override for copilot (optional — live list unavailable):")"
-        fi
-      else
-        [[ -z "$AGENT_MODEL" ]] && AGENT_MODEL="$(gum input --value "${LAST_MODEL_FOR_TOOL}" --placeholder "e.g. claude-sonnet-4-6 — blank for ${TOOL}'s default" --header "Model override for ${TOOL} (optional):")"
-      fi
-    fi
-    [[ "$TOOL" == "goose" && -z "$GOOSE_PROVIDER" ]] && GOOSE_PROVIDER="github_copilot"
-
-    # Persist this run's resolved choices as next run's defaults.
-    LAST_TOOL="$TOOL"
-    case "$TOOL" in
-      claude)  LAST_MODEL_CLAUDE="$AGENT_MODEL" ;;
-      copilot) LAST_MODEL_COPILOT="$AGENT_MODEL" ;;
-      codex)   LAST_MODEL_CODEX="$AGENT_MODEL" ;;
-      goose)   LAST_GOOSE_PROVIDER="$GOOSE_PROVIDER"; LAST_GOOSE_MODEL="$GOOSE_MODEL" ;;
-    esac
-    {
-      printf 'LAST_TOOL=%q\n' "$LAST_TOOL"
-      printf 'LAST_MODEL_CLAUDE=%q\n' "$LAST_MODEL_CLAUDE"
-      printf 'LAST_MODEL_COPILOT=%q\n' "$LAST_MODEL_COPILOT"
-      printf 'LAST_MODEL_CODEX=%q\n' "$LAST_MODEL_CODEX"
-      printf 'LAST_GOOSE_PROVIDER=%q\n' "$LAST_GOOSE_PROVIDER"
-      printf 'LAST_GOOSE_MODEL=%q\n' "$LAST_GOOSE_MODEL"
-    } > "$LAST_FILE"
-
-    # Re-derive launcher-managed values from this run instead of retaining
-    # stale choices. The selected values reach the guest only as explicit
-    # container environment variables below.
-    touch "${CFG_DIR}/secrets.env"
-    chmod 600 "${CFG_DIR}/secrets.env"
-    grep -v -E '^(GOOSE_PROVIDER|GOOSE_MODEL|AGENT_MODEL)=' "${CFG_DIR}/secrets.env" > "${CFG_DIR}/secrets.env.tmp" 2>/dev/null || true
-    mv "${CFG_DIR}/secrets.env.tmp" "${CFG_DIR}/secrets.env"
-    [[ -n "$AGENT_MODEL" ]] && echo "AGENT_MODEL=${AGENT_MODEL}" >> "${CFG_DIR}/secrets.env"
-    if [[ "$TOOL" == "goose" ]]; then
-      [[ -n "$GOOSE_PROVIDER" ]] && echo "GOOSE_PROVIDER=${GOOSE_PROVIDER}" >> "${CFG_DIR}/secrets.env"
-      [[ -n "$GOOSE_MODEL" ]] && echo "GOOSE_MODEL=${GOOSE_MODEL}" >> "${CFG_DIR}/secrets.env"
-    fi
-    chmod 600 "${CFG_DIR}/secrets.env"
-
-    normalize_git_remote() {
-      local value="$1"
-      value="${value#ssh://}"
-      value="${value%.git}"
-      value="${value%/}"
-      if [[ "$value" =~ ^git@github\.com:(.+)$ ]]; then
-        printf 'https://github.com/%s\n' "${BASH_REMATCH[1]}"
-      elif [[ "$value" =~ ^git@github\.com/(.+)$ ]]; then
-        printf 'https://github.com/%s\n' "${BASH_REMATCH[1]}"
-      else
-        printf '%s\n' "$value"
-      fi
-    }
-    prepare_pinned_hive_checkout() {
-      local existing_origin actual_commit
-      [[ "$HIVE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
-        echo "ERROR: DONATE_CLANKER_HIVE_COMMIT must be a full 40-character commit SHA; branch names like v2 are not allowed." >&2
-        exit 1
-      }
-      if [[ -d "${HIVE_SRC_DIR}/.git" ]]; then
-        existing_origin="$(git -C "$HIVE_SRC_DIR" remote get-url origin 2>/dev/null || true)"
-        [[ -n "$existing_origin" ]] || {
-          echo "ERROR: ${HIVE_SRC_DIR} is missing an origin remote; move it aside or delete it so donate-clanker can recreate the pinned checkout." >&2
-          exit 1
-        }
-        if [[ "$(normalize_git_remote "$existing_origin")" != "$(normalize_git_remote "$HIVE_REPO_URL")" ]]; then
-          echo "ERROR: ${HIVE_SRC_DIR} points at ${existing_origin}, expected ${HIVE_REPO_URL}." >&2
-          echo "  Move it aside or delete it so donate-clanker can recreate the pinned checkout." >&2
-          exit 1
-        fi
-        [[ -z "$(git -C "$HIVE_SRC_DIR" status --porcelain 2>/dev/null)" ]] || {
-          echo "ERROR: ${HIVE_SRC_DIR} has local changes; refusing to execute an unverified Hive checkout." >&2
-          echo "  Use a clean checkout or delete it so donate-clanker can recreate the pinned source." >&2
-          exit 1
-        }
-      else
-        if [[ -e "$HIVE_SRC_DIR" && ! -d "$HIVE_SRC_DIR" ]]; then
-          echo "ERROR: ${HIVE_SRC_DIR} exists and is not a directory." >&2
-          exit 1
-        fi
-        if [[ -d "$HIVE_SRC_DIR" && -n "$(ls -A "$HIVE_SRC_DIR" 2>/dev/null)" ]]; then
-          echo "ERROR: ${HIVE_SRC_DIR} exists but is not a managed git checkout." >&2
-          echo "  Move it aside or choose an empty directory before continuing." >&2
-          exit 1
-        fi
-        mkdir -p "$HIVE_SRC_DIR"
-        git init --quiet "$HIVE_SRC_DIR"
-        git -C "$HIVE_SRC_DIR" remote add origin "$HIVE_REPO_URL"
-      fi
-
-      echo "Preparing kubestellar/hive @ ${HIVE_COMMIT:0:12} -> ${HIVE_SRC_DIR}..."
-      git -C "$HIVE_SRC_DIR" fetch --depth 1 origin "$HIVE_COMMIT"
-      git -C "$HIVE_SRC_DIR" checkout --detach -f FETCH_HEAD
-      actual_commit="$(git -C "$HIVE_SRC_DIR" rev-parse HEAD)"
-      [[ "$actual_commit" == "$HIVE_COMMIT" ]] || {
-        echo "ERROR: expected Hive commit ${HIVE_COMMIT}, got ${actual_commit}." >&2
-        exit 1
-      }
-    }
-
-    # ── 1. Ensure upstream contribute-setup has run ──
-    HIVE_CONTRIBUTOR_ENV="${HOME}/.config/hive/contributor.env"
-    if [[ ! -f "$HIVE_CONTRIBUTOR_ENV" ]]; then
-      if [[ "${DONATE_CLANKER_NON_INTERACTIVE:-}" == "true" ]]; then
-        print_missing_hive_setup_guidance "$HIVE_CONTRIBUTOR_ENV" "non-interactive mode cannot answer the upstream prompts" "$TOOL" "$HIVE_COMMIT"
-        exit 1
-      fi
-      if ! can_run_attended_hive_setup; then
-        print_missing_hive_setup_guidance "$HIVE_CONTRIBUTOR_ENV" "stdin/stdout/stderr are not attached to a terminal" "$TOOL" "$HIVE_COMMIT"
-        exit 1
-      fi
-      echo "Upstream contribute-setup hasn't run yet (no ${HIVE_CONTRIBUTOR_ENV})."
-      for cmd in just gh git; do
-        command -v "$cmd" &>/dev/null || { echo "ERROR: '${cmd}' is required to run contribute-setup." >&2; exit 1; }
-      done
-      prepare_pinned_hive_checkout
-      echo "Running upstream pinned setup: just contribute-setup ${TOOL}"
-      just --working-directory "$HIVE_SRC_DIR" --justfile "$HIVE_SRC_DIR/Justfile" contribute-setup "$TOOL"
-      [[ -f "$HIVE_CONTRIBUTOR_ENV" ]] || { echo "ERROR: contribute-setup ran but ${HIVE_CONTRIBUTOR_ENV} still missing." >&2; exit 1; }
-      echo "✓ Upstream contribute-setup complete."
-    fi
-    read_hive_value() {
-      local key="$1"
-      awk -F= -v wanted="$key" '$1 == wanted {sub(/^[^=]*=/, ""); print; exit}' "$HIVE_CONTRIBUTOR_ENV"
-    }
+    # ── 2. Ensure upstream contribute-setup has run. ──
+    ensure_hive_contributor_env
 
     RUN_ID="$(date +%s)-$$"
     RUN_DIR="${TMPDIR:-/tmp}/donate-clanker-$$"
@@ -477,16 +504,21 @@ donate-clanker:
       exit 1
     }
 
-    # QEMU opens this socket from the runner's per-run bind mount.
-    # The envelope is read from a pipe and sent once; no secret is present in
-    # the runner environment, command line, or a host-created env file.
+    # QEMU opens this socket from the runner's per-run bind mount. The
+    # version-2 envelope is read from a pipe and sent once; no secret is
+    # present in the runner environment, command line, or a host-created env
+    # file. This one-shot server is the ONLY background job in this file —
+    # it is host-local, is reaped by cleanup_bootstrap, and is not the VM.
     umask 077
-    printf '%s\0%s\0%s\0%s\0' \
-      "$HIVE_ENDPOINT" "$HIVE_REGISTRATION_TOKEN" "$TOOL" "$RUN_ID" |
-      python3 -c 'import json,os,socket,sys; path=sys.argv[1]; values=sys.stdin.buffer.read().split(b"\0"); len(values) < 4 and sys.exit("bootstrap input is incomplete"); payload={"version":1,"hive_endpoint":values[0].decode(),"registration_token":values[1].decode(),"backend":values[2].decode(),"run_id":values[3].decode()}; os.path.exists(path) and os.unlink(path); server=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM); server.bind(path); os.chmod(path,0o600); server.listen(1); server.settimeout(5); conn,_=server.accept(); conn.settimeout(5); conn.sendall((json.dumps(payload,separators=(",",":"))+"\n").encode()); ack=json.loads(conn.recv(65536).splitlines()[0]); ack == {"version":1,"type":"control_ack"} or sys.exit("invalid bootstrap acknowledgement"); conn.close(); server.close(); os.unlink(path)' "$BOOTSTRAP_SOCKET" &
+    # Timeouts: the guest must boot Linux and start its consumer before it
+    # can connect, which takes far longer than a few seconds on a cold boot.
+    # DONATE_CLANKER_BOOTSTRAP_TIMEOUT overrides the accept timeout.
+    printf '%s\0%s\0%s\0%s\0%s\0%s\0' \
+      "$HIVE_ENDPOINT" "$HIVE_REGISTRATION_TOKEN" "goose" "$RUN_ID" "$GOOSE_PROVIDER" "$GOOSE_MODEL" |
+      python3 -c 'import json,os,socket,sys; path=sys.argv[1]; values=sys.stdin.buffer.read().split(b"\0"); len(values) < 6 and sys.exit("bootstrap input is incomplete"); payload={"version":2,"hive_endpoint":values[0].decode(),"registration_token":values[1].decode(),"backend":values[2].decode(),"run_id":values[3].decode(), **({"goose_provider":values[4].decode()} if values[4] else {}), **({"goose_model":values[5].decode()} if values[5] else {})}; os.path.exists(path) and os.unlink(path); server=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM); server.bind(path); os.chmod(path,0o600); server.listen(1); server.settimeout(float(os.environ.get("DONATE_CLANKER_BOOTSTRAP_TIMEOUT","180"))); conn,_=server.accept(); conn.settimeout(30); conn.sendall((json.dumps(payload,separators=(",",":"))+"\n").encode()); ack=json.loads(conn.recv(65536).splitlines()[0]); ack == {"version":2,"type":"control_ack"} or sys.exit("invalid bootstrap acknowledgement"); conn.close(); server.close(); os.unlink(path)' "$BOOTSTRAP_SOCKET" &
     BOOTSTRAP_PID=$!
 
-    # ── 2. Run the self-contained QEMU VM in the foreground. The guest
+    # ── 3. Run the self-contained QEMU VM in the FOREGROUND. The guest
     #        clones assignments itself; only the per-run control/overlay
     #        directory crosses this boundary. ──
     VM_RAW="{{vm_raw_image}}"
@@ -515,23 +547,71 @@ donate-clanker:
       }
       ensure_vm_host
       FIRMWARE="$(vm_firmware "$VM_ARCH")" || {
-        echo "ERROR: matching firmware for ${VM_ARCH} was not found." >&2
+        echo "ERROR: matching UEFI firmware for ${VM_ARCH} was not found." >&2
+        vm_firmware_hint
         exit 1
       }
+      # Boot a disposable copy-on-write overlay, never the verified master
+      # image. Writing directly to the master mutates it, which breaks its
+      # checksum on the next run and silently destroys the pristine artifact.
+      # The overlay lives in the per-run directory and dies with the run, which
+      # is what makes each VM genuinely disposable.
+      VM_OVERLAY="${RUN_DIR}/overlay.qcow2"
+      if command -v qemu-img &>/dev/null; then
+        qemu-img create -q -f qcow2 -F raw -b "$VM_RAW" "$VM_OVERLAY" >/dev/null || {
+          echo "ERROR: could not create the per-run VM overlay." >&2
+          exit 1
+        }
+        VM_DISK_ARGS=(-drive "file=${VM_OVERLAY},format=qcow2,if=virtio")
+      else
+        # Without qemu-img we cannot protect the master, so refuse rather than
+        # corrupt it.
+        echo "ERROR: qemu-img is required to create a disposable VM overlay." >&2
+        echo "  Install QEMU with: brew install qemu" >&2
+        exit 1
+      fi
+
       case "$VM_ARCH" in
         x86_64) VM_MACHINE=q35; SERIAL_DEVICE=virtio-serial-pci ;;
         aarch64) VM_MACHINE=virt; SERIAL_DEVICE=virtio-serial-device ;;
       esac
       echo "✓ booting local donate-clanker VM (4 vCPU, 8 GiB RAM)."
-      exec "qemu-system-${VM_ARCH}" \
+      echo "  Foreground by design: Ctrl-C stops it."
+
+      # Split edk2/OVMF firmware must be attached as a pflash pair, not via
+      # -bios. Unit 0 is the read-only CODE image; unit 1 is a per-run WRITABLE
+      # copy of the VARS template, because the guest writes UEFI variables and
+      # the template lives in a read-only prefix.
+      FIRMWARE_ARGS=()
+      if VARS_TEMPLATE="$(vm_firmware_vars "$FIRMWARE" 2>/dev/null)"; then
+        RUN_VARS="${RUN_DIR}/efivars.fd"
+        cp -f "$VARS_TEMPLATE" "$RUN_VARS"
+        chmod u+w "$RUN_VARS"
+        FIRMWARE_ARGS=(
+          -drive "if=pflash,format=raw,unit=0,readonly=on,file=${FIRMWARE}"
+          -drive "if=pflash,format=raw,unit=1,file=${RUN_VARS}"
+        )
+      else
+        # Single-blob firmware (e.g. OVMF.fd) still works with -bios.
+        FIRMWARE_ARGS=(-bios "$FIRMWARE")
+      fi
+
+      # -nographic keeps the guest console on this terminal. No '&', no
+      # daemonize: the VM is the last foreground command and its exit status
+      # becomes ours.
+      set +e
+      "qemu-system-${VM_ARCH}" \
         -enable-kvm -machine "$VM_MACHINE" -cpu host -smp 4 -m 8192 \
-        -bios "$FIRMWARE" \
-        -drive "file=${VM_RAW},format=raw,if=virtio" \
+        "${FIRMWARE_ARGS[@]}" \
+        "${VM_DISK_ARGS[@]}" \
         -nic user,model=virtio \
         -chardev "socket,id=control,path=${BOOTSTRAP_SOCKET}" \
         -device "$SERIAL_DEVICE" \
         -device "virtserialport,chardev=control,name=org.projectbluefin.donate-clanker.bootstrap" \
         -nographic
+      status=$?
+      set -e
+      exit "$status"
     fi
     [[ -n "{{vm_runner_image}}" ]] || {
       echo "ERROR: donate-clanker VM runner is not configured." >&2
@@ -539,6 +619,8 @@ donate-clanker:
       exit 1
     }
     ensure_vm_runner
+    # --rm --interactive --tty and never --detach: the runner container owns
+    # this terminal for as long as it lives.
     CONTAINER_ARGS=(
       podman run --rm --interactive --tty --name donate-clanker-vm
       --device /dev/kvm
@@ -546,14 +628,12 @@ donate-clanker:
       --env "DONATE_CLANKER_BOOTSTRAP_SOCKET=/run/donate-clanker/${BOOTSTRAP_SOCKET_NAME}"
       --env "DONATE_CLANKER_RUN_ID=${RUN_ID}"
       --env "DONATE_CLANKER_VM=1"
+      --env "AGENT_BACKEND=goose"
     )
-    if [[ -n "$AGENT_MODEL" ]]; then
-      CONTAINER_ARGS+=(--env "AGENT_MODEL=${AGENT_MODEL}")
-    fi
-    if [[ "$TOOL" == "goose" ]]; then
-      [[ -n "$GOOSE_PROVIDER" ]] && CONTAINER_ARGS+=(--env "GOOSE_PROVIDER=${GOOSE_PROVIDER}")
-      [[ -n "$GOOSE_MODEL" ]] && CONTAINER_ARGS+=(--env "GOOSE_MODEL=${GOOSE_MODEL}")
-    fi
+    # Hive ignores AGENT_MODEL when the backend is Goose, so the model is
+    # passed as GOOSE_MODEL — the variable Goose itself reads.
+    [[ -n "$GOOSE_PROVIDER" ]] && CONTAINER_ARGS+=(--env "GOOSE_PROVIDER=${GOOSE_PROVIDER}")
+    [[ -n "$GOOSE_MODEL" ]] && CONTAINER_ARGS+=(--env "GOOSE_MODEL=${GOOSE_MODEL}")
     CONTAINER_ARGS+=("{{vm_runner_image}}")
     echo "✓ donate-clanker is running in the pinned QEMU VM runner."
     echo "  Stop any time with Ctrl-C, or: ujust donate-clanker-stop"
@@ -563,16 +643,70 @@ donate-clanker:
     set -e
     exit "$status"
 
+# Run ONLY the contributor container — no VM — for quick local development.
+# Same preflight and same provider/model selection as the VM path, minus the
+# hardware isolation, so it is the fast loop while hacking on the image.
+# Usage: ujust donate-clanker-container
+donate-clanker-container:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    {{shared_functions}}
+    TOOL="{{tool_env}}"
+
+    CFG_DIR="${HOME}/.config/donate-clanker"
+    LAST_FILE="${CFG_DIR}/last-selections.env"
+    STATE_DIR="${HOME}/.local/state/donate-clanker"
+    HIVE_SRC_DIR="${STATE_DIR}/hive-src"
+    HIVE_REPO_URL="{{hive_repo_url}}"
+    HIVE_COMMIT="${DONATE_CLANKER_HIVE_COMMIT:-{{hive_commit}}}"
+    HIVE_COMMIT="${HIVE_COMMIT,,}"
+    mkdir -p "${CFG_DIR}" "${STATE_DIR}"
+
+    require_goose_backend "$TOOL"
+    preflight_agent
+    command -v podman &>/dev/null || {
+      echo "ERROR: Podman is required to run the contributor container." >&2
+      echo "  Install Podman, then re-run donate-clanker-container." >&2
+      exit 1
+    }
+
+    resolve_goose_selection
+    persist_goose_selection
+    ensure_hive_contributor_env
+
+    CONTAINER_NAME="donate-clanker-container"
+    CONTRIBUTOR_IMAGE="{{contributor_image}}"
+
+    # Hive's own convention: the contributor config lives at
+    # ~/.config/hive inside the image's home (/home/dev), read-only. There is
+    # no /workspace and no /config mount — the agent clones what it needs.
+    CONTAINER_ARGS=(
+      podman run --rm --interactive --tty --name "$CONTAINER_NAME"
+      --volume "${HOME}/.config/hive:/home/dev/.config/hive:ro"
+      --env "AGENT_BACKEND=goose"
+    )
+    # Hive deliberately ignores AGENT_MODEL for the Goose backend, which is
+    # why the model is handed over as GOOSE_MODEL instead.
+    [[ -n "$GOOSE_PROVIDER" ]] && CONTAINER_ARGS+=(--env "GOOSE_PROVIDER=${GOOSE_PROVIDER}")
+    [[ -n "$GOOSE_MODEL" ]] && CONTAINER_ARGS+=(--env "GOOSE_MODEL=${GOOSE_MODEL}")
+    CONTAINER_ARGS+=("$CONTRIBUTOR_IMAGE")
+
+    echo "✓ starting the donate-clanker contributor container (no VM)."
+    echo "  The entrypoint attaches to the 'contributor' tmux session for you."
+    echo "  From a second terminal: podman exec -it ${CONTAINER_NAME} tmux attach -t contributor"
+    echo "  Stop any time with Ctrl-C, or: ujust donate-clanker-stop"
+    # exec: the container replaces this shell, so Ctrl-C and every other
+    # signal reach it directly and its exit status is ours. Never --detach.
+    exec "${CONTAINER_ARGS[@]}"
+
 # Preflight check: is this machine actually ready for 'ujust donate-clanker'?
-# Never starts the container — read-only diagnostics only.
+# Never starts the VM or the container — read-only diagnostics only.
 donate-clanker-doctor:
     #!/usr/bin/env bash
     set -uo pipefail
     {{shared_functions}}
-    TOOL_ORDER="{{tool_order}}"
     HIVE_COMMIT="${DONATE_CLANKER_HIVE_COMMIT:-{{hive_commit}}}"
     HIVE_COMMIT="${HIVE_COMMIT,,}"
-    INVOKED_DIR="{{invocation_directory()}}"
     pass=0; fail=0
     check() {
       local label="$1"; shift
@@ -580,7 +714,7 @@ donate-clanker-doctor:
       else echo "  ✗ ${label}"; fail=$((fail+1)); fi
     }
 
-    echo "=== QEMU VM runner ==="
+    echo "=== Host ==="
     check "Podman installed" command -v podman
     if [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]]; then
       echo "  ✓ /dev/kvm is available"
@@ -588,45 +722,94 @@ donate-clanker-doctor:
     else
       echo "  ✗ /dev/kvm is unavailable or not usable by this user"
       echo "    Enable KVM access before launching the pinned QEMU VM runner."
+      echo "    (donate-clanker-container does not need it.)"
       fail=$((fail+1))
     fi
-    check "gum installed (needed to pick between multiple ready CLIs)" command -v gum
+    check "gum installed (used for the provider/model pickers)" command -v gum
+    # The VM path boots via UEFI, so missing firmware fails the launch late and
+    # confusingly. Surface it here instead, where the fix is one brew command.
+    if FIRMWARE_PATH="$(vm_firmware "$(vm_host_arch 2>/dev/null || echo x86_64)" 2>/dev/null)"; then
+      echo "  ✓ UEFI firmware found: ${FIRMWARE_PATH}"
+      pass=$((pass+1))
+    else
+      echo "  ✗ no UEFI firmware for the VM path"
+      vm_firmware_hint
+      echo "    (donate-clanker-container does not need it.)"
+      fail=$((fail+1))
+    fi
     echo ""
 
-    echo "=== AI CLIs (auto-detect candidates) ==="
-    ready_tools=()
-    for t in ${TOOL_ORDER}; do
-      if tool_installed "$t"; then
-        if tool_authenticated "$t"; then
-          echo "  ✓ ${t}: installed + authenticated"
-          ready_tools+=("$t")
-        else
-          echo "  ~ ${t}: installed, NOT ready — $(tool_fixit_hint "$t")"
-        fi
+    echo "=== GitHub ==="
+    if github_auth_ready; then
+      echo "  ✓ gh is authenticated against github.com"
+      pass=$((pass+1))
+    else
+      echo "  ✗ gh is not authenticated against github.com"
+      echo "    Run: ${GITHUB_LOGIN_COMMAND}"
+      fail=$((fail+1))
+    fi
+    echo ""
+
+    echo "=== Agent backend (Goose only) ==="
+    if tool_installed goose; then
+      if tool_authenticated goose; then
+        echo "  ✓ goose: installed + configured"
+        pass=$((pass+1))
       else
-        echo "  ✗ ${t}: not installed — $(tool_install_hint "$t")"
+        echo "  ✗ goose: installed, NOT configured — $(tool_fixit_hint goose)"
+        fail=$((fail+1))
       fi
-    done
+    else
+      echo "  ✗ goose: not installed — $(tool_install_hint goose)"
+      fail=$((fail+1))
+    fi
     echo ""
 
-    case "${#ready_tools[@]}" in
-      0) echo "No CLI is both installed and authenticated yet — TOOL auto-detect would fail." ;;
-      1) echo "TOOL would auto-detect to: ${ready_tools[0]}" ;;
-      *) echo "Multiple CLIs are ready (${ready_tools[*]}) — you'll be prompted to pick one via gum." ;;
-    esac
+    echo "=== Hive contributor setup ==="
+    HIVE_CONTRIBUTOR_ENV="${HOME}/.config/hive/contributor.env"
+    if [[ -f "$HIVE_CONTRIBUTOR_ENV" ]]; then
+      echo "  ✓ ${HIVE_CONTRIBUTOR_ENV} exists"
+      pass=$((pass+1))
+    else
+      echo "  ✗ ${HIVE_CONTRIBUTOR_ENV} is missing"
+      echo "    donate-clanker runs upstream 'just contribute-setup goose' from"
+      echo "    kubestellar/hive @ ${HIVE_COMMIT:0:12} on first attended launch."
+      fail=$((fail+1))
+    fi
     echo ""
 
     echo "=== Guest repository model ==="
-    echo "  ✓ assigned repositories are cloned inside the disposable VM"
+    echo "  ✓ assigned repositories are cloned inside the disposable guest"
     echo ""
     echo "${pass} checks passed, ${fail} failed."
     [[ "$fail" -eq 0 ]] || exit 1
 
-# Safety net: remove a stale VM runner container.
+# Safety net: remove a stale VM runner or contributor container. Nothing
+# should survive a foreground run, but a hard-killed terminal can leave one.
 donate-clanker-stop:
     #!/usr/bin/env bash
     set -euo pipefail
     if command -v podman &>/dev/null; then
       podman rm -f donate-clanker-vm >/dev/null 2>&1 || true
+      podman rm -f donate-clanker-container >/dev/null 2>&1 || true
+    fi
+
+    # A foreground VM normally dies with its terminal, but a hard-killed or
+    # timed-out shell can orphan qemu. An orphan keeps a write lock on the
+    # master disk image, so the next run fails with "Failed to get write lock"
+    # — which is confusing unless you know to look for a stray process.
+    # Match only OUR bootstrap control channel so unrelated VMs (libvirt,
+    # lima, podman machine) are never touched.
+    stopped=0
+    for pid in $(pgrep -f 'org\.projectbluefin\.donate-clanker\.bootstrap' 2>/dev/null || true); do
+      kill "$pid" 2>/dev/null || continue
+      stopped=$((stopped + 1))
+    done
+    if [[ "$stopped" -gt 0 ]]; then
+      sleep 2
+      for pid in $(pgrep -f 'org\.projectbluefin\.donate-clanker\.bootstrap' 2>/dev/null || true); do
+        kill -9 "$pid" 2>/dev/null || true
+      done
+      echo "donate-clanker VM stopped (${stopped} process(es))."
     fi
     echo "donate-clanker guest container stopped."

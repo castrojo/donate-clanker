@@ -1,3 +1,9 @@
+# Deny everything, then allow only what the image build actually consumes.
+# Keeping this tight stops the Go source, .git, and local state from entering
+# the build context.
 *
 !image/
 !image/**
+# The skills generator runs at build time to project the org's docs/skills
+# manifest into Goose's native Agent Skills layout.
+!scripts/generate-skills.py

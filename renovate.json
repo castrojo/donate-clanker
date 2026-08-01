@@ -1,0 +1,29 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "local>projectbluefin/renovate-config"
+  ],
+  "packageRules": [
+    {
+      "description": "Automerge digest/pin/patch/minor via GitHub native auto-merge (merge queue handles squash)",
+      "matchUpdateTypes": [
+        "digest",
+        "pin",
+        "patch",
+        "minor"
+      ],
+      "automerge": true,
+      "platformAutomerge": true
+    },
+    {
+      "description": "Keep the Hive contributor base image digest in image/Containerfile current",
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "matchPackageNames": [
+        "ghcr.io/kubestellar/hive-contributor"
+      ],
+      "pinDigests": true
+    }
+  ]
+}
