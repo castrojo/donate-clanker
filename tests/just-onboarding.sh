@@ -135,9 +135,11 @@ cat >"$fake_bin/brew" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "${FAKE_BREW_PREFIX:?}"
 EOF
-# pgrep is faked so the launcher can never signal a real process.
+# pgrep is faked so the launcher can never signal a real process, and so a
+# scenario can say whether a running container still has an owning terminal.
 cat >"$fake_bin/pgrep" <<'EOF'
 #!/usr/bin/env bash
+[[ "${FAKE_PODMAN_OWNED:-0}" == 1 ]] && exit 0
 exit 1
 EOF
 cat >"$fake_bin/curl" <<'EOF'
@@ -579,12 +581,25 @@ begin "donate-clanker-container: a live session is never replaced silently"
 reset_logs
 run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
   GUM_PROVIDER_RESPONSE=OpenAI GUM_INPUT_RESPONSE=gpt-test \
-  FAKE_PODMAN_RUNNING=1
-assert_nonzero_status "$STATUS" "a running container must stop the relaunch"
+  FAKE_PODMAN_RUNNING=1 FAKE_PODMAN_OWNED=1
+assert_nonzero_status "$STATUS" "a container owned by another terminal must stop the relaunch"
 assert_eq "$(error_line_count "$OUT")" 1 "expected exactly one ERROR line"
-assert_contains "is already running" "$OUT"
+assert_contains "is already running in another terminal" "$OUT"
 assert_contains "tmux attach -t contributor" "$OUT"
+assert_not_contains "podman rm -f" "$OUT"
 assert_eq "$(wc -c <"$runner_log")" 0 "a live session must never be replaced"
+
+begin "donate-clanker-container: an orphaned run is reclaimed without a second command"
+# Still running, but its terminal is gone: nobody can reach or Ctrl-C it, so
+# the launch takes the name back instead of demanding manual cleanup.
+reset_logs
+run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+  GUM_PROVIDER_RESPONSE=OpenAI GUM_INPUT_RESPONSE=gpt-test \
+  FAKE_PODMAN_RUNNING=1 FAKE_PODMAN_OWNED=0
+assert_contains "reclaiming" "$OUT"
+assert_not_contains "ERROR:" "$OUT"
+assert_not_contains "podman rm -f" "$OUT"
+assert_file_contains "--replace --name donate-clanker-container" "$runner_log"
 
 # ══ Doctor is read-only ═══════════════════════════════════════════════════
 begin "donate-clanker-doctor: read-only, Goose-only diagnostics"

@@ -38,6 +38,14 @@ Everything else in the file is private (`_`-prefixed) recipes and variables,
 deliberately. A user browsing the repository should find one file and three
 commands, not a `bin/` of scripts they might run out of context.
 
+A running container is not automatically a container in use. The launcher
+distinguishes the two: if a foreground `podman run` client still holds the
+name, somebody is working in that terminal and the launch refuses with the
+attach command. If the container is running but its client is gone, the run
+is an orphan nobody can reach or Ctrl-C, and the launch reclaims it silently
+via `--replace`. Telling the user to run `podman rm -f` for the orphan case
+would reintroduce the stop command through the back door.
+
 There is deliberately no fourth recipe. A `donate-clanker-stop` used to exist
 and was removed: a stop verb only has meaning when something can outlive the
 terminal that started it, so shipping one contradicts the foreground
