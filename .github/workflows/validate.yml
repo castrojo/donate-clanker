@@ -210,22 +210,29 @@ jobs:
 
           exit "$fail"
 
-      - name: Direct launcher contract stays aligned
+      - name: Interactive launcher docs and shell stay aligned
         run: |
           set -euo pipefail
-          recipe="just/61-donate-clanker.just"
-          grep -Fq 'image="${DONATE_CLANKER_IMAGE:-localhost/donate-clanker:latest}"' "$recipe"
-          grep -Fq 'exec podman run --rm -it --userns=keep-id' "$recipe"
-          grep -Fq -- '-e AGENT_BACKEND=goose' "$recipe"
-          grep -Fq -- '-e GOOSE_PROVIDER=github_copilot' "$recipe"
-          grep -Fq -- '-e GOOSE_MODEL=gpt-5.6-luna' "$recipe"
-          grep -Fq -- '-e AGENT_MODEL=gpt-5.6-luna' "$recipe"
-          grep -Fq -- '-e GOOSE_DISABLE_KEYRING=1' "$recipe"
-          grep -Fq -- '-e GOOSE_TELEMETRY_ENABLED=false' "$recipe"
-          grep -Fq -- '-v "$HOME/.config/hive:/config:ro,Z"' "$recipe"
-          grep -Fq -- '-v "$HOME/.config/goose:/home/dev/.config/goose:Z"' "$recipe"
-          grep -Fq -- '-v "$PWD:/workspace:Z"' "$recipe"
-          grep -Fq '"$image"' "$recipe"
+          # The sed and grep patterns intentionally contain literal
+          # dollar-sign syntax for the embedded shell checks.
+          # shellcheck disable=SC2016
+          HIVE_PIN="$(sed -n 's/^hive_commit := "\(.*\)"$/\1/p' just/61-donate-clanker.just)"
+          test -n "$HIVE_PIN"
+          grep -Fq 'tool_order := "claude copilot goose codex"' just/61-donate-clanker.just
+          grep -Fq 'Multiple AI CLIs are ready — pick one:' just/61-donate-clanker.just
+          grep -Fq 'Goose provider (Esc to leave unset' just/61-donate-clanker.just
+          grep -Fq 'LAST_GOOSE_PROVIDER' just/61-donate-clanker.just
+          grep -Fq 'last-selections.env' just/61-donate-clanker.just
+          grep -Fq 'secrets.env' just/61-donate-clanker.just
+          grep -Fq 'fetch --depth 1 origin "$HIVE_COMMIT"' just/61-donate-clanker.just
+          grep -Fq 'DONATE_CLANKER_HIVE_COMMIT' just/61-donate-clanker.just
+          grep -Fq 'Run: goose configure' just/61-donate-clanker.just
+          grep -Fq "$HIVE_PIN" README.md
+          grep -Fq 'DONATE_CLANKER_HIVE_COMMIT' README.md
+          grep -Fq 'detects every ready CLI' README.md
+          grep -Fq 'Goose prompts for its provider and optional model' README.md
+          grep -Fq 'last-selections.env' README.md
+          grep -Fq 'secrets.env' README.md
 
       - name: Compatibility image contract and build
         run: |
