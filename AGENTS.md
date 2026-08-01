@@ -36,7 +36,7 @@ before opening a pull request.
 ## Architecture and package boundaries
 
 - `just/61-donate-clanker.just` — the only file that ships or installs. All
-  four user-facing commands and their private helpers live here, on purpose.
+  three user-facing commands and their private helpers live here, on purpose.
 - `image/` — `Containerfile` deriving `FROM ghcr.io/kubestellar/hive-contributor`
   pinned by digest, plus the layered config (`image/config/`).
 - `cmd/`, `internal/` — Go helpers used during build and by the VM runner.
@@ -65,6 +65,12 @@ writing to `~/.config/goose`.
 - Never weaken the foreground guarantee. `ujust donate-clanker` runs in the
   foreground and dies with its terminal. No `&`, no `nohup`, no `--detach`,
   no systemd unit, no `podman run -d`.
+- Never add a lifecycle command. There is no `donate-clanker-stop`, and no
+  start, restart, kill, or clean either. A stop verb is only meaningful when
+  a run can outlive its terminal, so shipping one contradicts the line above
+  and advertises a daemon this repository does not have. Ctrl-C is the stop
+  button. Reclaim a name a hard-killed run left behind at launch time with
+  `--replace`; cleanup is a startup concern, never a user-facing verb.
 - Never unpin the Hive contributor image digest or the Hive commit without an
   explicit human decision.
 

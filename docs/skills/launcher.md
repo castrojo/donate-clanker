@@ -11,7 +11,7 @@ optimization_status: draft
 status: active
 dependencies: []
 tags: [just, launcher, qemu, podman, foreground]
-description: "Covers the four donate-clanker just recipes, the foreground guarantee, and the VM versus container-only modes. Use when editing just/61-donate-clanker.just, adding a recipe, or debugging a launch that exits early."
+description: "Covers the three donate-clanker just recipes, the foreground guarantee (and why there is no stop command), and the VM versus container-only modes. Use when editing just/61-donate-clanker.just, adding a recipe, or debugging a launch that exits early."
 metadata:
   type: runbook
 ---
@@ -26,18 +26,27 @@ launch that exits before the tmux session appears.
 
 ## Core Process
 
-### The four public recipes
+### The three public recipes
 
 | Recipe | Behavior |
 |---|---|
 | `donate-clanker` | Boots the pinned QEMU VM in the foreground, attaches to tmux session `contributor`. Ctrl-C stops it. |
 | `donate-clanker-container` | Runs only the container, no VM, attaches to the same session. Local development. |
 | `donate-clanker-doctor` | Read-only preflight. Starts nothing. |
-| `donate-clanker-stop` | Removes a stale runner container. |
 
 Everything else in the file is private (`_`-prefixed) recipes and variables,
-deliberately. A user browsing the repository should find one file and four
+deliberately. A user browsing the repository should find one file and three
 commands, not a `bin/` of scripts they might run out of context.
+
+There is deliberately no fourth recipe. A `donate-clanker-stop` used to exist
+and was removed: a stop verb only has meaning when something can outlive the
+terminal that started it, so shipping one contradicts the foreground
+guarantee below and invites exactly the daemon this repository refuses to
+become. Ctrl-C ends a run. A container name left behind by a hard-killed
+terminal is reclaimed by the next launch via `--replace`, so cleanup happens
+at startup rather than as a user-facing command. `tests/just-onboarding.sh`
+fails the build if any `donate-clanker-{stop,start,restart,kill,clean,down,up}`
+recipe reappears, or if the recipe count drifts from three.
 
 ### The foreground guarantee
 

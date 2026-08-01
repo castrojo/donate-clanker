@@ -135,7 +135,7 @@ cat >"$fake_bin/brew" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "${FAKE_BREW_PREFIX:?}"
 EOF
-# pgrep is faked so donate-clanker-stop can never signal a real process.
+# pgrep is faked so the launcher can never signal a real process.
 cat >"$fake_bin/pgrep" <<'EOF'
 #!/usr/bin/env bash
 exit 1
@@ -586,13 +586,6 @@ assert_contains "is already running" "$OUT"
 assert_contains "tmux attach -t contributor" "$OUT"
 assert_eq "$(wc -c <"$runner_log")" 0 "a live session must never be replaced"
 
-begin "donate-clanker-stop: succeeds when nothing is running"
-reset_logs
-run_recipe donate-clanker-stop
-assert_zero_status "$STATUS" "stop must not fail when nothing is running"
-assert_contains "donate-clanker guest container stopped" "$OUT"
-assert_not_contains "ERROR:" "$OUT"
-
 # ══ Doctor is read-only ═══════════════════════════════════════════════════
 begin "donate-clanker-doctor: read-only, Goose-only diagnostics"
 reset_logs
@@ -646,6 +639,20 @@ if grep -n 'donate-clanker:latest' "$code"; then
 fi
 grep -q 'ghcr.io/projectbluefin/donate-clanker:stable' "$code" ||
   fail "the default contributor image must be the published ':stable' tag"
+
+begin "static: the launcher ships no lifecycle command"
+# A stop/start/restart verb would mean a run can outlive its terminal. It
+# cannot: Ctrl-C is the only way a donate-clanker run ends, and a stale name
+# is reclaimed at launch by --replace, not by a second command.
+if grep -nE '^donate-clanker-(stop|start|restart|kill|clean|down|up):' "$code"; then
+  fail "the launcher must never ship a lifecycle recipe — Ctrl-C is the stop button"
+fi
+if grep -n 'ujust donate-clanker-stop' "$code"; then
+  fail "nothing may point a user at a stop command that must not exist"
+fi
+# The recipe list is exactly: launch the VM, launch the container, diagnose.
+assert_eq "$(grep -cE '^donate-clanker[a-z-]*:' "$code")" 3 \
+  "expected exactly three recipes (donate-clanker, -container, -doctor)"
 
 begin "static: no legacy backends survive in the launcher"
 for legacy in copilot_live_models 'Multiple AI CLIs' LAST_TOOL AGENT_MODEL=; do

@@ -73,7 +73,7 @@
         "podman",
         "foreground"
       ],
-      "description": "Covers the four donate-clanker just recipes, the foreground guarantee, and the VM versus container-only modes. Use when editing just/61-donate-clanker.just, adding a recipe, or debugging a launch that exits early.",
+      "description": "Covers the three donate-clanker just recipes, the foreground guarantee (and why there is no stop command), and the VM versus container-only modes. Use when editing just/61-donate-clanker.just, adding a recipe, or debugging a launch that exits early.",
       "version": "1.0",
       "last_updated": "2026-07-31",
       "doc_type": "runbook"
