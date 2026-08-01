@@ -71,6 +71,16 @@ writing to `~/.config/goose`.
   and advertises a daemon this repository does not have. Ctrl-C is the stop
   button. Reclaim a name a hard-killed run left behind at launch time with
   `--replace`; cleanup is a startup concern, never a user-facing verb.
+- Never filter the work Hive assigns. Hive's `selectTask` is the sole
+  authority on what gets worked on: the hub's own config decides which
+  repositories are in the pool, which titles, authors and labels are denied,
+  and the 168-hour per-issue cooldown. Nothing here may filter, skip,
+  re-order, prioritise or decline an assignment by repository, label, title,
+  author, issue number, or any other property. Doing so would shadow a
+  lifecycle Hive already owns, which the purpose above forbids, and it would
+  silently hide work the maintainers deliberately admitted hub-side.
+  `tests/just-onboarding.sh` fails the build if selection logic appears in
+  the launcher or the image entrypoint.
 - Never unpin the Hive contributor image digest or the Hive commit without an
   explicit human decision.
 

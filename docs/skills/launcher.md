@@ -1,6 +1,6 @@
 ---
 name: launcher
-version: "1.1"
+version: "1.2"
 last_updated: 2026-08-01
 id: launcher
 one_line_purpose: Change donate-clanker just recipes without breaking foreground.
@@ -11,7 +11,7 @@ optimization_status: draft
 status: active
 dependencies: []
 tags: [just, launcher, qemu, podman, foreground]
-description: "Covers the three donate-clanker just recipes, the foreground guarantee (and why there is no stop command), and the VM versus container-only modes. Use when editing just/61-donate-clanker.just, adding a recipe, or debugging a launch that exits early."
+description: "Covers the three donate-clanker just recipes, the foreground guarantee (and why there is no stop command), the VM versus container-only modes, and why the launcher never filters Hive's work. Use when editing just/61-donate-clanker.just."
 metadata:
   type: runbook
 ---
@@ -70,6 +70,18 @@ at startup rather than as a user-facing command. `tests/just-onboarding.sh`
 fails the build if any `donate-clanker-{stop,start,restart,kill,clean,down,up}`
 recipe reappears, or if the recipe count drifts from three.
 
+### The launcher never chooses the work
+
+The launcher boots a contributor and gets out of the way. It passes no
+repository, label, issue or title selector to the guest, and it must never
+grow one: Hive's `selectTask` decides what the agent works on, using the
+hub's config and cooldown. A "just skip that repo" flag added here would
+shadow selection that Hive already owns and would silently hide work the
+maintainers admitted hub-side, where the policy is visible to everyone. If
+the assigned mix is wrong, the fix is the hub's config, not this file. See
+[`hive-runtime.md`](hive-runtime.md); `tests/just-onboarding.sh` fails the
+build if selection logic appears in the launcher or the image entrypoint.
+
 ### The foreground guarantee
 
 `donate-clanker` runs in the foreground and dies with its terminal. The
@@ -119,7 +131,9 @@ values.
   directory.
 - Silent fallback when `DONATE_CLANKER_VM_RUNNER_IMAGE` is unset. Fail loudly.
 - Duplicating anything Hive already does: session creation, prompt injection,
-  output capture.
+  output capture, or task selection.
+- Any recipe, variable or `--env` that names a repository, label, title or
+  issue to accept or skip. Hive drives; the launcher does not filter.
 - Secrets echoed to stdout or written outside `secrets.env`.
 
 ## Verification
