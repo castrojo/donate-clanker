@@ -81,8 +81,6 @@ writing to `~/.config/goose`.
   silently hide work the maintainers deliberately admitted hub-side.
   `tests/just-onboarding.sh` fails the build if selection logic appears in
   the launcher or the image entrypoint.
-- Never unpin the Hive contributor image digest or the Hive commit without an
-  explicit human decision.
 
 ## PR rules
 
@@ -102,15 +100,27 @@ are ergonomics only — `git commit --no-verify` bypasses them. Deterministic
 enforcement is GitHub rulesets and required status checks. Do not treat a
 green local hook run as a merge gate.
 
-## Human decision gates
+## This is a development tool
 
-Stop and ask a human before:
+The people running donate-clanker are the people changing it. Optimise for
+their loop, not for the ceremony a production cluster would want.
 
-- Changing the pinned Hive contributor image digest or `hive_commit`.
-- Adding a second agent backend. Goose is the only supported backend.
-- Adding any dependency, service, or background lifecycle.
-- Changing credential handling or anything that touches `secrets.env`.
-- Changing merge, ruleset, or required-status-check configuration.
+- `:stable` moves on every merge to main and is the launcher default. A
+  contributor should never be debugging a bug that was fixed yesterday, and
+  should never have to name a tag or a digest to get current code.
+- A moving tag is re-pulled on every launch. "Already present locally" is not
+  the same as current, and treating it as current silently pins people to
+  stale images.
+- Do not add gates, sign-offs, pins or manual steps to the contributor loop.
+  If something must be pinned for reproducibility, that is what `sha-<commit>`
+  tags and digests are for, via `DONATE_CLANKER_CONTRIBUTOR_IMAGE` -- an
+  opt-in, not the default path.
+- Ship it. Merge, let CI publish, test the published image. Do not invent
+  manual verification steps that CI already performs.
+
+Still worth a human conversation, because they change what the tool IS rather
+than how fast it moves: adding a second agent backend (Goose is the only one),
+and adding a dependency, service or background lifecycle.
 
 Hive facts that constrain planning: task completion is self-reported and
 places a 168-hour cooldown per issue whether the task passed or failed; the

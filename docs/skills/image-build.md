@@ -99,7 +99,7 @@ Put slow, rarely-changing layers first and the generated skills tree last;
 `stable` is the released line and the launcher's default; only a version tag
 moves it. `main` is the newest merge, so a merged fix is consumable without
 cutting a release:
-`DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:main`.
+`DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:sha-<commit>`.
 `:latest` is never published — a default pointing at it dies on
 `manifest unknown`, and `tests/just-onboarding.sh` fails the build if one
 appears.

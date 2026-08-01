@@ -618,7 +618,9 @@ assert_file_not_contains "/workspace" "$runner_log"
 assert_file_not_contains "qemu" "$runner_log"
 assert_file_not_contains "super-secret-registration-token" "$runner_log"
 assert_eq "$(wc -c <"$qemu_log")" 0 "the container recipe must not start a VM"
-assert_file_contains "image exists" "$image_log"
+# A moving tag must be refreshed on every launch, or a contributor silently
+# keeps running whatever copy they first pulled.
+assert_file_contains "pull ghcr.io/projectbluefin/donate-clanker:stable" "$image_log"
 
 begin "donate-clanker-container: the Copilot credential is passed, never a gh token"
 # Without this the agent starts a fresh device flow on every launch and the
@@ -700,6 +702,16 @@ assert_file_contains "pull" "$image_log"
 assert_eq "$(wc -c <"$runner_log")" 0 "no container may start when the image is unobtainable"
 
 # ══ 8. Stop recipe ════════════════════════════════════════════════════════
+begin "donate-clanker-container: an immutable reference is not re-pulled"
+# sha- tags and digests name exactly one image, so refreshing them is wasted
+# work on every launch; only moving tags need the pull.
+reset_logs
+run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
+  GUM_PROVIDER_RESPONSE=OpenAI GUM_INPUT_RESPONSE=gpt-test \
+  DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:sha-deadbeef
+assert_file_contains "image exists" "$image_log"
+assert_file_not_contains "pull" "$image_log"
+
 begin "donate-clanker-container: a live session is never replaced silently"
 reset_logs
 run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
