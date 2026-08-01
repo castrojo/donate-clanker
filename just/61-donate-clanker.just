@@ -226,6 +226,28 @@ ensure_contributor_image() {
   echo "  or build it yourself: podman build -f image/Containerfile -t donate-clanker:dev . && DONATE_CLANKER_CONTRIBUTOR_IMAGE=donate-clanker:dev ujust donate-clanker-container" >&2
   return 1
 }
+resolve_copilot_token() {
+  # Goose's github_copilot provider needs the long-lived OAuth token minted by
+  # the Copilot editor device flow (a "ghu_" user-to-server token). Without it
+  # the container starts a fresh device flow on every launch and the pane sits
+  # on "enter code XXXX-XXXX" until a human types one in.
+  #
+  # A `gh auth token` ("gho_") is NOT a substitute -- it is a different client
+  # with different scopes, and Goose fails with "failed to get api info" when
+  # handed one. Verified against the contributor image.
+  #
+  # On a desktop Goose keeps the real token in the login keyring, so read it
+  # from there. This is best-effort by design: no keyring, no secret-tool, or
+  # a locked session just means the device flow happens as before.
+  COPILOT_TOKEN="${GITHUB_COPILOT_TOKEN:-}"
+  [[ -n "$COPILOT_TOKEN" ]] && return 0
+  command -v secret-tool &>/dev/null || return 0
+  # Extracted with sed rather than a JSON parser so this stays a single line:
+  # CI lifts recipe bodies out of this file and runs 'bash -n' over them, which
+  # a multi-line embedded script breaks.
+  COPILOT_TOKEN="$(secret-tool lookup service goose username secrets 2>/dev/null | sed -nE 's/.*"GITHUB_COPILOT_TOKEN"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -1)"
+  return 0
+}
 gum_can_prompt() {
   command -v gum &>/dev/null || return 1
   [[ "${DONATE_CLANKER_TEST_GUM_TTY:-}" == "1" ]] || [[ -t 0 ]]
@@ -767,6 +789,20 @@ donate-clanker-container:
     # why the model is handed over as GOOSE_MODEL instead.
     [[ -n "$GOOSE_PROVIDER" ]] && CONTAINER_ARGS+=(--env "GOOSE_PROVIDER=${GOOSE_PROVIDER}")
     [[ -n "$GOOSE_MODEL" ]] && CONTAINER_ARGS+=(--env "GOOSE_MODEL=${GOOSE_MODEL}")
+    # Hand over the Copilot credential so the agent can reach a model without a
+    # human retyping a device code at every launch. Passed by value as an env
+    # var rather than by mounting the host's Goose config: the container gets
+    # exactly one secret and no view of the rest of that directory.
+    if [[ "${GOOSE_PROVIDER:-}" == "github_copilot" ]]; then
+      resolve_copilot_token
+      if [[ -n "${COPILOT_TOKEN:-}" ]]; then
+        CONTAINER_ARGS+=(--env "GITHUB_COPILOT_TOKEN=${COPILOT_TOKEN}")
+        echo "✓ Copilot credential passed to the agent."
+      else
+        echo "! no Copilot credential found; the agent will ask for a device code." >&2
+        echo "  Log in once on this host with: goose configure" >&2
+      fi
+    fi
     CONTAINER_ARGS+=("$CONTRIBUTOR_IMAGE")
 
     echo "✓ starting the donate-clanker contributor container (no VM)."
