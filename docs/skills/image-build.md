@@ -1,7 +1,7 @@
 ---
 name: image-build
-version: "1.0"
-last_updated: 2026-07-31
+version: "1.1"
+last_updated: 2026-08-01
 id: image-build
 one_line_purpose: Derive and pin the donate-clanker contributor image safely.
 entry_point: docs/skills/image-build.md
@@ -11,7 +11,7 @@ optimization_status: draft
 status: active
 dependencies: []
 tags: [containerfile, image, digest, pinning, build]
-description: "Covers deriving from the pinned KubeStellar Hive contributor image, what donate-clanker layers on top, and digest pinning rules. Use when editing image/Containerfile, adding a layer, or updating a pinned reference."
+description: "Covers deriving from the pinned KubeStellar Hive contributor image, what donate-clanker layers on top, digest pinning rules, and which registry tags each ref publishes. Use when editing image/Containerfile, a layer, or publish tagging."
 metadata:
   type: procedure
 ---
@@ -84,6 +84,34 @@ requests so a regression bisects cleanly.
 
 Put slow, rarely-changing layers first and the generated skills tree last;
 `index.json` changes far more often than the base packages do.
+
+### Publishing and tags
+
+`.github/workflows/publish-compat-image.yml` publishes
+`ghcr.io/projectbluefin/donate-clanker`. The ref alone decides the shape:
+
+| Ref | Tags pushed | Platforms | Cancellable |
+|---|---|---|---|
+| `refs/tags/v*.*.*` | `sha-<commit>`, `X.Y.Z`, `vX.Y.Z`, `stable` | amd64 + arm64 | never |
+| `refs/heads/main` | `sha-<commit>`, `main` | amd64 | yes |
+| dispatch elsewhere | `sha-<commit>` | amd64 | yes |
+
+`stable` is the released line and the launcher's default; only a version tag
+moves it. `main` is the newest merge, so a merged fix is consumable without
+cutting a release:
+`DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:main`.
+`:latest` is never published — a default pointing at it dies on
+`manifest unknown`, and `tests/just-onboarding.sh` fails the build if one
+appears.
+
+Main builds skip emulated arm64 because it costs ten-plus minutes per merge.
+Never trade a release's architectures, smoke-test assertions, or digest
+verification for speed.
+
+The repository variable `DONATE_CLANKER_PUBLISH_STABLE` once gated the
+`stable` alias on tag builds. The workflow stopped reading it in `bc8f157`;
+the variable still exists but is inert. Do not repurpose it to gate branch
+tagging.
 
 ## Red Flags
 

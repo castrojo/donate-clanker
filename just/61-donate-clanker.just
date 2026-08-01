@@ -88,11 +88,14 @@ vm_version := env("DONATE_CLANKER_VM_VERSION", "25.08.14")
 # guest, so this only matters for local development.
 #
 # ':stable' and not ':latest' — .github/workflows/publish-compat-image.yml
-# only ever pushes 'sha-<commit>', the version tags and 'stable', so
+# only ever pushes 'sha-<commit>' (every build), 'main' (every push to the
+# main branch) and, on a 'v*.*.*' tag, the version tags plus 'stable'. So
 # ':latest' is a tag that has never existed in the registry and never will.
 # Pointing at it makes every 'ujust donate-clanker-container' die on
-# 'manifest unknown'. Pin a digest or an immutable 'sha-' tag via
-# DONATE_CLANKER_CONTRIBUTOR_IMAGE when reproducibility matters.
+# 'manifest unknown'. ':stable' is the released line and stays the default;
+# set DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:main
+# to run the newest main build, or pin a digest or an immutable 'sha-' tag
+# there when reproducibility matters.
 contributor_image := env("DONATE_CLANKER_CONTRIBUTOR_IMAGE", "ghcr.io/projectbluefin/donate-clanker:stable")
 
 # Shared bash, 'eval''d at the top of every recipe script that needs it:
@@ -221,8 +224,8 @@ ensure_contributor_image() {
   contributor_image_available "$ref" && return 0
   podman pull "$ref" && return 0
   echo "ERROR: cannot obtain the contributor image ${ref}." >&2
-  echo "  Published tags are 'stable', the version tags and 'sha-<commit>' — there is no ':latest'." >&2
-  echo "  Pick a published tag with DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:stable," >&2
+  echo "  Published tags are 'stable', 'main', the version tags and 'sha-<commit>' — there is no ':latest'." >&2
+  echo "  Pick a published tag with DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:stable (released) or ':main' (newest main build)," >&2
   echo "  or build it yourself: podman build -f image/Containerfile -t donate-clanker:dev . && DONATE_CLANKER_CONTRIBUTOR_IMAGE=donate-clanker:dev ujust donate-clanker-container" >&2
   return 1
 }
@@ -1019,8 +1022,8 @@ donate-clanker-doctor:
       pass=$((pass+1))
     else
       echo "  ✗ ${DOCTOR_CONTRIBUTOR_IMAGE} cannot be resolved"
-      echo "    Published tags are 'stable', the version tags and 'sha-<commit>'; ':latest' does not exist."
-      echo "    Override with DONATE_CLANKER_CONTRIBUTOR_IMAGE, or build image/Containerfile locally."
+      echo "    Published tags are 'stable', 'main', the version tags and 'sha-<commit>'; ':latest' does not exist."
+      echo "    Override with DONATE_CLANKER_CONTRIBUTOR_IMAGE (':main' is the newest main build), or build image/Containerfile locally."
       fail=$((fail+1))
     fi
     echo ""

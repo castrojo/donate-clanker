@@ -825,8 +825,8 @@ if grep -n 'file=\${VM_RAW},format=raw' "$code"; then
 fi
 
 begin "static: the container never defaults to an unpublished ':latest' tag"
-# publish-compat-image.yml only pushes sha-<commit>, the version tags and
-# 'stable', so a ':latest' default is guaranteed 'manifest unknown'.
+# publish-compat-image.yml only pushes sha-<commit>, 'main', the version
+# tags and 'stable', so a ':latest' default is guaranteed 'manifest unknown'.
 if grep -n 'donate-clanker:latest' "$code"; then
   fail "the default contributor image must be a tag the publish workflow actually pushes"
 fi

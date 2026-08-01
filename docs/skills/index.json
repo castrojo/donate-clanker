@@ -54,9 +54,9 @@
         "pinning",
         "build"
       ],
-      "description": "Covers deriving from the pinned KubeStellar Hive contributor image, what donate-clanker layers on top, and digest pinning rules. Use when editing image/Containerfile, adding a layer, or updating a pinned reference.",
-      "version": "1.0",
-      "last_updated": "2026-07-31",
+      "description": "Covers deriving from the pinned KubeStellar Hive contributor image, what donate-clanker layers on top, digest pinning rules, and which registry tags each ref publishes. Use when editing image/Containerfile, a layer, or publish tagging.",
+      "version": "1.1",
+      "last_updated": "2026-08-01",
       "doc_type": "procedure"
     },
     {
