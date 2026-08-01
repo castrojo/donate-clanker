@@ -18,7 +18,7 @@
 #     -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
 #     "https://ghcr.io/v2/kubestellar/hive-contributor/manifests/latest" \
 #     | tr -d '\r' | grep -i '^docker-content-digest'
-ARG HIVE_CONTRIBUTOR_IMAGE=ghcr.io/kubestellar/hive-contributor@sha256:769a8a9c83bb6f03a82edd4986d9b51ef9541a30c3a4ad5998e942c326018eff
+ARG HIVE_CONTRIBUTOR_IMAGE=ghcr.io/kubestellar/hive-contributor@sha256:7b49901b976838c6fb5293c77a9685cb24268e52e2f70069cf31d346c193d474
 
 FROM ${HIVE_CONTRIBUTOR_IMAGE}
 
