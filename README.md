@@ -139,7 +139,7 @@ you want when a fix has merged but has not been released — override the
 image:
 
 ```bash
-DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:main \
+DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:sha-<commit> \
   ujust donate-clanker-container
 ```
 
