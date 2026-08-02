@@ -1,6 +1,6 @@
 ---
 name: image-build
-version: "1.5"
+version: "1.6"
 last_updated: 2026-08-01
 id: image-build
 one_line_purpose: Derive and pin the donate-clanker contributor image safely.
@@ -61,6 +61,9 @@ Only the contributor runtime delta plus the review context payload:
 
 1. **Pinned contributor runtime files** fetched from the pinned Hive commit:
    `contributor-agent.sh`, `contributor-relay.sh`, and `backends.conf`.
+   The hosted Project Bluefin Hive maps its unauthenticated contributor
+   knowledge export to `/api/v1/knowledge` through a narrowly scoped Hive
+   entrypoint hook, retaining Hive's own startup and ten-minute refresh loop.
 2. **Goose configuration** under `/opt/bluefin/goose`, referenced by
    `GOOSE_PATH_ROOT`, declaring the Context7 MCP extension. It lives here
    because Hive overwrites `~/.config/goose/config.yaml` at every startup.
