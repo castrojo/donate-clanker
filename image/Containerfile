@@ -96,6 +96,18 @@ RUN set -eu; \
     /usr/local/bin/goose --version; \
     /usr/local/bin/goose run --help >/dev/null
 
+# Hive's ten-minute knowledge refresh uses `cmp -s`, but the lean FSDK base
+# omits diffutils. Supply that one required comparison operation using Python,
+# which the base already provides for our archive extraction.
+COPY --chmod=0755 image/bin/cmp /usr/local/bin/cmp
+RUN set -eu; \
+    printf 'same\n' > /tmp/cmp-left; \
+    cp /tmp/cmp-left /tmp/cmp-right; \
+    cmp -s /tmp/cmp-left /tmp/cmp-right; \
+    printf 'different\n' > /tmp/cmp-right; \
+    ! cmp -s /tmp/cmp-left /tmp/cmp-right; \
+    rm /tmp/cmp-left /tmp/cmp-right
+
 # FSDK intentionally omits terminfo. Hive starts and attaches tmux from the
 # foreground terminal, so compile the single definition we support instead of
 # layering a general terminal database.
