@@ -1,6 +1,6 @@
 ---
 name: image-build
-version: "1.7"
+version: "1.8"
 last_updated: 2026-08-02
 id: image-build
 one_line_purpose: Derive and pin the donate-clanker contributor image safely.
@@ -46,6 +46,8 @@ donate-clanker then adds only what contributor mode still needs:
 - GitHub CLI
 - the pinned Hive contributor scripts (`contributor-agent.sh`,
   `contributor-relay.sh`, `backends.conf`)
+- the `cmp -s` operation Hive's ten-minute knowledge refresh requires, supplied
+  by a small Python wrapper because the FSDK base intentionally omits diffutils
 
 Do not grow this into a second general-purpose distro. If a new package is not
 needed for Goose contributor mode, it probably does not belong here.
@@ -56,6 +58,11 @@ base's existing `tic`, then uses that known terminal type for Hive's tmux
 startup, readiness checks, and attachment. Count generated skills with Bash
 `nullglob`; this keeps the runtime lean while leaving Hive responsible for the
 session itself.
+
+Hive's pinned contributor script also invokes `cmp -s` to atomically refresh
+its knowledge export. Keep `image/bin/cmp` as a bytewise comparison wrapper
+over the base's Python runtime; adding the full diffutils package for one
+operation would violate the image's narrow runtime boundary.
 
 ### What gets layered in
 

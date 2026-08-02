@@ -63,6 +63,7 @@ require image/Containerfile \
   'image/config/goose.yaml /opt/bluefin/goose/config/config.yaml' \
   'COPY --chmod=0755 image/git-hooks/ /opt/bluefin/git-hooks/' \
   'COPY --chmod=0755 image/hive-entrypoint.d/ /etc/hive/entrypoint.d/' \
+  'COPY --chmod=0755 image/bin/cmp /usr/local/bin/cmp' \
   'image/terminfo/xterm-256color.src /tmp/xterm-256color.src' \
   'tic -x -o /usr/share/terminfo /tmp/xterm-256color.src' \
   'https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/docs/skills/index.json' \
