@@ -1,6 +1,6 @@
 ---
 name: image-build
-version: "1.4"
+version: "1.5"
 last_updated: 2026-08-01
 id: image-build
 one_line_purpose: Derive and pin the donate-clanker contributor image safely.
@@ -49,6 +49,11 @@ donate-clanker then adds only what contributor mode still needs:
 
 Do not grow this into a second general-purpose distro. If a new package is not
 needed for Goose contributor mode, it probably does not belong here.
+
+The runner intentionally has neither `find` nor an `xterm` terminfo database.
+Count generated skills with Bash `nullglob`, and invoke the entrypoint's tmux
+client commands as `TERM=dumb tmux ...`; both keep the runtime lean while
+leaving Hive responsible for the session itself.
 
 ### What gets layered in
 
@@ -184,3 +189,7 @@ podman run --rm donate-clanker:dev /usr/bin/bash -lc \
 Confirm the digest actually changed by comparing `skopeo inspect` output
 before and after, and confirm no credential material appears in
 `podman history` layer commands.
+
+## Sources
+
+- tmux client and attachment semantics: Context7 `/tmux/tmux`

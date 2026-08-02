@@ -137,8 +137,10 @@ require image/entrypoint.sh \
   '/opt/bluefin/local-agent-policy.md' \
   'core.hooksPath /opt/bluefin/git-hooks' \
   'mcp.context7.com' \
+  'shopt -s nullglob' \
   '/usr/local/bin/contributor-agent.sh "$@" &' \
-  'tmux has-session -t contributor' \
+  'TERM=dumb tmux has-session -t contributor' \
+  'tmux readiness diagnostics' \
   'tmux attach-session -t contributor' \
   'tmux kill-session -t contributor'
 
