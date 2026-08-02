@@ -7,9 +7,10 @@ import sys
 def files_match(left: str, right: str) -> bool:
     with open(left, "rb") as left_file, open(right, "rb") as right_file:
         while True:
-            if left_file.read(65536) != right_file.read(65536):
+            left_chunk = left_file.read(65536)
+            if left_chunk != right_file.read(65536):
                 return False
-            if left_file.tell() == left_file.seek(0, 2):
+            if not left_chunk:
                 return True
 
 
