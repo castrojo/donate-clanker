@@ -96,6 +96,15 @@ RUN set -eu; \
     /usr/local/bin/goose --version; \
     /usr/local/bin/goose run --help >/dev/null
 
+# FSDK intentionally omits terminfo. Hive starts and attaches tmux from the
+# foreground terminal, so compile the single definition we support instead of
+# layering a general terminal database.
+COPY image/terminfo/xterm-256color.src /tmp/xterm-256color.src
+RUN set -eu; \
+    tic -x -o /usr/share/terminfo /tmp/xterm-256color.src; \
+    rm /tmp/xterm-256color.src; \
+    infocmp xterm-256color >/dev/null
+
 # Pull the contributor-mode runtime directly from the pinned Hive commit. The
 # launcher still depends on Hive's relay protocol and tmux contract; we just own
 # the surrounding image now.

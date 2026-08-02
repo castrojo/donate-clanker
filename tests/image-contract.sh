@@ -63,6 +63,8 @@ require image/Containerfile \
   'image/config/goose.yaml /opt/bluefin/goose/config/config.yaml' \
   'COPY --chmod=0755 image/git-hooks/ /opt/bluefin/git-hooks/' \
   'COPY --chmod=0755 image/hive-entrypoint.d/ /etc/hive/entrypoint.d/' \
+  'image/terminfo/xterm-256color.src /tmp/xterm-256color.src' \
+  'tic -x -o /usr/share/terminfo /tmp/xterm-256color.src' \
   'https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/docs/skills/index.json' \
   '--raw-base "https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/"' \
   '--out /home/dev/.agents/skills' \
@@ -145,8 +147,10 @@ require image/entrypoint.sh \
   'core.hooksPath /opt/bluefin/git-hooks' \
   'mcp.context7.com' \
   'shopt -s nullglob' \
+  'tmux_term=xterm-256color' \
+  'export TERM=' \
   '/usr/local/bin/contributor-agent.sh "$@" &' \
-  'TERM=dumb tmux has-session -t contributor' \
+  'tmux has-session -t contributor' \
   'tmux readiness diagnostics' \
   'tmux attach-session -t contributor' \
   'tmux kill-session -t contributor'

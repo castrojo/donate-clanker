@@ -109,6 +109,10 @@ jobs:
           test "$(docker inspect donate-clanker-compat:smoke --format '{{json .Config.Entrypoint}}')" = '["/usr/local/bin/donate-clanker-entrypoint"]'
           # /home/dev, not /workspace: there is no workspace mount any more.
           test "$(docker inspect donate-clanker-compat:smoke --format '{{.Config.WorkingDir}}')" = /home/dev
+          # The lean FSDK base has no terminal database. The entrypoint needs
+          # this exact entry to create and attach the contributor tmux session.
+          docker run --rm --entrypoint /usr/bin/bash donate-clanker-compat:smoke \
+            -lc 'TERM=xterm-256color infocmp xterm-256color >/dev/null; TERM=xterm-256color tmux new-session -d -s terminfo-smoke "sleep 30"; tmux has-session -t terminfo-smoke; tmux kill-session -t terminfo-smoke'
 
       - name: Log in to GHCR
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
