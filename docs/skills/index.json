@@ -74,8 +74,8 @@
         "build"
       ],
       "description": "Covers deriving from the Project Bluefin FSDK base, which Hive contributor runtime pieces donate-clanker layers on top, digest pinning rules, and which registry tags each ref publishes. Use when editing image/Containerfile, a layer, or publish tagging.",
-      "version": "1.6",
-      "last_updated": "2026-08-01",
+      "version": "1.7",
+      "last_updated": "2026-08-02",
       "doc_type": "procedure"
     },
     {

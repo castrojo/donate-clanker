@@ -1,7 +1,7 @@
 ---
 name: image-build
-version: "1.6"
-last_updated: 2026-08-01
+version: "1.7"
+last_updated: 2026-08-02
 id: image-build
 one_line_purpose: Derive and pin the donate-clanker contributor image safely.
 entry_point: docs/skills/image-build.md
@@ -50,10 +50,12 @@ donate-clanker then adds only what contributor mode still needs:
 Do not grow this into a second general-purpose distro. If a new package is not
 needed for Goose contributor mode, it probably does not belong here.
 
-The runner intentionally has neither `find` nor an `xterm` terminfo database.
-Count generated skills with Bash `nullglob`, and invoke the entrypoint's tmux
-client commands as `TERM=dumb tmux ...`; both keep the runtime lean while
-leaving Hive responsible for the session itself.
+The runner intentionally has neither `find` nor a general terminfo database.
+The image compiles only its vendored `xterm-256color` definition with the
+base's existing `tic`, then uses that known terminal type for Hive's tmux
+startup, readiness checks, and attachment. Count generated skills with Bash
+`nullglob`; this keeps the runtime lean while leaving Hive responsible for the
+session itself.
 
 ### What gets layered in
 

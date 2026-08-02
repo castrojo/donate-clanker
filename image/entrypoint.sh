@@ -109,6 +109,8 @@ fi
 # relay, and launches Goose by keystroke injection. Attaching to that session is
 # Hive's own documented flow. Running it in the foreground is deliberate: the
 # launcher never backgrounds or detaches the agent.
+tmux_term=xterm-256color
+export TERM="$tmux_term"
 agent_pid=
 cleanup() {
 	status=$?
@@ -116,7 +118,7 @@ cleanup() {
 		kill "$agent_pid" 2>/dev/null || true
 		wait "$agent_pid" 2>/dev/null || true
 	fi
-	TERM=dumb tmux kill-session -t contributor 2>/dev/null || true
+	tmux kill-session -t contributor 2>/dev/null || true
 	exit "$status"
 }
 trap cleanup EXIT INT TERM
@@ -125,7 +127,7 @@ trap cleanup EXIT INT TERM
 agent_pid=$!
 
 attempts=0
-while ! TERM=dumb tmux has-session -t contributor 2>/dev/null; do
+while ! tmux has-session -t contributor 2>/dev/null; do
 	if ! kill -0 "$agent_pid" 2>/dev/null; then
 		wait "$agent_pid"
 		exit $?
@@ -134,7 +136,7 @@ while ! TERM=dumb tmux has-session -t contributor 2>/dev/null; do
 	if [ "$attempts" -ge 600 ]; then
 		note 'contributor session did not start'
 		note "tmux readiness diagnostics: TMUX=${TMUX:-<unset>} TMUX_TMPDIR=${TMUX_TMPDIR:-<unset>}"
-		tmux_state="$(TERM=dumb tmux ls 2>&1 || true)"
+		tmux_state="$(tmux ls 2>&1 || true)"
 		note "tmux readiness diagnostics: ${tmux_state//$'\n'/; }"
 		exit 1
 	fi
@@ -144,7 +146,7 @@ done
 # Attach only when there is a terminal. Without this an unattended run would
 # fail on `tmux attach`, which refuses to run without a tty.
 if [ -t 0 ] && [ -t 1 ]; then
-	TERM=dumb tmux attach-session -t contributor
+	tmux attach-session -t contributor
 else
 	note 'no tty; following the agent without attaching'
 	wait "$agent_pid"
