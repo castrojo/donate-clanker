@@ -98,7 +98,9 @@ fi
 
 skills_root="${HOME}/.agents/skills"
 if [ -d "$skills_root" ]; then
-	note "$(find "$skills_root" -name SKILL.md 2>/dev/null | wc -l) org skills available (load one with /<skill-name>)"
+	shopt -s nullglob
+	skills=("$skills_root"/*/SKILL.md)
+	note "${#skills[@]} org skills available (load one with /<skill-name>)"
 fi
 
 # --- Hand over to Hive -------------------------------------------------------
@@ -114,7 +116,7 @@ cleanup() {
 		kill "$agent_pid" 2>/dev/null || true
 		wait "$agent_pid" 2>/dev/null || true
 	fi
-	tmux kill-session -t contributor 2>/dev/null || true
+	TERM=dumb tmux kill-session -t contributor 2>/dev/null || true
 	exit "$status"
 }
 trap cleanup EXIT INT TERM
@@ -123,7 +125,7 @@ trap cleanup EXIT INT TERM
 agent_pid=$!
 
 attempts=0
-while ! tmux has-session -t contributor 2>/dev/null; do
+while ! TERM=dumb tmux has-session -t contributor 2>/dev/null; do
 	if ! kill -0 "$agent_pid" 2>/dev/null; then
 		wait "$agent_pid"
 		exit $?
@@ -131,6 +133,9 @@ while ! tmux has-session -t contributor 2>/dev/null; do
 	attempts=$((attempts + 1))
 	if [ "$attempts" -ge 600 ]; then
 		note 'contributor session did not start'
+		note "tmux readiness diagnostics: TMUX=${TMUX:-<unset>} TMUX_TMPDIR=${TMUX_TMPDIR:-<unset>}"
+		tmux_state="$(TERM=dumb tmux ls 2>&1 || true)"
+		note "tmux readiness diagnostics: ${tmux_state//$'\n'/; }"
 		exit 1
 	fi
 	sleep 0.1
@@ -139,7 +144,7 @@ done
 # Attach only when there is a terminal. Without this an unattended run would
 # fail on `tmux attach`, which refuses to run without a tty.
 if [ -t 0 ] && [ -t 1 ]; then
-	tmux attach-session -t contributor
+	TERM=dumb tmux attach-session -t contributor
 else
 	note 'no tty; following the agent without attaching'
 	wait "$agent_pid"

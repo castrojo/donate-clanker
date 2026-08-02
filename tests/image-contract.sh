@@ -43,7 +43,7 @@ forbid() {
 # shellcheck disable=SC2016
 require image/Containerfile \
   'ARG FSDK_RUNNER_IMAGE=ghcr.io/projectbluefin/lab-runner@sha256:' \
-  'ARG HIVE_COMMIT=e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e' \
+  'ARG HIVE_COMMIT=835448c3cbef9f06d34dd3802548e1d1e16dbd2f' \
   'ARG GOOSE_VERSION=' \
   'FROM ${FSDK_RUNNER_IMAGE}' \
   'ARG GOOSE_REFRESH=0' \
@@ -62,6 +62,7 @@ require image/Containerfile \
   '/usr/local/bin/goose run --help >/dev/null' \
   'image/config/goose.yaml /opt/bluefin/goose/config/config.yaml' \
   'COPY --chmod=0755 image/git-hooks/ /opt/bluefin/git-hooks/' \
+  'COPY --chmod=0755 image/hive-entrypoint.d/ /etc/hive/entrypoint.d/' \
   'https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/docs/skills/index.json' \
   '--raw-base "https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/"' \
   '--out /home/dev/.agents/skills' \
@@ -81,6 +82,12 @@ forbid image/Containerfile \
   'ramalama' \
   'models.json' \
   'agent-contract.json'
+
+# shellcheck disable=SC2016 # Literal source assertion, not shell expansion.
+require image/hive-entrypoint.d/hosted-knowledge.sh \
+  'hosted-projectbluefin-knuckle-gjvq.hive.kubestellar.io' \
+  '/api/v1/knowledge' \
+  'Authorization: Bearer ${GH_TOKEN}'
 
 # The skill generator writes into the image as root. Its source must stay
 # commit-pinned and manifest-controlled path components must not escape its
@@ -137,8 +144,10 @@ require image/entrypoint.sh \
   '/opt/bluefin/local-agent-policy.md' \
   'core.hooksPath /opt/bluefin/git-hooks' \
   'mcp.context7.com' \
+  'shopt -s nullglob' \
   '/usr/local/bin/contributor-agent.sh "$@" &' \
-  'tmux has-session -t contributor' \
+  'TERM=dumb tmux has-session -t contributor' \
+  'tmux readiness diagnostics' \
   'tmux attach-session -t contributor' \
   'tmux kill-session -t contributor'
 

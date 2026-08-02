@@ -8,7 +8,7 @@
 # Digest below is ghcr.io/projectbluefin/lab-runner:25.08 as resolved on
 # 2026-08-01.
 ARG FSDK_RUNNER_IMAGE=ghcr.io/projectbluefin/lab-runner@sha256:fe097bb3b85a126b9a16093fbc498b4b6fb7b24e0f74162ad3d91a402dcfa940
-ARG HIVE_COMMIT=e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e
+ARG HIVE_COMMIT=835448c3cbef9f06d34dd3802548e1d1e16dbd2f
 ARG NODE_VERSION=24.18.1
 ARG GH_VERSION=2.97.0
 ARG TMUX_VERSION=3.7b
@@ -133,6 +133,7 @@ COPY image/config/local-agent-policy.md /opt/bluefin/local-agent-policy.md
 # Git hooks, wired via a global core.hooksPath by the entrypoint. Ergonomics
 # only -- `git commit --no-verify` bypasses every one of them.
 COPY --chmod=0755 image/git-hooks/ /opt/bluefin/git-hooks/
+COPY --chmod=0755 image/hive-entrypoint.d/ /etc/hive/entrypoint.d/
 
 # Project the org's skill documents into Goose's native Agent Skills layout.
 #
