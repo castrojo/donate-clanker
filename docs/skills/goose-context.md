@@ -1,7 +1,7 @@
 ---
 name: goose-context
-version: "1.5"
-last_updated: 2026-08-02
+version: "1.6"
+last_updated: 2026-08-03
 id: goose-context
 one_line_purpose: Keep Goose config, Context7, and skills available in the guest.
 entry_point: docs/skills/goose-context.md
@@ -35,16 +35,19 @@ task delivery; use the Hive runtime documentation instead.
    `~/.config/goose/config.yaml` during startup.
 2. Keep the image Copilot-only. `GOOSE_PROVIDER` may be unset or
    `github_copilot`; the entrypoint supplies `gpt-4.1` when no model is set.
-3. Use Context7 for current external documentation. If its extension is
+3. Goose follows the upstream `canary` release. Build it with the required
+   `github_token` secret so GitHub CLI can verify signed provenance from the
+   official `canary.yml` workflow; never put that token in an image layer.
+4. Use Context7 for current external documentation. If its extension is
    unavailable, continue from local repository evidence rather than inventing
    an API or flag.
-4. Treat generated global skills and repository skills differently. The image
+5. Treat generated global skills and repository skills differently. The image
    generates global skills at build time from the pinned
    `projectbluefin/common` catalog. After cloning a repository, read its
    `docs/skills/index.json` and load the matching entry point.
-5. Keep the image policy short. It is supplied to every Goose turn through
+6. Keep the image policy short. It is supplied to every Goose turn through
    `GOOSE_MOIM_MESSAGE_FILE`.
-6. Treat the policy strings asserted by `tests/image-contract.sh` as contract
+7. Treat the policy strings asserted by `tests/image-contract.sh` as contract
    anchors. Preserve them when changing policy wording, or intentionally update
    their test assertions in the same change.
 
@@ -68,6 +71,8 @@ the Hive knowledge export can be read. Keep auto-loaded files concise.
 ## Red Flags
 
 - Writing controlled configuration to `~/.config/goose`.
+- Treating the mutable canary tag as a checksum pin or passing its verification
+  token through a build argument.
 - Calling repository skill discovery automatic or guaranteed.
 - Committing generated `.agents/skills/` output.
 - Expanding the persistent policy with task-specific instructions.

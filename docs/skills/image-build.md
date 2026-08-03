@@ -1,7 +1,7 @@
 ---
 name: image-build
-version: "2.0"
-last_updated: 2026-08-02
+version: "2.1"
+last_updated: 2026-08-03
 id: image-build
 one_line_purpose: Derive and pin the donate-clanker contributor image safely.
 entry_point: docs/skills/image-build.md
@@ -32,9 +32,12 @@ or published contributor-image behavior.
    the pinned Hive runtime, the minimal `cmp` compatibility wrapper, and the
    required terminal definition. Do not turn the image into a general-purpose
    distribution.
-3. Pin downloaded tool versions and verify their checksums. Keep archive
-   extraction constrained to safe archive members. Install `ws` with
-   `npm --ignore-scripts`; advisory churn is not an image-build gate.
+3. Pin Node, GitHub CLI, and tmux versions and verify their checksums. Goose
+   follows upstream's mutable `canary` release instead: verify each archive
+   with `gh attestation verify`, constrained to the official repository and
+   `canary.yml` signer workflow. Keep archive extraction constrained to safe
+   archive members. Install `ws` with `npm --ignore-scripts`; advisory churn is
+   not an image-build gate.
 4. Place controlled Goose configuration under `/opt/bluefin/goose`, because
    Hive overwrites the default config path. The entrypoint sets the Copilot
    provider, default model, telemetry setting, context file names, and
@@ -43,6 +46,9 @@ or published contributor-image behavior.
    `/home/dev/.agents/skills`. Review the generator and catalog inputs, never
    generated output.
 6. Keep credentials, workspaces, and host configuration out of image layers.
+   Supply the GitHub token used for canary provenance verification as the
+   required `github_token` build secret; it is available only to that `RUN`
+   step and must not be an argument or environment layer.
 7. Treat the image as a task runtime, not a general validation distribution.
    At startup, report unavailable baseline validation commands (`bats`,
    `shellcheck`, `systemd-analyze`, `pre-commit`, `just`, and `podman`) without
@@ -69,7 +75,8 @@ dependencies to the image when an unavailable-command report is sufficient.
 
 ## Red Flags
 
-- A floating base image, mutable external source, or unverified download.
+- A floating base image or an unverified download. Goose's canary source is
+  intentionally mutable, but its archive must have verified signed provenance.
 - A Hive pin that differs from the launcher setup pin.
 - A secret, host workspace, or host configuration baked into a layer.
 - Writing Goose configuration to `~/.config/goose`.
@@ -81,7 +88,10 @@ dependencies to the image when an unavailable-command report is sufficient.
 ```bash
 bash tests/image-contract.sh
 bash tests/generate-skills.sh
-podman build -f image/Containerfile -t donate-clanker:dev .
+GH_TOKEN="$(gh auth token)" podman build \
+  --secret id=github_token,env=GH_TOKEN \
+  --build-arg GOOSE_REFRESH="$(date +%s)" \
+  -f image/Containerfile -t donate-clanker:dev .
 git diff --check
 ```
 
@@ -91,3 +101,4 @@ directories; never use image history or command output to expose credentials.
 ## Sources
 
 - Podman environment inheritance: Context7 `/websites/podman_io_en`
+- GitHub CLI attestation verification: Context7 `/websites/cli_github_manual`

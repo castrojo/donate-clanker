@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-02",
+  "generated_at": "2026-08-03",
   "schema_version": "1.0",
   "skills": [
     {
@@ -17,8 +17,8 @@
         "config"
       ],
       "description": "Keeps Goose configuration, Context7, and global and repository skill routing available in the guest. Use when Goose loses its config, misses a skill, or lacks Context7.",
-      "version": "1.5",
-      "last_updated": "2026-08-02",
+      "version": "1.6",
+      "last_updated": "2026-08-03",
       "doc_type": "reference"
     },
     {
@@ -93,8 +93,8 @@
         "build"
       ],
       "description": "Maintains the pinned FSDK-derived contributor image, Hive runtime, Goose configuration, and generated skills. Use when editing image layers, pins, or image publication behavior.",
-      "version": "2.0",
-      "last_updated": "2026-08-02",
+      "version": "2.1",
+      "last_updated": "2026-08-03",
       "doc_type": "procedure"
     },
     {

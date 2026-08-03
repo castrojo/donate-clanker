@@ -31,6 +31,8 @@ that its provenance was signed by the official release workflow. This preserves
 an integrity check while deliberately accepting a mutable upstream release:
 each new local or CI image build follows the latest snapshot available at that
 time. The existing binary smoke checks remain the runtime compatibility gate.
+The GitHub token required by the verifier is a build secret, never a build
+argument or image environment variable.
 
 The Containerfile must fail clearly if provenance cannot be verified for the
 expected x86_64 or aarch64 archive. There is no fallback to the old 1.x archive

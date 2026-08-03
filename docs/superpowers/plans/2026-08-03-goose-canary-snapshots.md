@@ -9,6 +9,7 @@ Goose canary snapshot.
 mutable `canary` release for the build architecture. It uses the already
 installed GitHub CLI to verify the archive's signed SLSA provenance, constrained
 to the upstream repository and canary workflow, before extracting the binary.
+The verifier receives its GitHub token only through a build secret.
 The contract test and README make the mutable-channel tradeoff explicit.
 
 **Tech Stack:** Containerfile, Bash contract test, GitHub CLI attestations,
@@ -19,6 +20,8 @@ GitHub Releases, Podman.
 - Follow `aaif-goose/goose`'s `canary` release, which is rebuilt from `main`.
 - Verify each archive with `gh attestation verify` using
   `aaif-goose/goose/.github/workflows/canary.yml` as the signer workflow.
+- Supply the verifier token as the required `github_token` build secret; never
+  use a build argument or persist it in an image layer.
 - Keep the FSDK base image and Hive revision pinned.
 - Do not change launcher behavior, Hive behavior, Copilot-only configuration,
   or controlled Goose configuration.
@@ -68,6 +71,7 @@ GitHub Releases, Podman.
     --signer-workflow aaif-goose/goose/.github/workflows/canary.yml
   ```
 
+  Set `GH_TOKEN` from `/run/secrets/github_token` in that same `RUN` step.
   Keep archive extraction and `goose --version`/`goose run --help` checks after
   verification.
 
@@ -161,7 +165,10 @@ GitHub Releases, Podman.
   Run:
 
   ```bash
-  podman build -f image/Containerfile -t localhost/donate-clanker:goose-canary .
+  GH_TOKEN="$(gh auth token)" podman build \
+    --secret id=github_token,env=GH_TOKEN \
+    --build-arg GOOSE_REFRESH="$(date +%s)" \
+    -f image/Containerfile -t localhost/donate-clanker:goose-canary .
   ```
 
   Expected: the build finishes successfully after provenance verification and
