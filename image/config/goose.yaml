@@ -45,15 +45,3 @@ GOOSE_NO_CODE_TRUNCATION: true
 # Summarise rather than prompt when the window fills; `goose run` already
 # defaults to this, but interactive sessions otherwise stop and ask.
 GOOSE_CONTEXT_STRATEGY: summarize
-
-extensions:
-  context7:
-    type: streamable_http
-    name: context7
-    enabled: true
-    bundled: false
-    uri: "https://mcp.context7.com/mcp"
-    timeout: 30
-    headers: {}
-    envs: {}
-    env_keys: []

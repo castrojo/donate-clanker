@@ -78,29 +78,6 @@ if [ -d /opt/bluefin/git-hooks ]; then
 	git config --global core.hooksPath /opt/bluefin/git-hooks || true
 fi
 
-# --- Context7 preflight ------------------------------------------------------
-#
-# Goose only warns and continues when an extension fails to start, so a session
-# can look healthy while Context7 is unreachable. Probe it here and say so
-# plainly; the local agent policy already tells the agent to proceed on local
-# evidence when Context7 is unavailable.
-if command -v curl >/dev/null 2>&1; then
-	# Probe with a real MCP `initialize` call. A bare GET returns 405 and a
-	# `ping` is rejected before the session exists, so either would report a
-	# healthy server as unreachable. Streamable HTTP also requires the
-	# text/event-stream Accept type.
-	if curl --silent --show-error --fail --max-time 8 --output /dev/null \
-		--request POST \
-		--header 'Content-Type: application/json' \
-		--header 'Accept: application/json, text/event-stream' \
-		--data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"review","version":"1"}}}' \
-		https://mcp.context7.com/mcp 2>/dev/null; then
-		note 'Context7 reachable'
-	else
-		note 'Context7 unreachable; continuing on local repository evidence only'
-	fi
-fi
-
 skills_root="${HOME}/.agents/skills"
 if [ -d "$skills_root" ]; then
 	shopt -s nullglob

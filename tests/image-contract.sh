@@ -120,16 +120,14 @@ forbid scripts/generate-skills.py \
   'projectbluefin/common/main/'
 
 # The controlled config exists only because Hive overwrites
-# ~/.config/goose/config.yaml on every start. It must not pin a provider or a
-# model: the launcher passes those through from the contributor's own account.
+# ~/.config/goose/config.yaml on every start. It must not pin a provider,
+# model, or extension that Hive manages: the launcher passes provider and model
+# through from the contributor's own account.
 require image/config/goose.yaml \
-  'type: streamable_http' \
-  'name: context7' \
-  'enabled: true' \
-  'timeout: 30' \
-  'uri: "https://mcp.context7.com/mcp"' \
   'GOOSE_MODE: auto' \
   'GOOSE_MAX_TOOL_RESPONSE_SIZE:'
+forbid image/config/goose.yaml \
+  'context7'
 
 # Comments stripped first, so the prose explaining a setting is never mistaken
 # for the setting.
@@ -143,13 +141,12 @@ for unwanted in GOOSE_PROVIDER GOOSE_MODEL 127.0.0.1:8000 api_key; do
   esac
 done
 
-# Agents must not block on Context7: use it opportunistically, fall back local.
 require image/config/local-agent-policy.md \
   'Use installed global Agent Skills when their descriptions match the task' \
   'docs/skills/index.json' \
-  'inspect local repository evidence first' \
-  'Context7 only when current external documentation is useful' \
-  'continue with local evidence when Context7 is unavailable'
+  'inspect local repository evidence first'
+forbid image/config/local-agent-policy.md \
+  'context7'
 
 # GOOSE_PATH_ROOT is the whole reason our config survives Hive's rewrite, and
 # Hive's knowledge export lands on CLAUDE.md, which Goose ignores by default.
@@ -168,8 +165,6 @@ require image/entrypoint.sh \
   'GOOSE_MOIM_MESSAGE_FILE' \
   '/opt/bluefin/local-agent-policy.md' \
   'core.hooksPath /opt/bluefin/git-hooks' \
-  'mcp.context7.com' \
-  '"clientInfo":{"name":"review","version":"1"}' \
   'shopt -s nullglob' \
   'validation_tools=(bats shellcheck systemd-analyze pre-commit just podman)' \
   'validation tools unavailable:' \
@@ -184,6 +179,9 @@ require image/entrypoint.sh \
   "note 'tmux detached; the agent remains foreground in this terminal. Press Ctrl-C or close this terminal to stop it.'" \
   'wait "$agent_pid"' \
   'tmux kill-session -t contributor'
+forbid image/entrypoint.sh \
+  'context7' \
+  'mcp.context7.com'
 
 require README.md \
   'Goose canary snapshot' \
