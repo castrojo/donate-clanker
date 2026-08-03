@@ -125,7 +125,7 @@ test('fetches every pull-request page and derives GitHub evidence', async () => 
       return jsonResponse([]);
     }
     if (url.pathname.includes('/check-runs')) {
-      return jsonResponse({ check_runs: [] });
+      return jsonResponse({ total_count: 0, check_runs: [] });
     }
     if (url.pathname.includes('/pulls/')) {
       return jsonResponse({ mergeable_state: 'clean' });
@@ -146,6 +146,66 @@ test('fetches every pull-request page and derives GitHub evidence', async () => 
   assert.equal(pullRequests[0].mergeableState, 'clean');
   assert.equal(pullRequests[0].checkState, 'success');
   assert.equal(pullRequests[100].number, 101);
+});
+
+test('uses complete current review and check-run evidence', async () => {
+  const reviews = Array.from({ length: 100 }, (_, index) => ({
+    id: index + 1,
+    state: index === 0 ? 'APPROVED' : 'COMMENTED',
+    submitted_at: '2026-08-03T16:00:00Z',
+    user: { id: index === 0 ? 1 : index + 1 },
+  }));
+  const checkRuns = Array.from({ length: 100 }, () => ({
+    status: 'completed',
+    conclusion: 'success',
+  }));
+  const fetch = async (input) => {
+    const url = new URL(input);
+    if (url.pathname === '/repos/projectbluefin/bluefin/pulls') {
+      return jsonResponse([githubPullRequest(1)]);
+    }
+    if (url.pathname.endsWith('/reviews')) {
+      return jsonResponse(
+        url.searchParams.get('page') === '1'
+          ? reviews
+          : url.searchParams.get('page') === '2'
+            ? [
+              {
+                id: 101,
+                state: 'CHANGES_REQUESTED',
+                submitted_at: '2026-08-03T17:00:00Z',
+                user: { id: 1 },
+              },
+            ]
+            : [],
+      );
+    }
+    if (url.pathname.includes('/check-runs')) {
+      return jsonResponse(
+        url.searchParams.get('page') === '1'
+          ? { total_count: 101, check_runs: checkRuns }
+          : url.searchParams.get('page') === '2'
+            ? {
+              total_count: 101,
+              check_runs: [{ status: 'completed', conclusion: 'failure' }],
+            }
+            : { total_count: 0, check_runs: [] },
+      );
+    }
+    if (url.pathname.includes('/pulls/')) {
+      return jsonResponse({ mergeable_state: 'clean' });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+
+  const [pullRequest] = await fetchOpenPullRequests({
+    fetch,
+    owner: 'projectbluefin',
+    repositories: ['bluefin'],
+  });
+
+  assert.equal(pullRequest.reviewState, 'review_required');
+  assert.equal(pullRequest.checkState, 'failure');
 });
 
 test('rejects failed list responses and preserves existing snapshots', async () => {
@@ -193,7 +253,7 @@ test('preserves an unchanged snapshot instead of refreshing generated_at', async
       return jsonResponse([]);
     }
     if (url.pathname.includes('/check-runs')) {
-      return jsonResponse({ check_runs: [] });
+      return jsonResponse({ total_count: 0, check_runs: [] });
     }
     if (url.pathname.includes('/pulls/')) {
       return jsonResponse({ mergeable_state: 'clean' });

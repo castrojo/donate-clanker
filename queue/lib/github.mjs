@@ -35,13 +35,87 @@ async function requestJson(fetch, url, token, context) {
   }
 }
 
+async function requestPaginatedArray(fetch, url, token, context) {
+  const values = [];
+  for (let page = 1; ; page += 1) {
+    const pageUrl = new URL(url);
+    pageUrl.searchParams.set('per_page', '100');
+    pageUrl.searchParams.set('page', String(page));
+    const payload = await requestJson(fetch, pageUrl, token, context);
+    if (!Array.isArray(payload)) {
+      throw new Error(`GitHub response was malformed for ${context}`);
+    }
+    values.push(...payload);
+    if (payload.length < 100) {
+      return values;
+    }
+  }
+}
+
+async function requestCheckRuns(fetch, url, token, context) {
+  const checkRuns = [];
+  let totalCount;
+  for (let page = 1; ; page += 1) {
+    const pageUrl = new URL(url);
+    pageUrl.searchParams.set('per_page', '100');
+    pageUrl.searchParams.set('page', String(page));
+    const payload = await requestJson(fetch, pageUrl, token, context);
+    if (
+      typeof payload !== 'object' ||
+      payload === null ||
+      !Number.isSafeInteger(payload.total_count) ||
+      payload.total_count < 0 ||
+      !Array.isArray(payload.check_runs)
+    ) {
+      throw new Error(`GitHub response was malformed for ${context}`);
+    }
+    if (totalCount === undefined) {
+      totalCount = payload.total_count;
+    } else if (totalCount !== payload.total_count) {
+      throw new Error(`GitHub response changed during pagination for ${context}`);
+    }
+    checkRuns.push(...payload.check_runs);
+    if (checkRuns.length >= totalCount || payload.check_runs.length < 100) {
+      return { check_runs: checkRuns };
+    }
+  }
+}
+
 function reviewState(result) {
   if (result.status !== 'fulfilled' || !Array.isArray(result.value)) {
     return 'unknown';
   }
-  return result.value.some(
-    (review) => review && typeof review === 'object' && review.state === 'APPROVED',
-  )
+
+  const latestByReviewer = new Map();
+  for (const review of result.value) {
+    if (
+      !review ||
+      typeof review !== 'object' ||
+      !Number.isSafeInteger(review.id) ||
+      typeof review.state !== 'string' ||
+      typeof review.submitted_at !== 'string' ||
+      Number.isNaN(Date.parse(review.submitted_at)) ||
+      !review.user ||
+      typeof review.user !== 'object' ||
+      !Number.isSafeInteger(review.user.id)
+    ) {
+      return 'unknown';
+    }
+    const previous = latestByReviewer.get(review.user.id);
+    if (
+      !previous ||
+      review.submitted_at > previous.submitted_at ||
+      (review.submitted_at === previous.submitted_at && review.id > previous.id)
+    ) {
+      latestByReviewer.set(review.user.id, review);
+    }
+  }
+
+  const currentReviews = [...latestByReviewer.values()];
+  if (currentReviews.some((review) => review.state === 'CHANGES_REQUESTED')) {
+    return 'review_required';
+  }
+  return currentReviews.some((review) => review.state === 'APPROVED')
     ? 'approved'
     : 'review_required';
 }
@@ -142,8 +216,13 @@ async function enrichPullRequest({ fetch, owner, repository, token, pullRequest 
   );
   const [details, reviewData, checkData] = await Promise.allSettled([
     requestJson(fetch, base, token, `${repository}#${pullRequest.number} details`),
-    requestJson(fetch, reviews, token, `${repository}#${pullRequest.number} reviews`),
-    requestJson(fetch, checks, token, `${repository}#${pullRequest.number} checks`),
+    requestPaginatedArray(
+      fetch,
+      reviews,
+      token,
+      `${repository}#${pullRequest.number} reviews`,
+    ),
+    requestCheckRuns(fetch, checks, token, `${repository}#${pullRequest.number} checks`),
   ]);
 
   return {
