@@ -26,7 +26,7 @@ on-demand, authenticated evidence view for a review contributor.
 
 A scheduled GitHub Actions workflow in this repository fetches the configured
 public repositories' open pull requests from GitHub. It normalizes and ranks
-the evidence, then writes two tracked generated artifacts:
+the evidence, then deploys two generated artifacts to GitHub Pages:
 
 - `public/queue.md` is the human overview, grouped by repository.
 - `public/queue.json` is the agent contract.
@@ -34,8 +34,8 @@ the evidence, then writes two tracked generated artifacts:
 The workflow runs every 15 minutes, on `workflow_dispatch`, and when the
 central `projectbluefin/renovate-config` workflow dispatches
 `renovate-completed` after a successful scheduled or manual Renovate run. It
-makes no commit when the generated files are unchanged. A static-hosting
-configuration serves the files at:
+does not write to the protected `main` branch. A static-hosting configuration
+serves the deployed files at:
 
 - `/` for the Markdown overview;
 - `/queue.md` for the Markdown artifact;
@@ -99,10 +99,8 @@ workflow labels describe lifecycle state, not a public priority taxonomy.
 
 The generator treats a failed GitHub request or malformed API response as an
 error. Incomplete evidence for one otherwise valid pull request instead emits
-`investigate` for that item. A source failure does not overwrite a previous
-snapshot with an empty or success-shaped file: the workflow fails visibly and
-leaves the last known generated artifacts available, including their
-`generated_at` timestamp.
+`investigate` for that item. A source failure fails the workflow before its
+Pages artifact is deployed, leaving the prior Pages deployment available.
 
 Consumers must check `generated_at` and verify a selected item directly in
 GitHub before acting. The static queue is a recommendation snapshot, never an
@@ -121,8 +119,9 @@ Tests use saved GitHub API fixtures and cover:
 - failed-source preservation of the prior snapshot.
 
 CI validates fixtures and generated output without making live GitHub API
-requests. The scheduled generator is the only component that reads live public
-GitHub data.
+requests. The deployment workflow is the only component that reads live public
+GitHub data, and it has `contents: read`, `pages: write`, and `id-token: write`
+permissions only.
 
 ## Deferred Work
 

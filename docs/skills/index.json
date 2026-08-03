@@ -131,7 +131,7 @@
         "pullrequest"
       ],
       "description": "Publishes the public static PR queue without creating queue authority. Use when changing queue generation, ranking, artifacts, or refresh automation.",
-      "version": "1.1",
+      "version": "1.2",
       "last_updated": "2026-08-03",
       "doc_type": "procedure"
     },
