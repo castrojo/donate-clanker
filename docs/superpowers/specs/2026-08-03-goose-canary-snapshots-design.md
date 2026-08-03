@@ -19,20 +19,22 @@ configuration.
 The Containerfile will identify the channel as `canary`, not a semantic
 `GOOSE_VERSION`. At image build time it will:
 
-1. Download the upstream canary checksum manifest.
-2. Select the architecture-specific Goose archive checksum.
-3. Download the matching archive from the same `canary` release.
-4. Verify the archive against the selected checksum before extraction.
+1. Download the architecture-specific archive from the upstream `canary`
+   release.
+2. Verify the archive with GitHub's signed SLSA build provenance, pinning the
+   repository and the `canary.yml` signer workflow.
+3. Extract only after provenance verification succeeds.
 
-This preserves an integrity check while deliberately accepting a mutable
-upstream release: each new local or CI image build follows the latest snapshot
-available at that time. The existing binary smoke checks remain the runtime
-compatibility gate.
+Goose does not publish a checksum manifest for its canary artifacts. GitHub
+attestation verification checks the downloaded archive's SHA-256 and verifies
+that its provenance was signed by the official release workflow. This preserves
+an integrity check while deliberately accepting a mutable upstream release:
+each new local or CI image build follows the latest snapshot available at that
+time. The existing binary smoke checks remain the runtime compatibility gate.
 
-The Containerfile must fail clearly if the manifest does not contain the
-expected x86_64 or aarch64 archive. It must also fail if the archive does not
-match its manifest checksum. There is no fallback to the old 1.x archive or a
-partial unverified install.
+The Containerfile must fail clearly if provenance cannot be verified for the
+expected x86_64 or aarch64 archive. There is no fallback to the old 1.x archive
+or a partial unverified install.
 
 ## User Documentation
 
@@ -43,7 +45,7 @@ users needing a fixed artifact to a published image digest or immutable
 
 ## Tests
 
-`tests/image-contract.sh` will assert the canary source and checksum-manifest
+`tests/image-contract.sh` will assert the canary source and signed-provenance
 verification contract while retaining its existing checks for a pinned base
 image, Hive compatibility, controlled Goose configuration, and the `goose run
 --help` smoke check.
