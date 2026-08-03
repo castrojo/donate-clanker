@@ -237,6 +237,8 @@ test('refresh workflow is a constrained static snapshot publisher', async () => 
   assert.match(workflow, /QUEUE_OWNER: projectbluefin/);
   assert.match(workflow, /ref: main/);
   assert.match(workflow, /git diff --quiet -- public\/queue\.md public\/queue\.json/);
+  assert.match(workflow, /repository_dispatch:\s+types: \[renovate-completed\]/);
+  assert.doesNotMatch(workflow, /\bpull_request:/);
   assert.doesNotMatch(workflow, /pull_request_target/);
 });
 

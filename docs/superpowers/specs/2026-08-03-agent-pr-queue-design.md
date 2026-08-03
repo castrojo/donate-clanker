@@ -31,9 +31,11 @@ the evidence, then writes two tracked generated artifacts:
 - `public/queue.md` is the human overview, grouped by repository.
 - `public/queue.json` is the agent contract.
 
-The workflow runs every 15 minutes, on `workflow_dispatch`, and after relevant
-pull-request events. It makes no commit when the generated files are
-unchanged. A static-hosting configuration serves the files at:
+The workflow runs every 15 minutes, on `workflow_dispatch`, and when the
+central `projectbluefin/renovate-config` workflow dispatches
+`renovate-completed` after a successful scheduled or manual Renovate run. It
+makes no commit when the generated files are unchanged. A static-hosting
+configuration serves the files at:
 
 - `/` for the Markdown overview;
 - `/queue.md` for the Markdown artifact;

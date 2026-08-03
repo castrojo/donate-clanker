@@ -41,7 +41,7 @@ Actions, static hosting.
 | `queue/test/queue.test.mjs` | Fixture-based unit and contract tests for classification, ranking, rendering, pagination, and source failures. |
 | `public/queue.md` | Generated human-readable queue snapshot, committed only after a successful refresh. |
 | `public/queue.json` | Generated agent queue snapshot, committed only after a successful refresh. |
-| `.github/workflows/update-pr-queue.yml` | Scheduled, manually dispatchable, and same-repository PR-triggered refresh workflow. |
+| `.github/workflows/update-pr-queue.yml` | Scheduled, manually dispatchable, and Renovate-dispatched refresh workflow. |
 | `.github/workflows/validate.yml` | Runs the queue's offline Node test suite in pull-request validation. |
 | `README.md` | Documents the static queue contract, snapshot freshness, and the custom-domain operations handoff. |
 
@@ -232,8 +232,8 @@ git commit -m "feat: add PR queue generator"
 - Consumes: the Task 2 generator and the repository-local
   `QUEUE_REPOSITORIES` workflow environment value.
 - Produces: a public snapshot refresh every 15 minutes, manually on demand,
-  and after same-repository PR changes; validation that never calls GitHub's
-  live API.
+  and after the central Renovate workflow succeeds; validation that never calls
+  GitHub's live API.
 
 - [ ] **Step 1: Write a workflow contract test**
 
@@ -263,11 +263,10 @@ Expected: FAIL because `.github/workflows/update-pr-queue.yml` does not exist.
 - [ ] **Step 3: Add the refresh workflow**
 
 Create `.github/workflows/update-pr-queue.yml` with `schedule` cron
-`*/15 * * * *`, `workflow_dispatch`, and `pull_request` events for
-`opened`, `reopened`, `synchronize`, `ready_for_review`, and `closed`.
-For pull-request events, run the write job only when
-`github.event.pull_request.head.repo.full_name == github.repository`; fork
-events remain safely covered by the 15-minute refresh.
+`*/15 * * * *`, `workflow_dispatch`, and
+`repository_dispatch` type `renovate-completed`. Do not use a local
+`pull_request` trigger: it cannot observe Renovate pull requests opened in
+other repositories.
 
 Set top-level `permissions` to `contents: write`, check out `main` explicitly,
 set `QUEUE_OWNER: projectbluefin`, list the approved public repositories in
@@ -275,6 +274,13 @@ set `QUEUE_OWNER: projectbluefin`, list the approved public repositories in
 `${{ github.token }}`, and commit only changed `public/queue.md` and
 `public/queue.json` as `ci: refresh PR queue`. Do not add a secret, use
 `pull_request_target`, or run code from a pull-request head.
+
+In `projectbluefin/renovate-config`, add a post-Renovate job that runs only
+when the scheduled or manually dispatched Renovate job succeeds. It creates
+the existing Renovate GitHub App token and sends
+`repository_dispatch` event `renovate-completed` to
+`projectbluefin/review`. The payload is informational only; review always
+checks out `main`.
 
 Before enabling the workflow, a maintainer must confirm that the protected
 branch permits the repository `GITHUB_TOKEN` to commit these generated files.
