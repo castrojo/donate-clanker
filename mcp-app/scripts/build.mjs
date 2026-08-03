@@ -86,24 +86,35 @@ async function bundleBrowser(entryPath, fallbackSource) {
     platform: 'browser',
     format: 'esm',
     target: 'es2022',
+    outdir: 'browser',
     write: false,
   });
 
-  return result.outputFiles[0].text;
+  const client = result.outputFiles.find((file) => file.path.endsWith('.js'));
+  const styles = result.outputFiles.find((file) => file.path.endsWith('.css'));
+
+  if (!client) {
+    throw new Error('Browser bundle did not produce a JavaScript asset.');
+  }
+
+  return { client: client.text, styles: styles?.text ?? '' };
 }
 
 async function main() {
   await rm(distDir, { recursive: true, force: true });
   await mkdir(distDir, { recursive: true });
 
-  const [serverBundle, clientBundle, template] = await Promise.all([
+  const [serverBundle, browserBundle, template] = await Promise.all([
     bundleNode(serverEntry, fallbackServerSource),
     bundleBrowser(clientEntry, fallbackClientSource),
     readFile(templatePath, 'utf8'),
   ]);
 
-  const safeClientBundle = clientBundle
+  const safeClientBundle = browserBundle.client
     .replace(/<\/script/gi, '<\\/script')
+    .replace(/<!--/g, '<\\!--');
+  const safeStyles = browserBundle.styles
+    .replace(/<\/style/gi, '<\\/style')
     .replace(/<!--/g, '<\\!--');
 
   await writeFile(path.join(distDir, 'server.js'), serverBundle);
@@ -111,7 +122,7 @@ async function main() {
     path.join(distDir, 'index.html'),
     template.replace(
       '<!--CLIENT_BUNDLE-->',
-      `<script type="module">\n${safeClientBundle}\n</script>`,
+      `<style>\n${safeStyles}\n</style>\n<script type="module">\n${safeClientBundle}\n</script>`,
     ),
   );
 }
