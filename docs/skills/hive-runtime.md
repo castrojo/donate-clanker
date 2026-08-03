@@ -54,8 +54,9 @@ fork, push, or pull-request access until the guest supports that mapping.
 Never log or persist either credential.
 
 To inspect earlier review output, enter tmux copy-mode with `Ctrl-b [`.
-PageUp scrolls, tmux search finds text, and `q` returns to the live pane.
-Copy-mode changes only your view; Hive still owns output capture.
+PageUp or the mouse wheel scrolls, tmux search finds text, and `q` returns to
+the live pane. Copy-mode changes only your view; Hive still owns output
+capture.
 
 ## Red Flags
 

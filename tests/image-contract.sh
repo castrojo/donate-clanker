@@ -66,8 +66,11 @@ require image/Containerfile \
   'COPY --chmod=0755 image/bin/cmp /usr/local/bin/cmp' \
   'COPY --chmod=0755 image/bin/find /usr/local/bin/find' \
   'COPY --chmod=0755 image/bin/bluefin-review /usr/local/bin/bluefin-review' \
+  'COPY image/tmux.conf /etc/tmux.conf' \
   'image/terminfo/xterm-256color.src /tmp/xterm-256color.src' \
   'tic -x -o /usr/share/terminfo /tmp/xterm-256color.src' \
+  'image/terminfo/tmux-256color.src /tmp/tmux-256color.src' \
+  'tic -x -o /usr/share/terminfo /tmp/tmux-256color.src' \
   'https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/docs/skills/index.json' \
   '--raw-base "https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/"' \
   '--out /home/dev/.agents/skills' \
@@ -169,8 +172,9 @@ require image/entrypoint.sh \
   'shopt -s nullglob' \
   'validation_tools=(bats shellcheck systemd-analyze pre-commit just podman)' \
   'validation tools unavailable:' \
-  'tmux_term=xterm-256color' \
-  'export TERM=' \
+  'tmux_fallback_term=xterm-256color' \
+  'infocmp "${TERM:-}"' \
+  'TERM=${TERM:-<unset>} has no terminfo; using ${tmux_fallback_term}' \
   '/usr/local/bin/contributor-agent.sh "$@" &' \
   'tmux has-session -t contributor' \
   'tmux readiness diagnostics' \
@@ -206,7 +210,12 @@ forbid image/entrypoint.sh \
   '/var/run/docker.sock' \
   '/run/podman/podman.sock' \
   ':-/config}' \
-  ':-/workspace}'
+  ':-/workspace}' \
+  'tmux_term=xterm-256color'
+
+require image/tmux.conf \
+  'set -g default-terminal "tmux-256color"' \
+  'set -g mouse on'
 
 # Hooks run in every repository via a global core.hooksPath, so they must never
 # claim to be enforcement: --no-verify bypasses all of them.

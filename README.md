@@ -102,7 +102,8 @@ absent; doctor only reports that condition.
 For a Bluefin review, load `/bluefin-review` after the assigned repository is
 available. To inspect earlier output, enter tmux copy-mode with `Ctrl-b [`;
 PageUp scrolls, tmux search finds text, and `q` returns to the live pane.
-Copy-mode only changes your view; Hive still owns task and output handling.
+The mouse wheel also enters copy-mode and scrolls long output. Copy-mode only
+changes your view; Hive still owns task and output handling.
 
 ## Configuration
 
@@ -159,6 +160,10 @@ Organization skills are generated at image build time from
 `projectbluefin/common`'s `docs/skills/index.json` into Goose's global skill
 directory. Repositories may route agents to their own skill catalog, but
 per-repository skills are not automatically discovered at session startup.
+
+The image supplies `xterm-256color` and `tmux-256color` terminfo definitions.
+It preserves a recognized terminal type when attaching tmux and falls back to
+`xterm-256color` only when that type is unavailable in the image.
 
 Git hooks at `/opt/bluefin/git-hooks` are ergonomics only; GitHub rulesets and
 required checks enforce repository policy.

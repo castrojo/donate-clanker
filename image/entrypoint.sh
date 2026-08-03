@@ -123,8 +123,14 @@ fi
 # relay, and launches Goose by keystroke injection. Attaching to that session is
 # Hive's own documented flow. Running it in the foreground is deliberate: the
 # launcher never backgrounds or detaches the agent.
-tmux_term=xterm-256color
-export TERM="$tmux_term"
+# The attach client must describe the terminal that actually renders tmux.
+# FSDK includes only the narrow terminfo set compiled in the image, so fall
+# back to xterm when the caller's terminal is not available.
+tmux_fallback_term=xterm-256color
+if ! infocmp "${TERM:-}" >/dev/null 2>&1; then
+	note "TERM=${TERM:-<unset>} has no terminfo; using ${tmux_fallback_term}"
+	export TERM="$tmux_fallback_term"
+fi
 agent_pid=
 cleanup() {
 	status=$?
