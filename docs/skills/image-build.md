@@ -43,10 +43,29 @@ or published contributor-image behavior.
    `/home/dev/.agents/skills`. Review the generator and catalog inputs, never
    generated output.
 6. Keep credentials, workspaces, and host configuration out of image layers.
+7. Treat the image as a task runtime, not a general validation distribution.
+   At startup, report unavailable baseline validation commands (`bats`,
+   `shellcheck`, `systemd-analyze`, `pre-commit`, `just`, and `podman`) without
+   blocking Hive or installing them solely to hide the absence.
 
 The publish workflow moves `:stable` on main. It also publishes immutable
 `sha-<commit>` tags; use an immutable tag or digest when reproducibility is
 required. Do not use `:latest`.
+
+## When Not to Use
+
+Do not use this runbook to change Hive assignment, checkout, or contributor
+protocol behavior; those belong in Hive. Do not add task-specific validation
+dependencies to the image when an unavailable-command report is sufficient.
+
+## Common Rationalizations
+
+- "Adding every validator makes contributors more useful." The image must stay
+  a narrow contributor runtime; report a missing tool and let the assigned
+  repository choose its validation environment.
+- "Passing `--env NAME=value` is harmless." Podman exposes command arguments
+  locally; export the value and use `--env NAME` so Podman inherits only that
+  host environment entry.
 
 ## Red Flags
 
@@ -68,3 +87,7 @@ git diff --check
 
 Inspect the built image only for the controlled Goose root and generated skill
 directories; never use image history or command output to expose credentials.
+
+## Sources
+
+- Podman environment inheritance: Context7 `/websites/podman_io_en`
