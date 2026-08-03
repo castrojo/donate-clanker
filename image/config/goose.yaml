@@ -16,10 +16,10 @@
 # file, and the launcher passes GOOSE_PROVIDER/GOOSE_MODEL through from the
 # contributor's own credentials.
 
-# smart_approve keeps low-risk tool calls automatic while still gating riskier
-# ones. The Goose default is `auto`, which runs the Developer extension's shell
-# tool with no approval at all.
-GOOSE_MODE: smart_approve
+# Contributor runs are attended but Hive injects work by keystroke, so every
+# tool confirmation blocks the agent and the human at the terminal. The user
+# explicitly accepts the contributor's scoped runtime tools.
+GOOSE_MODE: auto
 
 # Goose asks an interactive yes/no telemetry question on first run. Hive drives
 # the CLI by simulated keystrokes, so that prompt blocks the agent forever
