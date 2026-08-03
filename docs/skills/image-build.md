@@ -3,7 +3,7 @@ name: image-build
 version: "2.1"
 last_updated: 2026-08-03
 id: image-build
-one_line_purpose: Derive and pin the donate-clanker contributor image safely.
+one_line_purpose: Derive and pin the review contributor image safely.
 entry_point: docs/skills/image-build.md
 category: ci-ops
 mcp_compliance_level: partial
@@ -91,7 +91,7 @@ bash tests/generate-skills.sh
 GH_TOKEN="$(gh auth token)" podman build \
   --secret id=github_token,env=GH_TOKEN \
   --build-arg GOOSE_REFRESH="$(date +%s)" \
-  -f image/Containerfile -t donate-clanker:dev .
+  -f image/Containerfile -t review:dev .
 git diff --check
 ```
 

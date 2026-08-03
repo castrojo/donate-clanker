@@ -23,7 +23,7 @@ import './styles.css';
 const SNAPSHOT_TOOL = 'get_ops_control_panel_snapshot';
 const INITIAL_REASON = 'waiting for the evidence bridge';
 const FACTORY_POLICY_URL =
-  'https://github.com/projectbluefin/donate-clanker/blob/main/image/config/local-agent-policy.md';
+  'https://github.com/projectbluefin/review/blob/main/image/config/local-agent-policy.md';
 const HIVE_DASHBOARD_URL = 'https://hive.projectbluefin.io/';
 const COMPLETION_EVIDENCE_UNAVAILABLE = unknown<string>(
   'hive',

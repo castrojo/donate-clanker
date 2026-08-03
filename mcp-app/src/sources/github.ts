@@ -31,7 +31,7 @@ function validIdentifier(value: string | undefined): value is string {
 
 function selectedApiToken(environment: Environment): string | undefined {
   return (
-    environment.DONATE_CLANKER_GH_TOKEN?.trim() ||
+    environment.REVIEW_GH_TOKEN?.trim() ||
     environment.GH_TOKEN?.trim() ||
     undefined
   );

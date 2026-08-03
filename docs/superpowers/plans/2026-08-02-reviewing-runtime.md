@@ -26,7 +26,7 @@
 
 **Interfaces:**
 - Consumes: commands on `PATH` for `bats`, `shellcheck`, `systemd-analyze`, `pre-commit`, `just`, and `podman`.
-- Produces: one `donate-clanker:` startup line listing unavailable validation commands, without preventing Hive startup.
+- Produces: one `review:` startup line listing unavailable validation commands, without preventing Hive startup.
 
 - [ ] **Step 1: Write the failing contract assertion**
 
@@ -115,7 +115,7 @@ sections when `/dev/kvm` is unavailable.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add just/61-donate-clanker.just README.md tests/guest-bootstrap-consumer.py tests/just-onboarding.sh
+git add justfile README.md tests/guest-bootstrap-consumer.py tests/just-onboarding.sh
 git commit -m "fix: keep VM GitHub identity behind guest compatibility"
 ```
 
@@ -126,8 +126,8 @@ git commit -m "fix: keep VM GitHub identity behind guest compatibility"
 - Test: `tests/image-contract.sh`
 
 **Interfaces:**
-- Consumes: the full Hive commit declared by `just/61-donate-clanker.just`.
-- Produces: `donate-clanker:reviewing-runtime`, built without secret build arguments.
+- Consumes: the full Hive commit declared by `justfile`.
+- Produces: `review:reviewing-runtime`, built without secret build arguments.
 
 - [ ] **Step 1: Assert matching Hive pins**
 
@@ -153,13 +153,13 @@ Expected: `✓ image contract holds.`
 
 - [ ] **Step 3: Build the image**
 
-Run: `podman build -f image/Containerfile -t donate-clanker:reviewing-runtime .`
+Run: `podman build -f image/Containerfile -t review:reviewing-runtime .`
 
 Expected: successful image build with the matching pinned Hive runtime.
 
 - [ ] **Step 4: Run final repository validation**
 
-Run: `bash tests/just-onboarding.sh && git diff --check && just --justfile just/61-donate-clanker.just --list && pre-commit run --all-files`
+Run: `bash tests/just-onboarding.sh && git diff --check && just --list && pre-commit run --all-files`
 
 Expected: all commands succeed, with KVM-only launcher assertions skipped when
 the host lacks usable KVM.

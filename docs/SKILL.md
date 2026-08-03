@@ -1,4 +1,4 @@
-# donate-clanker Skill Router
+# review Skill Router
 
 Choose the one task-specific document below after reading
 [`AGENTS.md`](../AGENTS.md). Load only the matching skill.

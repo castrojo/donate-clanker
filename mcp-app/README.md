@@ -1,7 +1,7 @@
 # Bluefin Ops Control Panel MCP App
 
 This package is a read-only Goose Desktop MCP App. It is a presentation layer
-only: it does not replace `ujust donate-clanker`, does not participate in Hive
+only: it does not replace `just review`, does not participate in Hive
 task selection, and never mutates launcher state.
 
 ## Registering the app
@@ -44,10 +44,10 @@ uses an unsupported shape, the server labels that evidence `unknown`.
 
 - `BLUEFIN_GITHUB_OWNER`
 - `BLUEFIN_GITHUB_REPOSITORIES` — comma-separated repository names.
-- `DONATE_CLANKER_GH_TOKEN`
+- `REVIEW_GH_TOKEN`
 - `GH_TOKEN`
 
-For GitHub API requests, the server uses `DONATE_CLANKER_GH_TOKEN` first and
+For GitHub API requests, the server uses `REVIEW_GH_TOKEN` first and
 then `GH_TOKEN`. It never uses a Copilot token, never exposes credential values
 to the UI, and never logs them.
 

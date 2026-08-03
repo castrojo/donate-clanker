@@ -41,7 +41,17 @@ REQUIRED_KEYS = [
 VALID_STATUS = {"active", "deprecated", "reserved"}
 VALID_CATEGORY = {"ci-ops", "test-authoring", "meta"}
 # Fields the manifest mirrors from front-matter; must match exactly.
-MIRRORED = ["name", "description", "entry_point", "category", "status", "version", "tags"]
+MIRRORED = [
+    "name",
+    "description",
+    "entry_point",
+    "category",
+    "status",
+    "version",
+    "last_updated",
+    "one_line_purpose",
+    "tags",
+]
 
 errors = []
 warnings = []

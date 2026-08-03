@@ -61,7 +61,7 @@ Manual Mode and keeps GitHub panels available; a GitHub source failure leaves
 Hive evidence intact and labels GitHub facts unknown.
 
 The server obtains GitHub API authorization only from the existing container
-identity path: `DONATE_CLANKER_GH_TOKEN`, then `GH_TOKEN`. It does not use
+identity path: `REVIEW_GH_TOKEN`, then `GH_TOKEN`. It does not use
 `GITHUB_COPILOT_TOKEN` for GitHub API calls and never returns, logs, or
 serializes an authorization value. The UI receives only a boolean capability
 indicator.
@@ -100,7 +100,7 @@ against WCAG AA contrast before use.
   `unknown`; it will not pretend those shapes are authoritative.
 - GitHub calls use documented REST endpoints selected by configured repository
   scope. The initial prototype reads public review/PR data without exposing a
-  token and uses `DONATE_CLANKER_GH_TOKEN` / `GH_TOKEN` only in the server when
+  token and uses `REVIEW_GH_TOKEN` / `GH_TOKEN` only in the server when
   available.
 - The existing repository has no JavaScript build convention. The app will
   introduce a minimal isolated package under `mcp-app/`, rather than change the

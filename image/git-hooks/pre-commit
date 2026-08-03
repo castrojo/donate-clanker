@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# donate-clanker pre-commit hook.
+# review pre-commit hook.
 #
 # Installed for every repository via a global core.hooksPath, so it runs inside
 # repositories it knows nothing about. It must therefore be fast, idempotent and

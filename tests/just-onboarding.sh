@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic regression harness for just/61-donate-clanker.just.
+# Hermetic regression harness for the root justfile.
 #
 # Everything the launcher can shell out to (gh, goose, gum, podman, qemu,
 # qemu-img, curl, find, brew, pgrep, uname) is faked on PATH, so this test
@@ -13,9 +13,9 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-# DONATE_CLANKER_TEST_JUSTFILE exists so the harness itself can be negative-
+# REVIEW_TEST_JUSTFILE exists so the harness itself can be negative-
 # tested against a deliberately broken copy of the launcher.
-justfile="${DONATE_CLANKER_TEST_JUSTFILE:-$repo_root/just/61-donate-clanker.just}"
+justfile="${REVIEW_TEST_JUSTFILE:-$repo_root/justfile}"
 consumer="$repo_root/tests/guest-bootstrap-consumer.py"
 real_just="$(command -v just)"
 
@@ -38,8 +38,8 @@ done
 [[ -n "$tmp_root" ]] || tmp_root="${scratch}/tmp"
 fake_bin="$scratch/bin"
 home="$scratch/home"
-cfg_dir="$home/.config/donate-clanker"
-state_dir="$home/.local/state/donate-clanker"
+cfg_dir="$home/.config/review"
+state_dir="$home/.local/state/review"
 firmware_dir="$scratch/firmware"
 gum_log="$scratch/gum.log"
 runner_log="$scratch/runner.log"
@@ -48,6 +48,7 @@ qemu_log="$scratch/qemu.log"
 qemu_img_log="$scratch/qemu-img.log"
 curl_log="$scratch/curl.log"
 find_log="$scratch/find.log"
+credential_log="$scratch/credentials.log"
 consumed_marker="$scratch/runner-consumed"
 
 trap 'rm -rf "$scratch" "$tmp_root"' EXIT
@@ -129,12 +130,7 @@ set -euo pipefail
 printf '%s\n' "$*" >> "${GUM_LOG:?}"
 case "${1:-}" in
   input) printf '%s\n' "${GUM_INPUT_RESPONSE:-}" ;;
-  choose)
-    case "$*" in
-      *"Goose provider"*) printf '%s\n' "${GUM_PROVIDER_RESPONSE:-}" ;;
-      *) printf '%s\n' "${GUM_CHOOSE_RESPONSE:-}" ;;
-    esac
-    ;;
+  choose) printf '%s\n' "${GUM_CHOOSE_RESPONSE:-}" ;;
   *) exit 1 ;;
 esac
 EOF
@@ -167,23 +163,62 @@ cat >"$fake_bin/curl" <<'EOF'
 set -euo pipefail
 output=""
 url=""
+head_request=0
 while (($#)); do
   case "$1" in
     --output) output="$2"; shift 2 ;;
+    -I|--head|-fsIL) head_request=1; shift ;;
     *) url="$1"; shift ;;
   esac
 done
 printf '%s -> %s\n' "$url" "$output" >> "${CURL_LOG:?}"
+if [[ "$head_request" == 1 ]]; then
+  [[ "${TEST_CURL_MODE:-}" == "release-missing" ]] && exit 22
+  exit 0
+fi
 if [[ "${TEST_CURL_MODE:-}" == "checksum-fail" && "$url" == *.sha256 ]]; then
   printf 'partial checksum\n' >"$output"
   exit 98
 fi
 if [[ -n "${TEST_CURL_MODE:-}" ]]; then
-  printf 'downloaded VM\n' >"$output"
+  if [[ "$url" == *.sha256 ]]; then
+    checksum="$(printf 'downloaded VM\n' | /usr/bin/sha256sum | awk '{print $1}')"
+    printf '%s  %s\n' "$checksum" "$(basename "${url%.sha256}")" >"$output"
+  else
+    printf 'downloaded VM\n' >"$output"
+  fi
   exit 0
 fi
 echo "unexpected raw VM fetch" >&2
 exit 98
+EOF
+cat >"$fake_bin/zstd" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+input=""
+output=""
+while (($#)); do
+  case "$1" in
+    -d|--force) shift ;;
+    -o) output="$2"; shift 2 ;;
+    *) input="$1"; shift ;;
+  esac
+done
+cp "$input" "$output"
+EOF
+cat >"$fake_bin/python3" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "-c" && "${2:-}" == *'server=socket.socket'* ]]; then
+  case "${REVIEW_TEST_BOOTSTRAP_MODE:-}" in
+    delayed) sleep 0.2 ;;
+    exit)
+      echo "simulated bootstrap bind failure" >&2
+      exit 87
+      ;;
+  esac
+fi
+exec /usr/bin/python3 "$@"
 EOF
 # The launcher's vm_firmware() searches several roots for a fixed list of
 # firmware names. This fake answers for every supported name itself and never
@@ -273,8 +308,19 @@ while (($#)); do
   case "$1" in
     --mount) mount_arg="${2:-}"; shift 2 ;;
     --env)
-      case "${2:-}" in
-        DONATE_CLANKER_BOOTSTRAP_SOCKET=*) bootstrap_socket="${2#*=}" ;;
+      env_arg="${2:-}"
+      case "$env_arg" in
+        REVIEW_BOOTSTRAP_SOCKET=*) bootstrap_socket="${2#*=}" ;;
+        GITHUB_COPILOT_TOKEN|GH_TOKEN)
+          if [[ -n "${!env_arg-}" ]]; then
+            printf '%s:present\n' "$env_arg" >> "${CREDENTIAL_LOG:?}"
+          else
+            printf '%s:absent\n' "$env_arg" >> "${CREDENTIAL_LOG:?}"
+          fi
+          ;;
+        GITHUB_COPILOT_TOKEN=*|GH_TOKEN=*)
+          printf '%s:value-in-argument\n' "${env_arg%%=*}" >> "${CREDENTIAL_LOG:?}"
+          ;;
       esac
       shift 2
       ;;
@@ -283,16 +329,22 @@ while (($#)); do
 done
 if [[ -n "${RUNNER_CONSUMED:-}" && -n "$mount_arg" && -n "$bootstrap_socket" ]]; then
   state_dir="$(sed -E 's/^type=bind,src=(.*),dst=.*$/\1/' <<<"$mount_arg")"
+  if [[ -S "${state_dir}/${bootstrap_socket##*/}" ]]; then
+    printf 'bootstrap-socket-before-podman:present\n' >> "${CREDENTIAL_LOG:?}"
+  else
+    printf 'bootstrap-socket-before-podman:absent\n' >> "${CREDENTIAL_LOG:?}"
+  fi
   socket_path=""
   for _ in {1..200}; do
     socket_path="$(/usr/bin/find "$state_dir" -maxdepth 1 -type s -print -quit)"
     [[ -n "$socket_path" ]] && break
     sleep 0.01
   done
+  printf 'vm-run-directory:%s\n' "$(/usr/bin/stat -c '%a' "$state_dir")" >> "${CREDENTIAL_LOG:?}"
   [[ -n "$socket_path" ]] || { echo "bootstrap socket was not created" >&2; exit 1; }
-  DONATE_CLANKER_BOOTSTRAP_SOCKET="$socket_path" \
-    DONATE_CLANKER_TEST_CONSUMED="${RUNNER_CONSUMED}" \
-    python3 "${DONATE_CLANKER_TEST_CONSUMER:?}"
+  REVIEW_BOOTSTRAP_SOCKET="$socket_path" \
+    REVIEW_TEST_CONSUMED="${RUNNER_CONSUMED}" \
+    python3 "${REVIEW_TEST_CONSUMER:?}"
 fi
 exit 97
 EOF
@@ -332,6 +384,7 @@ reset_logs() {
   : >"$qemu_img_log"
   : >"$curl_log"
   : >"$find_log"
+  : >"$credential_log"
   rm -f "$consumed_marker"
 }
 reset_logs
@@ -345,25 +398,27 @@ run_recipe() {
   set +e
   OUT="$(
     env \
-      -u TOOL -u DONATE_CLANKER_VM_RUNNER_IMAGE -u DONATE_CLANKER_HIVE_COMMIT \
+      -u TOOL -u REVIEW_VM_RUNNER_IMAGE -u REVIEW_HIVE_COMMIT \
       -u AGENT_MODEL -u GOOSE_PROVIDER -u GOOSE_MODEL -u GH_READY \
       -u GITHUB_COPILOT_TOKEN -u FAKE_KEYRING_COPILOT_TOKEN \
       -u GH_TOKEN -u GITHUB_TOKEN \
-      -u DONATE_CLANKER_GH_TOKEN -u FAKE_GH_TOKEN -u FAKE_GH_SCOPES \
-      -u TEST_UNAME_M -u TEST_CURL_MODE -u DONATE_CLANKER_TEST_GUM_TTY \
-      -u DONATE_CLANKER_NON_INTERACTIVE -u GOOSE_INSTALLED \
+      -u REVIEW_GH_TOKEN -u FAKE_GH_TOKEN -u FAKE_GH_SCOPES \
+      -u TEST_UNAME_M -u TEST_CURL_MODE -u REVIEW_TEST_GUM_TTY \
+      -u REVIEW_NON_INTERACTIVE -u GOOSE_INSTALLED \
+      -u REVIEW_TEST_BOOTSTRAP_MODE \
       HOME="$home" PATH="$fake_bin:/usr/bin:/bin" TMPDIR="$tmp_root" \
       GUM_LOG="$gum_log" RUNNER_LOG="$runner_log" QEMU_LOG="$qemu_log" \
       IMAGE_LOG="$image_log" \
       QEMU_IMG_LOG="$qemu_img_log" CURL_LOG="$curl_log" FIND_LOG="$find_log" \
+      CREDENTIAL_LOG="$credential_log" \
       RUNNER_CONSUMED="$consumed_marker" \
-      DONATE_CLANKER_TEST_CONSUMER="$consumer" \
-      DONATE_CLANKER_BOOTSTRAP_TIMEOUT=20 \
-      DONATE_CLANKER_TEST_SKIP_VM_FETCH=1 \
+      REVIEW_TEST_CONSUMER="$consumer" \
+      REVIEW_BOOTSTRAP_TIMEOUT=20 \
+      REVIEW_TEST_SKIP_VM_FETCH=1 \
       FAKE_BREW_PREFIX="$scratch/no-such-brew-prefix" \
       FAKE_FIRMWARE_DIR="$firmware_dir" \
       FAKE_FIRMWARE_MODE=pflash \
-      DONATE_CLANKER_VM_RUNNER_IMAGE="ghcr.io/projectbluefin/donate-clanker-vm-runner@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+      REVIEW_VM_RUNNER_IMAGE="ghcr.io/projectbluefin/review-vm-runner@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
       "$@" \
       "$real_just" --justfile "$justfile" "$recipe" 2>&1
   )"
@@ -377,7 +432,7 @@ kvm_usable() { [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]]; }
 
 # ══ 1. Preflight: exactly one actionable ERROR per failure ════════════════
 begin "preflight: missing GitHub auth yields one actionable error"
-run_recipe donate-clanker
+run_recipe review
 assert_nonzero_status "$STATUS" "unauthenticated gh must fail the launch"
 assert_eq "$(error_line_count "$OUT")" 1 "expected exactly one ERROR: line"
 assert_contains "gh auth login" "$OUT"
@@ -387,7 +442,7 @@ assert_not_contains "codex" "$OUT"
 
 begin "preflight: missing Goose provider configuration yields one actionable error"
 rm -f "$home/.config/goose/config.yaml"
-run_recipe donate-clanker GH_READY=1
+run_recipe review GH_READY=1
 assert_nonzero_status "$STATUS" "an unconfigured goose must fail the launch"
 assert_eq "$(error_line_count "$OUT")" 1 "expected exactly one ERROR: line"
 assert_contains "goose configure" "$OUT"
@@ -397,92 +452,133 @@ write_goose_config
 
 begin "preflight: an invalid Goose config (no provider) is treated as unconfigured"
 printf 'model: llama3.1\n' >"$home/.config/goose/config.yaml"
-run_recipe donate-clanker GH_READY=1
+run_recipe review GH_READY=1
 assert_nonzero_status "$STATUS" "a provider-less goose config must fail the launch"
 assert_eq "$(error_line_count "$OUT")" 1 "expected exactly one ERROR: line"
 assert_contains "goose configure" "$OUT"
 write_goose_config
 
+begin "preflight: unsupported GOOSE_PROVIDER yields one actionable Copilot-only error"
+run_recipe review GH_READY=1 GOOSE_PROVIDER=openai
+assert_nonzero_status "$STATUS" "an unsupported provider must fail the launch"
+assert_eq "$(error_line_count "$OUT")" 1 "expected exactly one ERROR: line"
+assert_contains "GOOSE_PROVIDER=openai is not supported" "$OUT"
+assert_contains "GOOSE_PROVIDER=github_copilot" "$OUT"
+
 # ══ 2. TOOL handling: Goose only ══════════════════════════════════════════
 begin "TOOL=claude is rejected with a Goose-only error"
-run_recipe donate-clanker GH_READY=1 TOOL=claude
+run_recipe review GH_READY=1 TOOL=claude
 assert_nonzero_status "$STATUS" "a non-Goose TOOL must be a hard error"
 assert_contains "TOOL=claude is not supported" "$OUT"
-assert_contains "donate-clanker runs Goose only" "$OUT"
+assert_contains "review runs Goose only" "$OUT"
 assert_not_contains "auto-detected" "$OUT"
 assert_not_contains "Multiple AI CLIs" "$OUT"
 
 begin "TOOL=goose is accepted"
-run_recipe donate-clanker GH_READY=1 TOOL=goose
+run_recipe review GH_READY=1 TOOL=goose
 assert_nonzero_status "$STATUS" "the fake runner always exits non-zero"
 assert_not_contains "is not supported" "$OUT"
 assert_not_contains "Unset TOOL" "$OUT"
 
-# ══ 3. VM runner path (container-hosted QEMU runner) ══════════════════════
+begin "selection: without gum, Copilot and its default model are named"
+rm -f "$cfg_dir/last-selections.env"
+reset_logs
+run_recipe review-container GH_READY=1
+assert_nonzero_status "$STATUS" "the fake runner always exits non-zero"
+assert_contains "GitHub Copilot is the default; using gpt-4.1 (gum unavailable)" "$OUT"
+assert_file_contains "--env GOOSE_PROVIDER=github_copilot" "$runner_log"
+assert_file_contains "--env GOOSE_MODEL=gpt-4.1" "$runner_log"
+assert_file_not_exists "$cfg_dir/secrets.env"
+
+# ══ 3. Doctor: advisory VM limitation, no failure on a fully provisioned host ══
+if kvm_usable; then
+  begin "review-doctor: fully provisioned x86_64 host exits 0 with VM advisory"
+  reset_logs
+  run_recipe review-doctor GH_READY=1 TEST_UNAME_M=x86_64 \
+    FAKE_GH_TOKEN=gho-test-token FAKE_GH_SCOPES="'repo', 'read:org'" \
+    FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token
+  assert_zero_status "$STATUS" "a fully provisioned x86_64 doctor run must exit 0"
+  assert_contains "a GitHub token is available for the container-only agent" "$OUT"
+  assert_contains "! VM GitHub identity is blocked" "$OUT"
+  assert_contains "a Copilot credential is available" "$OUT"
+  assert_contains "0 failed." "$OUT"
+else
+  begin "review-doctor: SKIPPED (/dev/kvm is not usable by this user)"
+fi
+
+# ══ 4. VM runner path (container-hosted QEMU runner) ══════════════════════
 if kvm_usable; then
   begin "VM runner: foreground podman run, v2 bootstrap handshake, no secrets"
   cat >"$cfg_dir/last-selections.env" <<'EOF'
-LAST_GOOSE_PROVIDER=ollama
 LAST_GOOSE_MODEL=llama3.1
 EOF
-  cat >"$cfg_dir/secrets.env" <<'EOF'
-GOOSE_PROVIDER=stale-provider
-GOOSE_MODEL=stale-model
-AGENT_MODEL=stale-model
-EOF
   reset_logs
-  run_recipe donate-clanker GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
-    GUM_PROVIDER_RESPONSE=OpenAI GUM_INPUT_RESPONSE=gpt-test
+  run_recipe review GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+    GUM_INPUT_RESPONSE=gpt-test REVIEW_TEST_RECV_SIZE=1
   assert_nonzero_status "$STATUS" "the fake runner always exits non-zero"
 
-  # Picker memory: last run's provider/model preselected, new choice persisted.
-  assert_file_contains 'choose --selected=Ollama --header Goose provider' "$gum_log"
-  assert_file_contains 'input --value llama3.1' "$gum_log"
+  # Picker memory retains just the selected Copilot model.
+  assert_file_contains 'input --value llama3.1 --placeholder e.g. gpt-4.1 — blank for the default --header GitHub Copilot model (default: gpt-4.1):' "$gum_log"
   assert_file_not_contains 'Multiple AI CLIs' "$gum_log"
-  assert_file_contains 'LAST_GOOSE_PROVIDER=openai' "$cfg_dir/last-selections.env"
   assert_file_contains 'LAST_GOOSE_MODEL=gpt-test' "$cfg_dir/last-selections.env"
   assert_file_not_contains 'LAST_TOOL=' "$cfg_dir/last-selections.env"
-  assert_file_contains 'GOOSE_PROVIDER=openai' "$cfg_dir/secrets.env"
-  assert_file_contains 'GOOSE_MODEL=gpt-test' "$cfg_dir/secrets.env"
-  assert_file_not_contains 'AGENT_MODEL=' "$cfg_dir/secrets.env"
-  assert_file_not_contains 'stale-' "$cfg_dir/secrets.env"
-  assert_eq "$(stat -c '%a' "$cfg_dir/secrets.env")" 600 "secrets.env must be 0600"
+  assert_file_not_contains 'LAST_GOOSE_PROVIDER=' "$cfg_dir/last-selections.env"
 
   # The runner is foreground and gets no host secret material.
-  assert_file_contains "run --rm --interactive --tty --replace --name donate-clanker-vm" "$runner_log"
-  assert_file_contains "--mount type=bind,src=${tmp_root}/donate-clanker-" "$runner_log"
-  assert_file_contains "--env DONATE_CLANKER_BOOTSTRAP_SOCKET=/run/donate-clanker/bootstrap-" "$runner_log"
-  assert_file_contains "--env DONATE_CLANKER_VM=1" "$runner_log"
+  assert_file_contains "run --rm --interactive --tty --replace --name review-vm" "$runner_log"
+  assert_file_contains "--mount type=bind,src=${tmp_root}/review." "$runner_log"
+  assert_file_contains "--env REVIEW_BOOTSTRAP_SOCKET=/run/review/bootstrap-" "$runner_log"
+  assert_file_contains "--env REVIEW_VM=1" "$runner_log"
   assert_file_contains "--env AGENT_BACKEND=goose" "$runner_log"
-  assert_file_contains "--env GOOSE_PROVIDER=openai" "$runner_log"
+  assert_file_contains "--env GOOSE_PROVIDER=github_copilot" "$runner_log"
   assert_file_contains "--env GOOSE_MODEL=gpt-test" "$runner_log"
-  assert_file_contains "ghcr.io/projectbluefin/donate-clanker-vm-runner@sha256:" "$runner_log"
+  assert_file_contains "ghcr.io/projectbluefin/review-vm-runner@sha256:" "$runner_log"
   assert_file_not_contains "--env-file" "$runner_log"
   assert_file_not_contains "--detach" "$runner_log"
   assert_file_not_contains "${home}/.config/hive/contributor.env" "$runner_log"
   assert_file_not_contains "super-secret-registration-token" "$runner_log"
+  assert_file_contains "vm-run-directory:700" "$credential_log"
 
   # The version-2 envelope reached the guest consumer and was acknowledged.
   assert_file_exists "$consumed_marker"
   assert_file_contains "acknowledged" "$consumed_marker"
+  assert_file_not_exists "$cfg_dir/secrets.env"
 
   # No secret in any log this run, and the per-run directory is cleaned up.
   for log in "$runner_log" "$qemu_log" "$qemu_img_log" "$curl_log" "$find_log" "$gum_log"; do
     assert_file_not_contains "super-secret-registration-token" "$log"
   done
   assert_not_contains "super-secret-registration-token" "$OUT"
-  assert_eq "$(/usr/bin/find "$tmp_root" -maxdepth 1 -name 'donate-clanker-*' -print -quit)" "" \
+  assert_eq "$(/usr/bin/find "$tmp_root" -maxdepth 1 -name 'review.*' -print -quit)" "" \
     "the per-run directory must be removed on exit"
+
+  begin "VM runner: waits for the bootstrap socket before passing its path to podman"
+  reset_logs
+  run_recipe review GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+    GUM_INPUT_RESPONSE=gpt-4o REVIEW_TEST_BOOTSTRAP_MODE=delayed
+  assert_nonzero_status "$STATUS" "the fake runner always exits non-zero"
+  assert_file_contains "bootstrap-socket-before-podman:present" "$credential_log"
+  assert_file_exists "$consumed_marker"
+
+  begin "VM runner: a bootstrap process that dies before bind fails before podman"
+  reset_logs
+  run_recipe review GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+    GUM_INPUT_RESPONSE=gpt-4o REVIEW_TEST_BOOTSTRAP_MODE=exit
+  assert_nonzero_status "$STATUS" "a dead bootstrap process must fail the launch"
+  assert_contains "VM bootstrap server exited before binding" "$OUT"
+  assert_contains "simulated bootstrap bind failure" "$OUT"
+  assert_eq "$(wc -c <"$runner_log")" 0 "podman must not receive an unbound socket path"
 
   begin "VM runner: the Copilot credential rides the bootstrap envelope, not the runner"
   # The container path already passes this token; without it here the VM path
   # boots an agent that stalls on a device code nobody is there to type.
   reset_logs
-  run_recipe donate-clanker GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
-    GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o \
-    FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token
+  run_recipe review GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+    GUM_INPUT_RESPONSE=gpt-4o \
+    FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token REVIEW_TEST_SPLIT_ACK=1
   assert_contains "Copilot credential passed" "$OUT"
   assert_file_contains "provider_secret:present" "$consumed_marker"
+  assert_file_contains "github_token:absent" "$consumed_marker"
   # The secret travels over the one-shot socket only: never on a command line,
   # never in the runner environment, never in this terminal.
   assert_not_contains "ghu-keyring-token" "$OUT"
@@ -490,21 +586,39 @@ EOF
     assert_file_not_contains "ghu-keyring-token" "$log"
   done
 
+  begin "VM runner: a GitHub identity is resolved but withheld until guest support ships"
+  reset_logs
+  run_recipe review GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+    GUM_INPUT_RESPONSE=gpt-4o \
+    FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token FAKE_GH_TOKEN=gho-test-token
+  assert_contains "VM GitHub identity is blocked" "$OUT"
+  assert_contains "host GitHub token was found" "$OUT"
+  assert_not_contains "gh auth login" "$OUT"
+  assert_file_contains "github_token:absent" "$consumed_marker"
+  assert_not_contains "gho-test-token" "$OUT"
+  for log in "$runner_log" "$qemu_log" "$qemu_img_log" "$curl_log" "$find_log" "$gum_log"; do
+    assert_file_not_contains "gho-test-token" "$log"
+  done
+
   begin "VM runner: a missing Copilot credential is named plainly, not discovered in the guest"
   reset_logs
-  run_recipe donate-clanker GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
-    GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o
+  run_recipe review GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+    GUM_INPUT_RESPONSE=gpt-4o
   assert_contains "no Copilot credential found" "$OUT"
   assert_contains "gh auth token' is NOT a substitute" "$OUT"
   assert_contains "goose configure" "$OUT"
+  assert_contains "VM GitHub identity is blocked" "$OUT"
+  assert_contains "adding one would not reach this VM guest" "$OUT"
+  assert_not_contains "gh auth login" "$OUT"
   assert_file_contains "provider_secret:absent" "$consumed_marker"
 
-  begin "VM runner: a non-Copilot provider is never handed a Copilot token"
+  begin "VM runner: an unsupported provider is rejected before the runner starts"
   reset_logs
-  run_recipe donate-clanker GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
-    GUM_PROVIDER_RESPONSE=OpenAI GUM_INPUT_RESPONSE=gpt-test \
+  run_recipe review GH_READY=1 GOOSE_PROVIDER=openai \
     FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token
-  assert_file_contains "provider_secret:absent" "$consumed_marker"
+  assert_nonzero_status "$STATUS" "an unsupported provider must not start the VM"
+  assert_contains "GOOSE_PROVIDER=openai is not supported" "$OUT"
+  assert_eq "$(wc -c <"$runner_log")" 0 "the VM runner must not start"
   assert_not_contains "ghu-keyring-token" "$OUT"
 else
   begin "VM runner: SKIPPED (/dev/kvm is not usable by this user)"
@@ -513,42 +627,68 @@ fi
 # ══ Fetch/verify behaviour of the raw disk ════════════════════════════════
 begin "fetch: a raw disk is removed when its checksum sidecar download fails"
 rm -rf "$home/.local/state"
+mkdir -p "$state_dir"
+stale_raw="$state_dir/review-vm-25.08.13-x86_64.raw"
+printf 'stale guest\n' >"$stale_raw"
+(cd "$state_dir" && sha256sum "$(basename "$stale_raw")" >"$(basename "$stale_raw").sha256")
 reset_logs
-run_recipe donate-clanker GH_READY=1 DONATE_CLANKER_VM_RUNNER_IMAGE= \
-  DONATE_CLANKER_TEST_SKIP_VM_FETCH=0 TEST_UNAME_M=x86_64 TEST_CURL_MODE=checksum-fail
+run_recipe review GH_READY=1 REVIEW_VM_RUNNER_IMAGE= \
+  REVIEW_TEST_SKIP_VM_FETCH=0 TEST_UNAME_M=x86_64 TEST_CURL_MODE=checksum-fail
 assert_nonzero_status "$STATUS" "a failed sidecar download must fail the launch"
 assert_contains "VM release checksum sidecar is not published yet" "$OUT"
-assert_file_contains "donate-clanker-vm-25.08.14-x86_64.raw" "$curl_log"
-assert_file_not_exists "$state_dir/donate-clanker-vm-25.08.14-x86_64.raw"
-assert_file_not_exists "$state_dir/donate-clanker-vm-25.08.14-x86_64.raw.partial"
-assert_file_not_exists "$state_dir/donate-clanker-vm-25.08.14-x86_64.raw.sha256"
-assert_file_not_exists "$state_dir/donate-clanker-vm-25.08.14-x86_64.raw.sha256.partial"
+assert_file_contains "review-vm-25.08.14-x86_64.raw" "$curl_log"
+assert_file_not_contains "25.08.13-x86_64.raw.zst" "$curl_log"
+assert_file_exists "$stale_raw"
+assert_file_not_exists "$state_dir/review-vm-25.08.14-x86_64.raw"
+assert_file_not_exists "$state_dir/review-vm-25.08.14-x86_64.raw.partial"
+assert_file_not_exists "$state_dir/review-vm-25.08.14-x86_64.raw.sha256"
+assert_file_not_exists "$state_dir/review-vm-25.08.14-x86_64.raw.sha256.partial"
 
-begin "verify: a cached raw disk needs a checksum sidecar before it can boot"
+begin "fetch: a successful raw fetch leaves command substitution with only the raw path"
+rm -rf "$home/.local/state"
 mkdir -p "$state_dir"
-raw_x86="$state_dir/donate-clanker-vm-25.08.14-x86_64.raw"
-raw_arm="$state_dir/donate-clanker-vm-25.08.14-aarch64.raw"
-printf 'x86 guest\n' >"$raw_x86"
-run_recipe donate-clanker GH_READY=1 DONATE_CLANKER_VM_RUNNER_IMAGE= TEST_UNAME_M=x86_64
-assert_nonzero_status "$STATUS" "a missing sidecar must fail the launch"
-assert_contains "VM raw disk checksum sidecar not found" "$OUT"
+reset_logs
+run_recipe review GH_READY=1 REVIEW_VM_RUNNER_IMAGE= \
+  REVIEW_TEST_SKIP_VM_FETCH=0 TEST_UNAME_M=x86_64 TEST_CURL_MODE=fetch-success
+assert_file_exists "$state_dir/review-vm-25.08.14-x86_64.raw"
+assert_file_exists "$state_dir/review-vm-25.08.14-x86_64.raw.sha256"
+assert_not_contains "VM raw disk not found:" "$OUT"
+assert_contains "Fetching review VM 25.08.14 for x86_64..." "$OUT"
+assert_contains "Decompressing VM image..." "$OUT"
 
+begin "verify: an incomplete exact cache entry is never reused"
+mkdir -p "$state_dir"
+raw_x86="$state_dir/review-vm-25.08.14-x86_64.raw"
+raw_arm="$state_dir/review-vm-25.08.14-aarch64.raw"
+printf 'x86 guest\n' >"$raw_x86"
+run_recipe review GH_READY=1 REVIEW_VM_RUNNER_IMAGE= TEST_UNAME_M=x86_64
+assert_nonzero_status "$STATUS" "an incomplete cache must not boot"
+assert_contains "cached VM 25.08.14 for x86_64 is incomplete or failed verification; refetching it" "$OUT"
+assert_file_not_exists "$raw_x86"
+
+printf 'x86 guest\n' >"$raw_x86"
 (cd "$state_dir" && sha256sum "$(basename "$raw_x86")" >"$(basename "$raw_x86").sha256")
 printf 'arm guest\n' >"$raw_arm"
 (cd "$state_dir" && sha256sum "$(basename "$raw_arm")" >"$(basename "$raw_arm").sha256")
+
+begin "verify: a matching cache removes obsolete releases for its architecture"
+reset_logs
+run_recipe review GH_READY=1 REVIEW_VM_RUNNER_IMAGE= TEST_UNAME_M=x86_64
+assert_file_not_exists "$stale_raw"
+assert_file_exists "$raw_arm"
 
 # ══ 6/7. Local QEMU: overlay boot, arch selection, firmware detection ═════
 if kvm_usable; then
   begin "local QEMU (x86_64): boots a per-run overlay, never the master image"
   reset_logs
-  run_recipe donate-clanker GH_READY=1 DONATE_CLANKER_VM_RUNNER_IMAGE= TEST_UNAME_M=x86_64
+  run_recipe review GH_READY=1 REVIEW_VM_RUNNER_IMAGE= TEST_UNAME_M=x86_64
   assert_nonzero_status "$STATUS" "the fake qemu always exits non-zero"
-  assert_contains "booting local donate-clanker VM" "$OUT"
+  assert_contains "booting local review VM" "$OUT"
   assert_file_contains "qemu-system-x86_64" "$qemu_log"
   assert_file_contains "-machine q35" "$qemu_log"
   assert_file_contains "-device virtio-serial-pci" "$qemu_log"
   assert_file_contains "-nographic" "$qemu_log"
-  assert_file_contains "org.projectbluefin.donate-clanker.bootstrap" "$qemu_log"
+  assert_file_contains "org.projectbluefin.review.bootstrap" "$qemu_log"
 
   # The verified master image is copy-on-write backing only. Booting it
   # directly mutates it and breaks its checksum.
@@ -565,7 +705,7 @@ if kvm_usable; then
 
   begin "local QEMU (aarch64): arch-specific machine, device and firmware"
   reset_logs
-  run_recipe donate-clanker GH_READY=1 DONATE_CLANKER_VM_RUNNER_IMAGE= TEST_UNAME_M=aarch64
+  run_recipe review GH_READY=1 REVIEW_VM_RUNNER_IMAGE= TEST_UNAME_M=aarch64
   assert_nonzero_status "$STATUS" "the fake qemu always exits non-zero"
   assert_file_contains "qemu-system-aarch64" "$qemu_log"
   assert_file_contains "-machine virt" "$qemu_log"
@@ -577,7 +717,7 @@ if kvm_usable; then
 
   begin "local QEMU: single-blob firmware falls back to -bios"
   reset_logs
-  run_recipe donate-clanker GH_READY=1 DONATE_CLANKER_VM_RUNNER_IMAGE= \
+  run_recipe review GH_READY=1 REVIEW_VM_RUNNER_IMAGE= \
     TEST_UNAME_M=x86_64 FAKE_FIRMWARE_MODE=bios
   assert_nonzero_status "$STATUS" "the fake qemu always exits non-zero"
   assert_file_contains "-name edk2-x86_64-code.fd" "$find_log"
@@ -587,7 +727,7 @@ if kvm_usable; then
 
   begin "local QEMU: no firmware anywhere is an actionable error"
   reset_logs
-  run_recipe donate-clanker GH_READY=1 DONATE_CLANKER_VM_RUNNER_IMAGE= \
+  run_recipe review GH_READY=1 REVIEW_VM_RUNNER_IMAGE= \
     TEST_UNAME_M=x86_64 FAKE_FIRMWARE_MODE=none
   assert_nonzero_status "$STATUS" "missing firmware must fail the launch"
   assert_contains "matching UEFI firmware for x86_64 was not found" "$OUT"
@@ -598,18 +738,18 @@ else
 fi
 
 # ══ 4. Container recipe ═══════════════════════════════════════════════════
-begin "donate-clanker-container: exactly one foreground podman run, hive mount only"
+begin "review-container: exactly one foreground podman run, hive mount only"
 reset_logs
-run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
-  GUM_PROVIDER_RESPONSE=OpenAI GUM_INPUT_RESPONSE=gpt-test
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GUM_INPUT_RESPONSE=gpt-test
 assert_nonzero_status "$STATUS" "the fake podman always exits non-zero"
 assert_eq "$(wc -l <"$runner_log")" 1 "expected exactly one podman invocation"
-assert_file_contains "run --rm --interactive --tty --replace --name donate-clanker-container" "$runner_log"
+assert_file_contains "run --rm --interactive --tty --replace --name review-container" "$runner_log"
 assert_file_contains "--volume ${home}/.config/hive:/home/dev/.config/hive:ro" "$runner_log"
 assert_file_contains "--env AGENT_BACKEND=goose" "$runner_log"
-assert_file_contains "--env GOOSE_PROVIDER=openai" "$runner_log"
+assert_file_contains "--env GOOSE_PROVIDER=github_copilot" "$runner_log"
 assert_file_contains "--env GOOSE_MODEL=gpt-test" "$runner_log"
-assert_file_contains "ghcr.io/projectbluefin/donate-clanker" "$runner_log"
+assert_file_contains "ghcr.io/projectbluefin/review" "$runner_log"
 assert_file_not_contains " -d " "$runner_log"
 assert_file_not_contains "--detach" "$runner_log"
 assert_file_not_contains "--env-file" "$runner_log"
@@ -620,79 +760,87 @@ assert_file_not_contains "super-secret-registration-token" "$runner_log"
 assert_eq "$(wc -c <"$qemu_log")" 0 "the container recipe must not start a VM"
 # A moving tag must be refreshed on every launch, or a contributor silently
 # keeps running whatever copy they first pulled.
-assert_file_contains "pull ghcr.io/projectbluefin/donate-clanker:stable" "$image_log"
+assert_file_contains "pull ghcr.io/projectbluefin/review:stable" "$image_log"
 
-begin "donate-clanker-container: the Copilot credential is passed, never a gh token"
+begin "review-container: the Copilot credential is passed, never a gh token"
 # Without this the agent starts a fresh device flow on every launch and the
 # pane sits on "enter code XXXX-XXXX" until a human types one in.
 reset_logs
-run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
-  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o \
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GUM_INPUT_RESPONSE=gpt-4o \
   GITHUB_COPILOT_TOKEN=ghu-test-token
 assert_contains "Copilot credential passed" "$OUT"
-assert_file_contains "--env GITHUB_COPILOT_TOKEN=ghu-test-token" "$runner_log"
+assert_file_contains "--env GITHUB_COPILOT_TOKEN" "$runner_log"
+assert_file_not_contains "GITHUB_COPILOT_TOKEN=ghu-test-token" "$runner_log"
+assert_file_contains "GITHUB_COPILOT_TOKEN:present" "$credential_log"
 
-begin "donate-clanker-container: the credential is read from the login keyring when unexported"
+begin "review-container: the credential is read from the login keyring when unexported"
 reset_logs
-run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
-  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o \
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GUM_INPUT_RESPONSE=gpt-4o \
   FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token
 assert_contains "Copilot credential passed" "$OUT"
-assert_file_contains "--env GITHUB_COPILOT_TOKEN=ghu-keyring-token" "$runner_log"
+assert_file_contains "--env GITHUB_COPILOT_TOKEN" "$runner_log"
+assert_file_not_contains "GITHUB_COPILOT_TOKEN=ghu-keyring-token" "$runner_log"
+assert_file_contains "GITHUB_COPILOT_TOKEN:present" "$credential_log"
 assert_not_contains "ghu-keyring-token" "$OUT"
 
-begin "donate-clanker-container: no credential says so plainly and names the fix"
+begin "review-container: no credential says so plainly and names the fix"
 reset_logs
-run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
-  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GUM_INPUT_RESPONSE=gpt-4o
 assert_contains "no Copilot credential found" "$OUT"
 assert_contains "gh auth token' is NOT a substitute" "$OUT"
 assert_contains "goose configure" "$OUT"
 assert_file_not_contains "GITHUB_COPILOT_TOKEN=" "$runner_log"
 
-begin "donate-clanker-container: a GitHub identity is passed by value, never by mount"
+begin "review-container: a GitHub identity is inherited, never mounted"
 # Without GH_TOKEN the agent picks up a task, runs gh, is told to 'gh auth
 # login' (which the Hive wrapper blocks in contributor mode) and stops.
 reset_logs
-run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
-  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o \
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GUM_INPUT_RESPONSE=gpt-4o \
   FAKE_GH_TOKEN=gho-test-token
 assert_contains "GitHub identity passed to the agent" "$OUT"
-assert_file_contains "--env GH_TOKEN=gho-test-token" "$runner_log"
-# By value only: ~/.config/gh must never be mounted, and the value must never
-# reach this terminal.
+assert_file_contains "--env GH_TOKEN" "$runner_log"
+assert_file_not_contains "GH_TOKEN=gho-test-token" "$runner_log"
+assert_file_contains "GH_TOKEN:present" "$credential_log"
+# By inherited environment only: ~/.config/gh must never be mounted, and the
+# value must never reach this terminal.
 assert_file_not_contains ".config/gh" "$runner_log"
 assert_not_contains "gho-test-token" "$OUT"
 
-begin "donate-clanker-container: the blast radius is named, the token is not"
+begin "review-container: the blast radius is named, the token is not"
 reset_logs
-run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
-  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o \
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GUM_INPUT_RESPONSE=gpt-4o \
   FAKE_GH_TOKEN=gho-test-token FAKE_GH_SCOPES="'admin:org', 'repo', 'workflow'"
 assert_contains "admin:org" "$OUT"
-assert_contains "DONATE_CLANKER_GH_TOKEN" "$OUT"
+assert_contains "REVIEW_GH_TOKEN" "$OUT"
 assert_not_contains "gho-test-token" "$OUT"
 
-begin "donate-clanker-container: an explicit scoped PAT beats the desktop login"
+begin "review-container: an explicit scoped PAT beats the desktop login"
 reset_logs
-run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
-  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o \
-  FAKE_GH_TOKEN=gho-desktop-token DONATE_CLANKER_GH_TOKEN=gho-scoped-pat
-assert_file_contains "--env GH_TOKEN=gho-scoped-pat" "$runner_log"
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GUM_INPUT_RESPONSE=gpt-4o \
+  FAKE_GH_TOKEN=gho-desktop-token REVIEW_GH_TOKEN=gho-scoped-pat
+assert_file_contains "--env GH_TOKEN" "$runner_log"
+assert_file_not_contains "GH_TOKEN=gho-scoped-pat" "$runner_log"
+assert_file_contains "GH_TOKEN:present" "$credential_log"
 assert_file_not_contains "gho-desktop-token" "$runner_log"
 
-begin "donate-clanker-container: no GitHub token says so plainly and names the fix"
+begin "review-container: no GitHub token says so plainly and names the fix"
 reset_logs
-run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
-  GUM_PROVIDER_RESPONSE="GitHub Copilot" GUM_INPUT_RESPONSE=gpt-4o
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GUM_INPUT_RESPONSE=gpt-4o
 assert_contains "no GitHub token found" "$OUT"
 assert_contains "gh auth login" "$OUT"
 assert_file_not_contains "GH_TOKEN=" "$runner_log"
 
-begin "donate-clanker-container: an unobtainable image is one actionable error"
+begin "review-container: an unobtainable image is one actionable error"
 reset_logs
-run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
-  GUM_PROVIDER_RESPONSE=OpenAI GUM_INPUT_RESPONSE=gpt-test \
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GUM_INPUT_RESPONSE=gpt-test \
   FAKE_PODMAN_IMAGE_MISSING=1
 assert_nonzero_status "$STATUS" "an unobtainable contributor image must fail the run"
 assert_eq "$(error_line_count "$OUT")" 1 "expected exactly one ERROR line"
@@ -702,20 +850,20 @@ assert_file_contains "pull" "$image_log"
 assert_eq "$(wc -c <"$runner_log")" 0 "no container may start when the image is unobtainable"
 
 # ══ 8. Stop recipe ════════════════════════════════════════════════════════
-begin "donate-clanker-container: an immutable reference is not re-pulled"
+begin "review-container: an immutable reference is not re-pulled"
 # sha- tags and digests name exactly one image, so refreshing them is wasted
 # work on every launch; only moving tags need the pull.
 reset_logs
-run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
-  GUM_PROVIDER_RESPONSE=OpenAI GUM_INPUT_RESPONSE=gpt-test \
-  DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:sha-deadbeef
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GUM_INPUT_RESPONSE=gpt-test \
+  REVIEW_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/review:sha-deadbeef
 assert_file_contains "image exists" "$image_log"
 assert_file_not_contains "pull" "$image_log"
 
-begin "donate-clanker-container: a live session is never replaced silently"
+begin "review-container: a live session is never replaced silently"
 reset_logs
-run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
-  GUM_PROVIDER_RESPONSE=OpenAI GUM_INPUT_RESPONSE=gpt-test \
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GUM_INPUT_RESPONSE=gpt-test \
   FAKE_PODMAN_RUNNING=1 FAKE_PODMAN_OWNED=1
 assert_nonzero_status "$STATUS" "a container owned by another terminal must stop the relaunch"
 assert_eq "$(error_line_count "$OUT")" 1 "expected exactly one ERROR line"
@@ -724,31 +872,48 @@ assert_contains "tmux attach -t contributor" "$OUT"
 assert_not_contains "podman rm -f" "$OUT"
 assert_eq "$(wc -c <"$runner_log")" 0 "a live session must never be replaced"
 
-begin "donate-clanker-container: an orphaned run is reclaimed without a second command"
+begin "review-container: an orphaned run is reclaimed without a second command"
 # Still running, but its terminal is gone: nobody can reach or Ctrl-C it, so
 # the launch takes the name back instead of demanding manual cleanup.
 reset_logs
-run_recipe donate-clanker-container GH_READY=1 DONATE_CLANKER_TEST_GUM_TTY=1 \
-  GUM_PROVIDER_RESPONSE=OpenAI GUM_INPUT_RESPONSE=gpt-test \
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GUM_INPUT_RESPONSE=gpt-test \
   FAKE_PODMAN_RUNNING=1 FAKE_PODMAN_OWNED=0
 assert_contains "reclaiming" "$OUT"
 assert_not_contains "ERROR:" "$OUT"
 assert_not_contains "podman rm -f" "$OUT"
-assert_file_contains "--replace --name donate-clanker-container" "$runner_log"
+assert_file_contains "--replace --name review-container" "$runner_log"
 
 # ══ Doctor is read-only ═══════════════════════════════════════════════════
-begin "donate-clanker-doctor: read-only, Goose-only diagnostics"
+begin "review-doctor: read-only, Goose-only diagnostics"
 reset_logs
-run_recipe donate-clanker-doctor GH_READY=1 TEST_UNAME_M=x86_64
+run_recipe review-doctor GH_READY=1 TEST_UNAME_M=x86_64
 assert_contains "Agent backend (Goose only)" "$OUT"
 assert_not_contains "claude" "$OUT"
 assert_not_contains "codex" "$OUT"
 assert_eq "$(wc -c <"$qemu_log")" 0 "doctor must not start a VM"
 assert_file_not_contains "run --rm" "$runner_log"
 
-begin "donate-clanker-doctor: reports a usable Copilot credential without printing it"
+begin "review-doctor: rejects an unsupported provider"
 reset_logs
-run_recipe donate-clanker-doctor GH_READY=1 TEST_UNAME_M=x86_64 \
+run_recipe review-doctor GH_READY=1 TEST_UNAME_M=x86_64 GOOSE_PROVIDER=ollama
+assert_nonzero_status "$STATUS" "an unsupported provider must fail doctor"
+assert_contains "GOOSE_PROVIDER=ollama is not supported" "$OUT"
+
+begin "review-doctor: names an unavailable aarch64 raw release before launch"
+reset_logs
+run_recipe review-doctor GH_READY=1 TEST_UNAME_M=aarch64 \
+  REVIEW_VM_RUNNER_IMAGE= TEST_CURL_MODE=release-missing
+assert_nonzero_status "$STATUS" "an unavailable aarch64 raw asset must fail doctor"
+assert_contains "aarch64 VM release artifact is unavailable" "$OUT"
+assert_contains "REVIEW_VM_RUNNER_IMAGE" "$OUT"
+assert_file_contains "review-vm-25.08.14-aarch64.raw.zst" "$curl_log"
+assert_eq "$(wc -c <"$qemu_log")" 0 "doctor must not start a VM"
+assert_file_not_contains "run --rm" "$runner_log"
+
+begin "review-doctor: reports a usable Copilot credential without printing it"
+reset_logs
+run_recipe review-doctor GH_READY=1 TEST_UNAME_M=x86_64 \
   FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token
 assert_contains "Copilot credential" "$OUT"
 assert_contains "a Copilot credential is available" "$OUT"
@@ -756,50 +921,53 @@ assert_not_contains "ghu-keyring-token" "$OUT"
 assert_eq "$(wc -c <"$qemu_log")" 0 "doctor must not start a VM"
 assert_file_not_contains "run --rm" "$runner_log"
 
-begin "donate-clanker-doctor: a missing Copilot credential is a failed check with the fix"
+begin "review-doctor: a missing Copilot credential is a failed check with the fix"
 reset_logs
-run_recipe donate-clanker-doctor GH_READY=1 TEST_UNAME_M=x86_64
+run_recipe review-doctor GH_READY=1 TEST_UNAME_M=x86_64
 assert_nonzero_status "$STATUS" "a missing Copilot credential must fail the doctor"
 assert_contains "no Copilot credential is available" "$OUT"
 assert_contains "gh auth token' is NOT a substitute" "$OUT"
 assert_contains "goose configure" "$OUT"
 
-begin "donate-clanker-doctor: a stale AGENT_BACKEND is a warning, and the file is left alone"
+begin "review-doctor: a stale AGENT_BACKEND is a warning, and the file is left alone"
 # Harmless (the launcher passes AGENT_BACKEND=goose itself) but misleading to
 # anyone who reads contributor.env, so it is reported, never rewritten.
 reset_logs
 backend_backup="$scratch/contributor.env.bak"
 cp "$home/.config/hive/contributor.env" "$backend_backup"
 sed -i 's/^AGENT_BACKEND=.*/AGENT_BACKEND=copilot/' "$home/.config/hive/contributor.env"
-run_recipe donate-clanker-doctor GH_READY=1 TEST_UNAME_M=x86_64 \
+run_recipe review-doctor GH_READY=1 TEST_UNAME_M=x86_64 \
   FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token
 assert_contains "AGENT_BACKEND=copilot" "$OUT"
 assert_contains "will not touch it" "$OUT"
 assert_file_contains "AGENT_BACKEND=copilot" "$home/.config/hive/contributor.env"
 cp "$backend_backup" "$home/.config/hive/contributor.env"
 
-begin "donate-clanker-doctor: a matching AGENT_BACKEND raises no warning"
+begin "review-doctor: a matching AGENT_BACKEND raises no warning"
 reset_logs
-run_recipe donate-clanker-doctor GH_READY=1 TEST_UNAME_M=x86_64 \
+run_recipe review-doctor GH_READY=1 TEST_UNAME_M=x86_64 \
   FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token
-assert_not_contains "but donate-clanker always launches goose" "$OUT"
+assert_not_contains "but review always launches goose" "$OUT"
 
-begin "donate-clanker-doctor: reports the agent's GitHub token and its scopes, not its value"
+begin "review-doctor: reports the agent's GitHub token and its scopes, not its value"
 reset_logs
-run_recipe donate-clanker-doctor GH_READY=1 TEST_UNAME_M=x86_64 \
+run_recipe review-doctor GH_READY=1 TEST_UNAME_M=x86_64 \
   FAKE_GH_TOKEN=gho-test-token FAKE_GH_SCOPES="'admin:org', 'repo'"
-assert_contains "a GitHub token is available for the agent" "$OUT"
+assert_contains "a GitHub token is available for the container-only agent" "$OUT"
+assert_contains "VM GitHub identity is blocked" "$OUT"
+assert_contains "host gh login or REVIEW_GH_TOKEN cannot satisfy this VM prerequisite" "$OUT"
 assert_contains "admin:org" "$OUT"
 assert_not_contains "gho-test-token" "$OUT"
 assert_eq "$(wc -c <"$qemu_log")" 0 "doctor must not start a VM"
 assert_file_not_contains "run --rm" "$runner_log"
 
-begin "donate-clanker-doctor: a missing GitHub token is a failed check with the fix"
+begin "review-doctor: a missing GitHub token is a failed check with the fix"
 reset_logs
-run_recipe donate-clanker-doctor GH_READY=1 TEST_UNAME_M=x86_64
+run_recipe review-doctor GH_READY=1 TEST_UNAME_M=x86_64
 assert_nonzero_status "$STATUS" "a missing GitHub token must fail the doctor"
-assert_contains "no GitHub token is available for the agent" "$OUT"
-assert_contains "DONATE_CLANKER_GH_TOKEN" "$OUT"
+assert_contains "no GitHub token is available for the container-only agent" "$OUT"
+assert_contains "REVIEW_GH_TOKEN" "$OUT"
+assert_contains "VM GitHub identity is blocked" "$OUT"
 
 # ══ 5/6. Static guarantees read straight off the justfile ════════════════
 begin "static: the launcher can never background a VM or a container"
@@ -836,28 +1004,48 @@ if grep -n 'file=\${VM_RAW},format=raw' "$code"; then
   fail "the qemu invocation must never attach the master raw image"
 fi
 
+begin "static: bootstrap timeout starts only after the exact VM cache is ready"
+# A stale raw glob can silently boot a different release. The only cache
+# lookup must name the requested version and architecture, and the server
+# invocation for local QEMU must follow overlay preparation.
+# shellcheck disable=SC2016 # the launcher source is matched literally
+if grep -n 'LOCAL_VM_CANDIDATES\|"\${STATE_DIR}"/\*-"' "$code"; then
+  fail "VM cache selection must not glob across versions"
+fi
+# shellcheck disable=SC2016 # the launcher source is matched literally
+grep -q 'cached_vm_raw "\$STATE_DIR" "{{vm_version}}" "\$VM_ARCH"' "$code" ||
+  fail "VM cache lookup must use the requested version and architecture"
+# shellcheck disable=SC2016 # the launcher source is matched literally
+grep -q 'cleanup_obsolete_vm_cache "\$state_dir" "\$version" "\$arch"' "$code" ||
+  fail "verified VM cache entries must clean obsolete releases for their architecture"
+# shellcheck disable=SC2016 # the launcher source is matched literally
+overlay_line="$(grep -n 'qemu-img create -q -f qcow2 -F raw -b "\$VM_RAW"' "$code" | head -n1 | cut -d: -f1)"
+bootstrap_line="$(grep -n '^      start_bootstrap_server$' "$code" | head -n1 | cut -d: -f1)"
+[[ -n "$overlay_line" && -n "$bootstrap_line" && "$bootstrap_line" -gt "$overlay_line" ]] ||
+  fail "bootstrap server must start after local VM overlay preparation"
+
 begin "static: the container never defaults to an unpublished ':latest' tag"
 # publish-compat-image.yml only pushes sha-<commit>, the version tags and
 # 'stable', so a ':latest' default is guaranteed 'manifest unknown'.
-if grep -n 'donate-clanker:latest' "$code"; then
+if grep -n 'review:latest' "$code"; then
   fail "the default contributor image must be a tag the publish workflow actually pushes"
 fi
-grep -q 'ghcr.io/projectbluefin/donate-clanker:stable' "$code" ||
+grep -q 'ghcr.io/projectbluefin/review:stable' "$code" ||
   fail "the default contributor image must be the published ':stable' tag"
 
 begin "static: the launcher ships no lifecycle command"
 # A stop/start/restart verb would mean a run can outlive its terminal. It
-# cannot: Ctrl-C is the only way a donate-clanker run ends, and a stale name
+# cannot: Ctrl-C is the only way a review run ends, and a stale name
 # is reclaimed at launch by --replace, not by a second command.
-if grep -nE '^donate-clanker-(stop|start|restart|kill|clean|down|up):' "$code"; then
+if grep -nE '^review-(stop|start|restart|kill|clean|down|up):' "$code"; then
   fail "the launcher must never ship a lifecycle recipe — Ctrl-C is the stop button"
 fi
-if grep -n 'ujust donate-clanker-stop' "$code"; then
+if grep -n 'just review-stop' "$code"; then
   fail "nothing may point a user at a stop command that must not exist"
 fi
 # The recipe list is exactly: launch the VM, launch the container, diagnose.
-assert_eq "$(grep -cE '^donate-clanker[a-z-]*:' "$code")" 3 \
-  "expected exactly three recipes (donate-clanker, -container, -doctor)"
+assert_eq "$(grep -cE '^review[a-z-]*:' "$code")" 3 \
+  "expected exactly three recipes (review, -container, -doctor)"
 
 begin "static: no legacy backends survive in the launcher"
 for legacy in copilot_live_models 'Multiple AI CLIs' LAST_TOOL AGENT_MODEL=; do
@@ -914,4 +1102,4 @@ if [[ "$failures" -gt 0 ]]; then
   printf '\n%d assertion(s) FAILED.\n' "$failures" >&2
   exit 1
 fi
-printf '\nAll donate-clanker onboarding assertions passed.\n'
+printf '\nAll review onboarding assertions passed.\n'

@@ -26,7 +26,7 @@ assigned contributor session behaves unexpectedly.
 ## Core Process
 
 1. Let Hive own the WebSocket protocol, assignment selection, `contributor`
-   tmux session, prompt injection, and result capture. donate-clanker starts
+   tmux session, prompt injection, and result capture. review starts
    the runtime and attaches to it; it does not reproduce any of those jobs.
 2. Attach only to inspect or deliberately steer a live session:
 
@@ -49,7 +49,7 @@ assigned contributor session behaves unexpectedly.
 Container-only mode can pass one contributor GitHub token as inherited
 `GH_TOKEN`; it does not mount the host GitHub configuration. VM mode can pass
 the Copilot provider secret but the current guest cannot map a host GitHub
-identity to `GH_TOKEN`. Use `donate-clanker-container` for work requiring
+identity to `GH_TOKEN`. Use `review-container` for work requiring
 fork, push, or pull-request access until the guest supports that mapping.
 Never log or persist either credential.
 

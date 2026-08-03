@@ -144,8 +144,8 @@ GitHub Releases, Podman.
 
 **Interfaces:**
 - Consumes: the provenance-verified Containerfile from Task 1.
-- Produces: `localhost/donate-clanker:goose-canary` for local
-  `DONATE_CLANKER_CONTRIBUTOR_IMAGE` testing.
+- Produces: `localhost/review:goose-canary` for local
+  `REVIEW_CONTRIBUTOR_IMAGE` testing.
 
 - [ ] **Step 1: Run source-level validation**
 
@@ -155,7 +155,7 @@ GitHub Releases, Podman.
   bash tests/image-contract.sh &&
     bash tests/just-onboarding.sh &&
     git diff --check &&
-    just --justfile just/61-donate-clanker.just --list
+    just --list
   ```
 
   Expected: each command exits 0.
@@ -168,7 +168,7 @@ GitHub Releases, Podman.
   GH_TOKEN="$(gh auth token)" podman build \
     --secret id=github_token,env=GH_TOKEN \
     --build-arg GOOSE_REFRESH="$(date +%s)" \
-    -f image/Containerfile -t localhost/donate-clanker:goose-canary .
+    -f image/Containerfile -t localhost/review:goose-canary .
   ```
 
   Expected: the build finishes successfully after provenance verification and
@@ -180,7 +180,7 @@ GitHub Releases, Podman.
 
   ```bash
   podman run --rm --entrypoint /usr/local/bin/goose \
-    localhost/donate-clanker:goose-canary --version
+    localhost/review:goose-canary --version
   ```
 
   Expected: Goose prints a canary version.

@@ -3,7 +3,7 @@ name: pr-workflow
 version: "1.3"
 last_updated: 2026-08-02
 id: pr-workflow
-one_line_purpose: Open donate-clanker pull requests that merge cleanly.
+one_line_purpose: Open review pull requests that merge cleanly.
 entry_point: docs/skills/pr-workflow.md
 category: meta
 mcp_compliance_level: partial
@@ -11,7 +11,7 @@ optimization_status: draft
 status: active
 dependencies: []
 tags: [git, pullrequest, conventional, hooks, branches]
-description: "Defines protected-branch pull request, branch, title, trailer, and validation requirements. Use before branching, committing, or opening a donate-clanker pull request."
+description: "Defines protected-branch pull request, branch, title, trailer, and validation requirements. Use before branching, committing, or opening a review pull request."
 metadata:
   type: policy
 ---
@@ -61,7 +61,7 @@ bash tests/image-contract.sh
 bash tests/just-onboarding.sh
 bash scripts/check-skill-frontmatter.sh
 git diff --check
-just --justfile just/61-donate-clanker.just --list
+just --list
 pre-commit run --all-files
 ```
 

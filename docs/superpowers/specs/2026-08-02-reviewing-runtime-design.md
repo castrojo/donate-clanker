@@ -11,7 +11,7 @@ compatible guest artifact is released.
 ## Architecture
 
 Hive remains the only owner of task selection, claim handling, repository
-routing, and checkout preparation. donate-clanker pins the same Hive commit in
+routing, and checkout preparation. review pins the same Hive commit in
 the host launcher and contributor image, so setup and runtime use one
 protocol revision.
 

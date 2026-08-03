@@ -1,4 +1,4 @@
-# Controlled Goose configuration for donate-clanker.
+# Controlled Goose configuration for review.
 #
 # This file is NOT ~/.config/goose/config.yaml. Hive's contributor entrypoint
 # unconditionally overwrites that path at every startup:

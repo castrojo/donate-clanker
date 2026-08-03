@@ -1,6 +1,6 @@
-# donate-clanker — Agent Operating Contract
+# review — Agent Operating Contract
 
-`donate-clanker` is a thin, foreground launcher for a QEMU VM or contributor
+`review` is a thin, foreground launcher for a QEMU VM or contributor
 container running Goose. It owns VM boot, credential handoff, and review
 context. Hive owns the WebSocket contributor protocol, task selection, the
 `contributor` tmux session, prompt injection, and output capture.
@@ -31,7 +31,7 @@ the sole authority for task selection.
 
 ## Repository layout
 
-- `just/61-donate-clanker.just` is the only shipped launcher artifact. Its
+- `justfile` is the only shipped launcher artifact. Its
   three public recipes and private helpers intentionally live together.
 - `mcp-app/` contains the optional Goose Desktop MCP App; it is not a launcher
   artifact and does not participate in launcher lifecycle.
@@ -47,7 +47,7 @@ the Hive-managed path.
 
 ## Permitted changes
 
-Agents may change `just/61-donate-clanker.just`, `mcp-app/`, `image/`,
+Agents may change `justfile`, `mcp-app/`, `image/`,
 `tests/`, `docs/`, `README.md`, `AGENTS.md`, and `.github/workflows/`.
 
 Do not modify `ublue-os/*`, or commit generated `.agents/skills/` content.
@@ -64,7 +64,7 @@ behavior.
 bash tests/image-contract.sh
 bash tests/just-onboarding.sh
 git diff --check
-just --justfile just/61-donate-clanker.just --list
+just --list
 pre-commit run --all-files
 ```
 

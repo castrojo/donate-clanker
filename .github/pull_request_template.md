@@ -1,4 +1,4 @@
-# donate-clanker PR
+# review PR
 
 ## What does this change?
 
@@ -26,11 +26,11 @@ opened ──▶ review ──▶ approved ──▶ merged
 - [ ] `bash tests/image-contract.sh` passes
 - [ ] `bash tests/just-onboarding.sh` passes
 - [ ] `git diff --check` is clean
-- [ ] `just --justfile just/61-donate-clanker.just --list` parses
+- [ ] `just --list` parses
 - [ ] `pre-commit run --all-files` passes
 - [ ] Skill doc updated if the change affects agent-facing conventions or behavior (see `docs/skills/skill-improvement.md`)
 - [ ] `AGENTS.md` / `docs/SKILL.md` / `docs/skills/` links remain valid
-- [ ] CI is green after push: `gh run list --repo projectbluefin/donate-clanker --limit 5`
+- [ ] CI is green after push: `gh run list --repo projectbluefin/review --limit 5`
 
 ## AI attribution
 

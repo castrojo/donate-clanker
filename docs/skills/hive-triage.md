@@ -37,7 +37,7 @@ arrived and the session then failed.
    selection, or a contributor-specific connectivity/authorization problem.
 4. Reconnect only as the normal request retry after the relevant hub state
    changed. Do not add polling, selection logic, or an assignment retry loop
-   to donate-clanker.
+   to review.
 5. Escalate the observed condition to the hub operator with the time window
    and classification. Hub configuration and selection behavior are fixed
    there, not in this launcher.

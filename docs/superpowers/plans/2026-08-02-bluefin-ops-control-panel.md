@@ -23,9 +23,9 @@ resources, and credentials remain process-local to the server.
   timers, WebSockets, task selection, tmux access, or services.
 - Fetch Hive and GitHub once per open and only again after the one global
   refresh action.
-- Keep `GITHUB_COPILOT_TOKEN`, `DONATE_CLANKER_GH_TOKEN`, `GH_TOKEN`, and all
+- Keep `GITHUB_COPILOT_TOKEN`, `REVIEW_GH_TOKEN`, `GH_TOKEN`, and all
   credential values out of UI payloads and logs.
-- Resolve `DONATE_CLANKER_GH_TOKEN` before `GH_TOKEN` only in the server;
+- Resolve `REVIEW_GH_TOKEN` before `GH_TOKEN` only in the server;
   never use a Copilot token for GitHub REST calls.
 - Treat Hive completion and GitHub merge/review state as separate facts.
 - Use Catppuccin Mocha CSS variables, WCAG-AA foreground/background pairs, and
@@ -168,7 +168,7 @@ retain an old value in the process.
 
 - [ ] **Step 3: Implement GitHub REST evidence**
 
-Read `DONATE_CLANKER_GH_TOKEN ?? GH_TOKEN` inside the adapter, construct an
+Read `REVIEW_GH_TOKEN ?? GH_TOKEN` inside the adapter, construct an
 authorization header only when it is non-empty, and omit authorization
 otherwise. Request `/repos/{owner}/{repo}/pulls?state=open` and
 `/repos/{owner}/{repo}/issues?state=open` for configured repositories. Return
@@ -264,7 +264,7 @@ Run:
 ```bash
 npm --prefix mcp-app run typecheck
 npm --prefix mcp-app run build
-rg -n "DONATE_CLANKER_GH_TOKEN|GITHUB_COPILOT_TOKEN|GH_TOKEN" mcp-app/dist
+rg -n "REVIEW_GH_TOKEN|GITHUB_COPILOT_TOKEN|GH_TOKEN" mcp-app/dist
 ```
 
 Expected: type-check and build pass. Any credential identifiers in the server
@@ -360,13 +360,13 @@ git commit -m "feat: add Tactical Ledger panel UI"
 Document a stdio server command that runs `node mcp-app/dist/server.js`.
 Explain the two exposed tools, the `ui://` resource, the single refresh
 behavior, required optional configuration, and that the app is not a
-replacement for `ujust donate-clanker`.
+replacement for `just review`.
 
 - [ ] **Step 2: Document endpoint and token assumptions explicitly**
 
 List each configurable Hive endpoint, state which currently lacks an
 authoritative response contract, and state that unsupported shapes render
-unknown. Explain that the server uses only `DONATE_CLANKER_GH_TOKEN` then
+unknown. Explain that the server uses only `REVIEW_GH_TOKEN` then
 `GH_TOKEN` for GitHub API requests, never a Copilot token, and never exposes
 credentials to the UI or logs.
 
