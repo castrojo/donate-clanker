@@ -3,7 +3,11 @@ import { createRoot } from 'react-dom/client';
 import type {
   DataState,
   EvidenceSource,
+  GitHubEvidence,
   GitHubWorkItem,
+  HiveConnectivity,
+  HiveContributor,
+  HiveEvidence,
   OpsSnapshot,
   PromptProvenance,
 } from '../contracts.js';
@@ -55,18 +59,105 @@ function unknownSnapshot(reason: string): OpsSnapshot {
   };
 }
 
-function isOpsSnapshot(value: unknown): value is OpsSnapshot {
-  if (!value || typeof value !== 'object') {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isEvidenceSource(value: unknown): value is EvidenceSource {
+  return value === 'hive' || value === 'github';
+}
+
+function isDataState<T>(
+  value: unknown,
+  isValue: (candidate: unknown) => candidate is T,
+): value is DataState<T> {
+  if (!isRecord(value) || !isEvidenceSource(value.source)) {
     return false;
   }
 
-  const candidate = value as Partial<OpsSnapshot>;
+  switch (value.kind) {
+    case 'known':
+      return typeof value.observedAt === 'string' && isValue(value.value);
+    case 'empty':
+      return typeof value.observedAt === 'string';
+    case 'unknown':
+      return typeof value.reason === 'string';
+    case 'stale':
+      return (
+        typeof value.observedAt === 'string' &&
+        typeof value.reason === 'string' &&
+        isValue(value.value)
+      );
+    default:
+      return false;
+  }
+}
+
+function isHiveConnectivity(value: unknown): value is HiveConnectivity {
+  return isRecord(value) && typeof value.endpoint === 'string';
+}
+
+function isHiveContributor(value: unknown): value is HiveContributor {
+  return isRecord(value) && typeof value.id === 'string' && typeof value.label === 'string';
+}
+
+function isPromptProvenance(value: unknown): value is PromptProvenance {
+  return isRecord(value) && typeof value.source === 'string' && typeof value.revision === 'string';
+}
+
+function isGitHubWorkItem(value: unknown): value is GitHubWorkItem {
   return (
-    (candidate.mode === 'live' || candidate.mode === 'manual') &&
-    typeof candidate.generatedAt === 'string' &&
-    Boolean(candidate.hive) &&
-    Boolean(candidate.github) &&
-    typeof candidate.githubAuthAvailable === 'boolean'
+    isRecord(value) &&
+    typeof value.title === 'string' &&
+    typeof value.number === 'number' &&
+    typeof value.url === 'string' &&
+    Array.isArray(value.labels) &&
+    value.labels.every((label) => typeof label === 'string') &&
+    (value.reviewStatus === 'review-requested' ||
+      value.reviewStatus === 'not-requested' ||
+      value.reviewStatus === 'unknown') &&
+    typeof value.observedAt === 'string'
+  );
+}
+
+function isArrayOf<T>(
+  value: unknown,
+  isItem: (candidate: unknown) => candidate is T,
+): value is T[] {
+  return Array.isArray(value) && value.every(isItem);
+}
+
+function isHiveEvidence(value: unknown): value is HiveEvidence {
+  return (
+    isRecord(value) &&
+    isDataState(value.connectivity, isHiveConnectivity) &&
+    isDataState(value.contributors, (contributors): contributors is HiveContributor[] =>
+      isArrayOf(contributors, isHiveContributor),
+    ) &&
+    isDataState(value.actionableCount, (count): count is number => typeof count === 'number') &&
+    isDataState(value.knowledgeExportedAt, (timestamp): timestamp is string => typeof timestamp === 'string') &&
+    isDataState(value.promptProvenance, isPromptProvenance)
+  );
+}
+
+function isGitHubEvidence(value: unknown): value is GitHubEvidence {
+  return (
+    isRecord(value) &&
+    isDataState(value.pullRequests, (items): items is GitHubWorkItem[] =>
+      isArrayOf(items, isGitHubWorkItem),
+    ) &&
+    isDataState(value.issues, (items): items is GitHubWorkItem[] => isArrayOf(items, isGitHubWorkItem))
+  );
+}
+
+function isOpsSnapshot(value: unknown): value is OpsSnapshot {
+  return (
+    isRecord(value) &&
+    (value.mode === 'live' || value.mode === 'manual') &&
+    typeof value.generatedAt === 'string' &&
+    isHiveEvidence(value.hive) &&
+    isGitHubEvidence(value.github) &&
+    typeof value.githubAuthAvailable === 'boolean'
   );
 }
 
