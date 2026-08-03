@@ -36,6 +36,17 @@ GOOSE_MAX_TOOL_RESPONSE_SIZE: 20000
 GOOSE_CONTEXT_STRATEGY: summarize
 
 extensions:
+  bluefin_operations:
+    type: stdio
+    name: bluefin_operations
+    enabled: true
+    bundled: false
+    cmd: node
+    args: ["/opt/bluefin/bluefin-operations/server.js"]
+    timeout: 30
+    description: "Show the read-only Bluefin Operations Tactical Board."
+    envs: {}
+    env_keys: []
   context7:
     type: streamable_http
     name: context7
