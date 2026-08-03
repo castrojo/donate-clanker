@@ -1,7 +1,7 @@
 ---
 name: goose-context
-version: "1.2"
-last_updated: 2026-08-01
+version: "1.3"
+last_updated: 2026-08-03
 id: goose-context
 one_line_purpose: Keep Goose config, Context7, and skills loaded in the guest.
 entry_point: docs/skills/goose-context.md
@@ -29,15 +29,19 @@ Load this when Goose in the guest is missing the Context7 extension, when a
 skill that should be available is not, when editing `image/config/goose.yaml`,
 or when deciding where a new piece of agent context belongs.
 
-## When NOT to Use
+## When Not to Use
 
-Do not use this for Hive task selection, delivery, or tmux lifecycle changes.
+Do not load this for Hive assignment selection, contributor tmux lifecycle, or
+task delivery; use the Hive runtime documentation instead.
 
 ## Core Process
 
 1. Keep image-owned configuration under `GOOSE_PATH_ROOT`, not Hive's rewritten default path.
 2. Use global skills, then consult the cloned repository's task-specific catalog.
 3. Use Context7 only for current external documentation; otherwise use repository evidence.
+4. Treat the policy strings asserted by `tests/image-contract.sh` as contract
+   anchors. Preserve them when changing policy wording, or intentionally update
+   their test assertions in the same change.
 
 ### GOOSE_PATH_ROOT is not optional
 
@@ -116,6 +120,7 @@ anything task-scoped into `docs/skills/` where it loads on demand.
 | "Hive starts Goose, so image configuration can live in the default config path." | Hive overwrites that path before the agent runs; use `GOOSE_PATH_ROOT`. |
 | "Global skill descriptions make repository skills automatically available." | Repository-local skills appear after session startup; the agent must consult the cloned catalog. |
 | "The policy can contain every skill body." | Persistent instructions consume context every turn; route to the relevant document instead. |
+| "The policy wording is cosmetic." | The image contract validates specific routing and Context7 fallback behavior; update its assertions with intentionally changed wording. |
 
 `GOOSE_NO_CODE_TRUNCATION=true` keeps full code blocks visible during reviews
 without increasing the bounded tool response size.
@@ -130,6 +135,10 @@ without increasing the bounded tool response size.
 - Committing generated `.agents/skills/` output.
 - Documenting per-repo skill loading as guaranteed or automatic.
 - Growing `AGENTS.md` with content only some tasks need.
+- Expanding the persistent policy with task-specific instructions.
+- Changing policy wording without checking `tests/image-contract.sh`.
+- Treating an unavailable Context7 extension as evidence for an unverified
+  external claim.
 
 ## Verification
 

@@ -17,8 +17,8 @@
         "config"
       ],
       "description": "Explains GOOSE_PATH_ROOT, the Context7 MCP extension, build-time skill generation from index.json, per-repo skill lookup, and CONTEXT_FILE_NAMES. Use when Goose loses its config, misses a skill, or lacks Context7.",
-      "version": "1.2",
-      "last_updated": "2026-08-01",
+      "version": "1.3",
+      "last_updated": "2026-08-03",
       "doc_type": "reference"
     },
     {
