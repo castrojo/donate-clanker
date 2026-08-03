@@ -14,6 +14,7 @@ tags: [goose, context7, skills, mcp, config]
 description: "Keeps Goose configuration, Context7, and global and repository skill routing available in the guest. Use when Goose loses its config, misses a skill, or lacks Context7."
 metadata:
   type: reference
+  context7-sources: [/aaif-goose/goose, /websites/cli_github_manual]
 ---
 
 # Goose Context
