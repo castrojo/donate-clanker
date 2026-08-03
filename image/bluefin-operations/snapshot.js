@@ -40,7 +40,16 @@ export async function buildSnapshot({
   agentMdPath = `${process.env.HOME}/agent.md`,
   fetchImpl = fetch,
 } = {}) {
-  const links = urlsForHub(hiveHub);
+  let links;
+  try {
+    links = urlsForHub(hiveHub);
+  } catch {
+    links = {
+      contributorUrl: null,
+      dashboardUrl: null,
+      statusUrl: null,
+    };
+  }
   const hive = {
     state: "unavailable",
     activeContributors: null,
@@ -52,6 +61,7 @@ export async function buildSnapshot({
   };
 
   try {
+    if (!links.statusUrl) throw new Error("Hive endpoint is unavailable");
     const response = await fetchImpl(links.statusUrl, {
       signal: AbortSignal.timeout(8_000),
     });

@@ -46,7 +46,11 @@
   set("registered", data.hive.registeredContributors);
   set("actionable", data.hive.actionableItems);
   set("knowledge", data.knowledge.state === "available" ? `Hive knowledge snapshot refreshed ${data.knowledge.refreshedAt}.` : "Hive knowledge snapshot is unavailable.");
-  for (const [id, url] of Object.entries({ contributor: data.hive.contributorUrl, dashboard: data.hive.dashboardUrl, "hive-prompt": data.sources.hivePromptUrl, policy: data.sources.bluefinPolicyUrl, issues: data.hive.manualIssuesUrl })) document.getElementById(id).href = url;
+  for (const [id, url] of Object.entries({ contributor: data.hive.contributorUrl, dashboard: data.hive.dashboardUrl, "hive-prompt": data.sources.hivePromptUrl, policy: data.sources.bluefinPolicyUrl, issues: data.hive.manualIssuesUrl })) {
+    const link = document.getElementById(id);
+    if (url) link.href = url;
+    else link.hidden = true;
+  }
   if (data.hive.state !== "online") document.getElementById("manual").style.display = "block";
 </script>
 </html>

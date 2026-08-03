@@ -40,3 +40,14 @@ test("reports unavailable rather than inventing Hive state", async () => {
   assert.equal(snapshot.hive.state, "unavailable");
   assert.equal(snapshot.hive.activeContributors, null);
 });
+
+test("shows Manual Mode when the Hive endpoint is unset", async () => {
+  const snapshot = await buildSnapshot({
+    agentMdPath: "/missing",
+    fetchImpl: async () => {
+      throw new Error("must not fetch without an endpoint");
+    },
+  });
+  assert.equal(snapshot.hive.state, "unavailable");
+  assert.equal(snapshot.hive.contributorUrl, null);
+});
