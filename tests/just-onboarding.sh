@@ -986,10 +986,10 @@ fi
 if grep -nE '(^|[^[:alnum:]_])(nohup|setsid)([^[:alnum:]_]|$)' "$code"; then
   fail "nohup/setsid must never appear on a launch path"
 fi
-assert_eq "$(grep -c 'podman run --rm --interactive --tty' "$code")" 2 \
-  "expected exactly two foreground podman run sites (VM runner + container)"
+assert_eq "$(grep -c 'podman run --rm --interactive --tty' "$code")" 3 \
+  "expected exactly three foreground podman run sites (VM runner + container + pi-container)"
 # A stale container from a hard-killed terminal must never block a relaunch.
-assert_eq "$(grep -c 'podman run --rm --interactive --tty --replace --name' "$code")" 2 \
+assert_eq "$(grep -c 'podman run --rm --interactive --tty --replace --name' "$code")" 3 \
   "every named foreground run must reclaim its name with --replace"
 
 begin "static: the verified master image is never booted directly"
@@ -1053,8 +1053,8 @@ for legacy in copilot_live_models 'Multiple AI CLIs' LAST_TOOL AGENT_MODEL=; do
     fail "legacy backend leftover found: $legacy"
   fi
 done
-assert_eq "$(grep -c '^tool_order := "goose"$' "$justfile")" 1 \
-  "goose must be the only backend in tool_order"
+assert_eq "$(grep -c '^tool_order := "goose' "$justfile")" 1 \
+  "goose must be the primary backend in tool_order"
 
 begin "static: nothing here filters the work Hive assigns"
 # Hive's selectTask is the sole authority on what gets worked on: the hub's

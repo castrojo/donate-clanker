@@ -177,11 +177,11 @@ tool_install_hint() {
 }
 require_goose_backend() {
   # TOOL exists only for compatibility with the documented invocation; the
-  # supported values are goose (default) and pi.
+  # VM path only supports Goose. pi is supported in pi-container.
   local requested="${1:-}"
   [[ -z "$requested" || "$requested" == "goose" ]] && return 0
-  echo "ERROR: TOOL=${requested} is not supported — review runs Goose (default) or pi." >&2
-  echo "  Unset TOOL, pass TOOL=goose, or pass TOOL=pi." >&2
+  echo "ERROR: TOOL=${requested} is not supported — review runs Goose only." >&2
+  echo "  Unset TOOL, or pass TOOL=goose." >&2
   return 1
 }
 require_pi_backend() {
