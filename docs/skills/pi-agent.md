@@ -3,15 +3,15 @@ name: pi-agent
 version: "1.0"
 last_updated: 2026-08-03
 id: pi-agent
-one_line_purpose: Run pi + DeepSeek as a parallel contributor agent alongside Goose.
+one_line_purpose: Build and run the pi + DeepSeek Hive contributor container.
 entry_point: docs/skills/pi-agent.md
-category: contributor
+category: ci-ops
 mcp_compliance_level: partial
 optimization_status: draft
 status: active
 dependencies: []
-tags: [pi, deepseek, container, agent, quadlet]
-description: "Build and run the pi + DeepSeek container as an alternative contributor agent. Use when setting up pi, building the pi image, or debugging pi container issues."
+tags: [pi, deepseek, container, agent, quadlet, hive]
+description: "Build and run the pi + DeepSeek Hive contributor container. Use when setting up pi as an alternative agent backend, building the pi image, or debugging pi container or Hive contributor issues."
 metadata:
   type: procedure
 ---

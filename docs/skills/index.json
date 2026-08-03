@@ -117,6 +117,26 @@
       "doc_type": "runbook"
     },
     {
+      "id": "pi-agent",
+      "name": "pi-agent",
+      "one_line_purpose": "Build and run the pi + DeepSeek Hive contributor container.",
+      "entry_point": "docs/skills/pi-agent.md",
+      "category": "ci-ops",
+      "status": "active",
+      "tags": [
+        "pi",
+        "deepseek",
+        "container",
+        "agent",
+        "quadlet",
+        "hive"
+      ],
+      "description": "Build and run the pi + DeepSeek Hive contributor container. Use when setting up pi as an alternative agent backend, building the pi image, or debugging pi container or Hive contributor issues.",
+      "version": "1.0",
+      "last_updated": "2026-08-03",
+      "doc_type": "procedure"
+    },
+    {
       "id": "pr-workflow",
       "name": "pr-workflow",
       "one_line_purpose": "Open review pull requests that merge cleanly.",
