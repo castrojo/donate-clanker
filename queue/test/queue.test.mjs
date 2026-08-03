@@ -208,6 +208,52 @@ test('uses complete current review and check-run evidence', async () => {
   assert.equal(pullRequest.checkState, 'failure');
 });
 
+test('does not let a comment clear a current change request', async () => {
+  const fetch = async (input) => {
+    const url = new URL(input);
+    if (url.pathname === '/repos/projectbluefin/bluefin/pulls') {
+      return jsonResponse([githubPullRequest(1)]);
+    }
+    if (url.pathname.endsWith('/reviews')) {
+      return jsonResponse([
+        {
+          id: 1,
+          state: 'CHANGES_REQUESTED',
+          submitted_at: '2026-08-03T16:00:00Z',
+          user: { id: 1 },
+        },
+        {
+          id: 2,
+          state: 'COMMENTED',
+          submitted_at: '2026-08-03T17:00:00Z',
+          user: { id: 1 },
+        },
+        {
+          id: 3,
+          state: 'APPROVED',
+          submitted_at: '2026-08-03T18:00:00Z',
+          user: { id: 2 },
+        },
+      ]);
+    }
+    if (url.pathname.includes('/check-runs')) {
+      return jsonResponse({ total_count: 0, check_runs: [] });
+    }
+    if (url.pathname.includes('/pulls/')) {
+      return jsonResponse({ mergeable_state: 'clean' });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+
+  const [pullRequest] = await fetchOpenPullRequests({
+    fetch,
+    owner: 'projectbluefin',
+    repositories: ['bluefin'],
+  });
+
+  assert.equal(pullRequest.reviewState, 'review_required');
+});
+
 test('rejects failed list responses and preserves existing snapshots', async () => {
   const failingFetch = async () => jsonResponse({ message: 'unavailable' }, 503);
   await assert.rejects(

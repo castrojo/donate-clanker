@@ -6,6 +6,11 @@ const FAILED_CHECK_CONCLUSIONS = new Set([
   'startup_failure',
   'timed_out',
 ]);
+const DECISIONAL_REVIEW_STATES = new Set([
+  'APPROVED',
+  'CHANGES_REQUESTED',
+  'DISMISSED',
+]);
 
 function validIdentifier(value, name) {
   if (typeof value !== 'string' || !/^[A-Za-z0-9_.-]+$/.test(value)) {
@@ -101,13 +106,15 @@ function reviewState(result) {
     ) {
       return 'unknown';
     }
-    const previous = latestByReviewer.get(review.user.id);
-    if (
-      !previous ||
-      review.submitted_at > previous.submitted_at ||
-      (review.submitted_at === previous.submitted_at && review.id > previous.id)
-    ) {
-      latestByReviewer.set(review.user.id, review);
+    if (DECISIONAL_REVIEW_STATES.has(review.state)) {
+      const previous = latestByReviewer.get(review.user.id);
+      if (
+        !previous ||
+        review.submitted_at > previous.submitted_at ||
+        (review.submitted_at === previous.submitted_at && review.id > previous.id)
+      ) {
+        latestByReviewer.set(review.user.id, review);
+      }
     }
   }
 
