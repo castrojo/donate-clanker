@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf '%s\n' 'Tactical Ledger | Bluefin Review'
+exec goose review "$@"

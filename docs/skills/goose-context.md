@@ -117,6 +117,9 @@ anything task-scoped into `docs/skills/` where it loads on demand.
 | "Global skill descriptions make repository skills automatically available." | Repository-local skills appear after session startup; the agent must consult the cloned catalog. |
 | "The policy can contain every skill body." | Persistent instructions consume context every turn; route to the relevant document instead. |
 
+`GOOSE_NO_CODE_TRUNCATION=true` keeps full code blocks visible during reviews
+without increasing the bounded tool response size.
+
 ## Red Flags
 
 - Writing agent configuration to `~/.config/goose/config.yaml`. Hive will
@@ -134,15 +137,6 @@ Inside a running guest:
 
 ```
 
-## Bluefin Operations
-
-The controlled config also enables the local `bluefin_operations` stdio
-extension. Ask Goose to call `show_bluefin_operations` for the read-only
-Tactical Board. It may show canonical Hive status and source links, but must
-not control Hive, scrape tmux, expose credentials, or choose work.
-
-Its extension configuration uses Goose's documented `type: stdio`, `cmd`, and
-`args` fields. Source: Context7 `/aaif-goose/goose`.bash
 echo "$GOOSE_PATH_ROOT"                     # expect /opt/bluefin/goose
 ls "$GOOSE_PATH_ROOT"                       # config present after Hive start
 ls /home/dev/.agents/skills/                # generated org skills

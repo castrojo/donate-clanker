@@ -153,6 +153,10 @@ Report completion only after the verifiable artifact exists — a pushed
 branch, an opened pull request, a green check — not after the intent to
 create one.
 
+To inspect earlier review output, enter tmux copy-mode with `Ctrl-b [`.
+PageUp scrolls, tmux search finds text, and `q` returns to the live pane.
+Copy-mode changes only your view; Hive still owns output capture.
+
 ## Red Flags
 
 - Code in this repository that creates a tmux session, injects keystrokes, or
