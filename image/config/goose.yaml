@@ -21,6 +21,12 @@
 # explicitly accepts the contributor's scoped runtime tools.
 GOOSE_MODE: auto
 
+# Goose CLI uses bat themes for markdown and code syntax. Keep the regular
+# terminal colors under the user's terminal emulator, but make agent output
+# Catppuccin Mocha without requiring per-user configuration.
+GOOSE_CLI_THEME: dark
+GOOSE_CLI_DARK_THEME: "Catppuccin Mocha"
+
 # Goose asks an interactive yes/no telemetry question on first run. Hive drives
 # the CLI by simulated keystrokes, so that prompt blocks the agent forever
 # waiting for an answer nobody is there to give. Answer it here, up front.
