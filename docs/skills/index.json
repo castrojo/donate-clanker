@@ -60,6 +60,25 @@
       "doc_type": "runbook"
     },
     {
+      "id": "mcp-app",
+      "name": "mcp-app",
+      "one_line_purpose": "Build read-only Goose Desktop MCP Apps as typed UI resources.",
+      "entry_point": "docs/skills/mcp-app.md",
+      "category": "meta",
+      "status": "active",
+      "tags": [
+        "goose",
+        "mcp",
+        "ui",
+        "react",
+        "desktop"
+      ],
+      "description": "Builds a stateless Goose Desktop MCP App resource with a server-only data boundary. Use when adding a Goose Desktop panel, dashboard, or interactive MCP resource.",
+      "version": "1.0",
+      "last_updated": "2026-08-02",
+      "doc_type": "reference"
+    },
+    {
       "id": "image-build",
       "name": "image-build",
       "one_line_purpose": "Derive and pin the donate-clanker contributor image safely.",
