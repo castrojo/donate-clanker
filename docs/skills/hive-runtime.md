@@ -53,6 +53,10 @@ identity to `GH_TOKEN`. Use `review-container` for work requiring
 fork, push, or pull-request access until the guest supports that mapping.
 Never log or persist either credential.
 
+To inspect earlier review output, enter tmux copy-mode with `Ctrl-b [`.
+PageUp scrolls, tmux search finds text, and `q` returns to the live pane.
+Copy-mode changes only your view; Hive still owns output capture.
+
 ## Red Flags
 
 - Creating or naming tmux sessions, injecting prompts, or scraping pane output

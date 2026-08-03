@@ -24,6 +24,8 @@ if [ ! -f "${hive_config}/contributor.env" ]; then
 	exit 1
 fi
 
+note 'Bluefin Operations | contributor runtime starting'
+
 # --- Goose configuration -----------------------------------------------------
 #
 # Hive's contributor-agent.sh unconditionally overwrites

@@ -100,6 +100,8 @@ RUN --mount=type=secret,id=github_token set -eu; \
 # omits diffutils. Supply that one required comparison operation using Python,
 # which the base already provides for our archive extraction.
 COPY --chmod=0755 image/bin/cmp /usr/local/bin/cmp
+COPY --chmod=0755 image/bin/find /usr/local/bin/find
+COPY --chmod=0755 image/bin/bluefin-review /usr/local/bin/bluefin-review
 RUN set -eu; \
     printf 'same\n' > /tmp/cmp-left; \
     cp /tmp/cmp-left /tmp/cmp-right; \

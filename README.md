@@ -97,6 +97,13 @@ setup, and credentials. It never starts a VM or container. A normal attended
 launch runs Hive's upstream setup when `~/.config/hive/contributor.env` is
 absent; doctor only reports that condition.
 
+## Reviewing
+
+For a Bluefin review, load `/bluefin-review` after the assigned repository is
+available. To inspect earlier output, enter tmux copy-mode with `Ctrl-b [`;
+PageUp scrolls, tmux search finds text, and `q` returns to the live pane.
+Copy-mode only changes your view; Hive still owns task and output handling.
+
 ## Configuration
 
 All configuration is read at launch.

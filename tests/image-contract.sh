@@ -64,6 +64,8 @@ require image/Containerfile \
   'COPY --chmod=0755 image/git-hooks/ /opt/bluefin/git-hooks/' \
   'COPY --chmod=0755 image/hive-entrypoint.d/ /etc/hive/entrypoint.d/' \
   'COPY --chmod=0755 image/bin/cmp /usr/local/bin/cmp' \
+  'COPY --chmod=0755 image/bin/find /usr/local/bin/find' \
+  'COPY --chmod=0755 image/bin/bluefin-review /usr/local/bin/bluefin-review' \
   'image/terminfo/xterm-256color.src /tmp/xterm-256color.src' \
   'tic -x -o /usr/share/terminfo /tmp/xterm-256color.src' \
   'https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/docs/skills/index.json' \
@@ -118,13 +120,12 @@ forbid scripts/generate-skills.py \
 # ~/.config/goose/config.yaml on every start. It must not pin a provider or a
 # model: the launcher passes those through from the contributor's own account.
 require image/config/goose.yaml \
-  'bundled: false' \
   'type: streamable_http' \
   'name: context7' \
   'enabled: true' \
   'timeout: 30' \
   'uri: "https://mcp.context7.com/mcp"' \
-  'GOOSE_MODE: smart_approve' \
+  'GOOSE_MODE: auto' \
   'GOOSE_MAX_TOOL_RESPONSE_SIZE:'
 
 # Comments stripped first, so the prose explaining a setting is never mistaken

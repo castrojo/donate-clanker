@@ -2,3 +2,4 @@
 # retain them in the source tree.
 goose-*.tar.gz
 .worktrees/
+image/bluefin-operations/node_modules/

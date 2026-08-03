@@ -68,6 +68,10 @@ the Hive knowledge export can be read. Keep auto-loaded files concise.
 - "A repository skill will load automatically." Native discovery occurs before
   the assigned repository exists, so repository skill routing needs the
   explicit catalog lookup.
+- "The policy can contain every skill body." Persistent instructions consume
+  context every turn; route to the relevant document instead.
+`GOOSE_NO_CODE_TRUNCATION=true` keeps full code blocks visible during reviews
+without increasing the bounded tool response size.
 
 ## Red Flags
 
@@ -76,6 +80,7 @@ the Hive knowledge export can be read. Keep auto-loaded files concise.
   token through a build argument.
 - Calling repository skill discovery automatic or guaranteed.
 - Committing generated `.agents/skills/` output.
+- Growing `AGENTS.md` with content only some tasks need.
 - Expanding the persistent policy with task-specific instructions.
 - Changing policy wording without checking `tests/image-contract.sh`.
 - Treating an unavailable Context7 extension as evidence for an unverified
@@ -85,8 +90,10 @@ the Hive knowledge export can be read. Keep auto-loaded files concise.
 
 ```bash
 echo "$GOOSE_PATH_ROOT"                 # /opt/bluefin/goose
+ls "$GOOSE_PATH_ROOT"                   # config survives Hive startup
 ls /home/dev/.agents/skills             # generated global skills
 python3 -c "import json; json.load(open('docs/skills/index.json'))"
+wc -l AGENTS.md docs/skills/*.md        # each under 200
 bash scripts/check-skill-frontmatter.sh
 bash tests/image-contract.sh
 ```
