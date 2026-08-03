@@ -1,6 +1,6 @@
 ---
 name: goose-context
-version: "1.4"
+version: "1.5"
 last_updated: 2026-08-02
 id: goose-context
 one_line_purpose: Keep Goose config, Context7, and skills available in the guest.
@@ -23,6 +23,11 @@ metadata:
 Load this when changing Goose configuration, Context7, skill routing, or the
 image-owned agent policy.
 
+## When Not to Use
+
+Do not load this for Hive assignment selection, contributor tmux lifecycle, or
+task delivery; use the Hive runtime documentation instead.
+
 ## Core Process
 
 1. Keep image-owned Goose configuration under
@@ -39,6 +44,9 @@ image-owned agent policy.
    `docs/skills/index.json` and load the matching entry point.
 5. Keep the image policy short. It is supplied to every Goose turn through
    `GOOSE_MOIM_MESSAGE_FILE`.
+6. Treat the policy strings asserted by `tests/image-contract.sh` as contract
+   anchors. Preserve them when changing policy wording, or intentionally update
+   their test assertions in the same change.
 
 Goose discovers native skills at session start, before an assigned repository
 exists. Repository skills therefore require the explicit catalog lookup; they
@@ -48,12 +56,22 @@ build output and must not be committed.
 `CONTEXT_FILE_NAMES` includes `AGENTS.md`, `.goosehints`, and `CLAUDE.md` so
 the Hive knowledge export can be read. Keep auto-loaded files concise.
 
+## Common Rationalizations
+
+- "The policy wording is cosmetic." The image contract deliberately validates
+  specific routing and Context7 fallback behavior; change its assertions with
+  the wording when the intended behavior changes.
+- "A repository skill will load automatically." Native discovery occurs before
+  the assigned repository exists, so repository skill routing needs the
+  explicit catalog lookup.
+
 ## Red Flags
 
 - Writing controlled configuration to `~/.config/goose`.
 - Calling repository skill discovery automatic or guaranteed.
 - Committing generated `.agents/skills/` output.
 - Expanding the persistent policy with task-specific instructions.
+- Changing policy wording without checking `tests/image-contract.sh`.
 - Treating an unavailable Context7 extension as evidence for an unverified
   external claim.
 

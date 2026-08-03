@@ -17,7 +17,7 @@
         "config"
       ],
       "description": "Keeps Goose configuration, Context7, and global and repository skill routing available in the guest. Use when Goose loses its config, misses a skill, or lacks Context7.",
-      "version": "1.4",
+      "version": "1.5",
       "last_updated": "2026-08-02",
       "doc_type": "reference"
     },
