@@ -40,11 +40,11 @@ def recv_line(sock):
 payload = json.loads(recv_line(client))
 
 required = {"version", "hive_endpoint", "registration_token", "backend", "run_id"}
-# The external v2 guest accepts new optional fields while requiring only this
-# stable core. Keep this test consumer aligned with that forward-compatible
-# contract rather than rejecting a future staged envelope locally.
+optional = {"goose_provider", "goose_model", "provider_secret"}
 if not required <= set(payload):
     fail("invalid bootstrap envelope fields")
+if set(payload) - required - optional:
+    fail("unexpected bootstrap envelope fields")
 if payload["version"] != 2:
     fail("unsupported bootstrap version")
 if payload["backend"] != "goose":
