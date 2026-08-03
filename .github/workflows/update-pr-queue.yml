@@ -1,0 +1,54 @@
+name: update PR queue
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+  pull_request:
+    types: [closed, opened, ready_for_review, reopened, synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-pr-queue
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+
+      - name: Validate queue generator
+        run: node --test queue/test/queue.test.mjs
+
+      - name: Generate static queue artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUEUE_OWNER: projectbluefin
+          QUEUE_REPOSITORIES: >-
+            actions,bluefin,bluefinctl,bluefin-lts,bluefin-mcp,bluespeed,
+            bonedigger,branding,common,dakota,documentation,finpilot,
+            fsdk-containers,.github,homebrew-bluefinctl,housekeeping,iso,
+            knuckle,lab,.project,renovate-config,review,server,testsuite,
+            umotd,uwelcome,website
+        run: node queue/generate.mjs
+
+      - name: Commit changed queue artifacts
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- public/queue.md public/queue.json; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add public/queue.md public/queue.json
+          git commit -m 'ci: refresh PR queue'
+          git push

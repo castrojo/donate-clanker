@@ -61,6 +61,25 @@ available; it never uses or displays a Copilot credential. See
 [`mcp-app/README.md`](mcp-app/README.md) for Hive endpoint configuration and
 Goose resource details.
 
+## Public PR queue
+
+The generated public PR queue is a small, static review backlog:
+
+- `/` serves the Markdown overview;
+- `/queue.md` serves the Markdown artifact;
+- `/queue.json` serves the machine-readable artifact.
+
+Every artifact carries `generated_at`. Treat it as a recommendation snapshot:
+check its freshness and verify the selected pull request directly in GitHub
+before acting. The queue's actions are `fix-ci`, `resolve-conflicts`, `review`,
+`investigate`, and `ready-for-human-merge`; it never authorizes a merge.
+
+GitHub remains authoritative for pull requests, reviews, checks, and merge
+state, while Hive remains authoritative for agent coordination. The queue does
+not claim work, assign agents, mutate labels, include private repositories, or
+run a service. The `queue.projectbluefin.io` custom-domain and DNS mapping are
+an operations task outside this repository automation.
+
 ## Requirements and credentials
 
 - `gh auth login --web --hostname github.com --scopes repo,read:org` is a hard

@@ -1,4 +1,11 @@
-import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,6 +29,28 @@ function parseRepositories(value) {
   return repositories;
 }
 
+async function existingItems(outputDirectory) {
+  let content;
+  try {
+    content = await readFile(path.join(outputDirectory, 'queue.json'), 'utf8');
+  } catch (error) {
+    if (error && typeof error === 'object' && error.code === 'ENOENT') {
+      return undefined;
+    }
+    throw error;
+  }
+
+  try {
+    const document = JSON.parse(content);
+    return Array.isArray(document.items) ? document.items : undefined;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
 export async function generateSnapshots({
   fetch = globalThis.fetch,
   owner,
@@ -41,6 +70,11 @@ export async function generateSnapshots({
     token,
   });
   const queue = buildQueue({ pullRequests, generatedAt });
+  const priorItems = await existingItems(outputDirectory);
+  if (JSON.stringify(priorItems) === JSON.stringify(queue.items)) {
+    return { ...queue, changed: false };
+  }
+
   await mkdir(outputDirectory, { recursive: true });
   const temporaryDirectory = await mkdtemp(
     path.join(outputDirectory, '.agent-pr-queue-'),
@@ -53,7 +87,7 @@ export async function generateSnapshots({
   await rename(temporaryMarkdown, path.join(outputDirectory, 'queue.md'));
   await rename(temporaryJson, path.join(outputDirectory, 'queue.json'));
   await rm(temporaryDirectory, { recursive: true, force: true });
-  return queue;
+  return { ...queue, changed: true };
 }
 
 async function main() {

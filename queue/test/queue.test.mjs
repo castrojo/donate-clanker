@@ -181,3 +181,71 @@ test('rejects failed list responses and preserves existing snapshots', async () 
   assert.equal(await readFile(jsonPath, 'utf8'), 'previous json\n');
   await rm(outputDirectory, { recursive: true, force: true });
 });
+
+test('preserves an unchanged snapshot instead of refreshing generated_at', async () => {
+  const outputDirectory = await mkdtemp(path.join(tmpdir(), 'agent-pr-queue-'));
+  const fetch = async (input) => {
+    const url = new URL(input);
+    if (url.pathname === '/repos/projectbluefin/bluefin/pulls') {
+      return jsonResponse([githubPullRequest(1)]);
+    }
+    if (url.pathname.endsWith('/reviews')) {
+      return jsonResponse([]);
+    }
+    if (url.pathname.includes('/check-runs')) {
+      return jsonResponse({ check_runs: [] });
+    }
+    if (url.pathname.includes('/pulls/')) {
+      return jsonResponse({ mergeable_state: 'clean' });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+
+  await generateSnapshots({
+    fetch,
+    owner: 'projectbluefin',
+    repositories: ['bluefin'],
+    outputDirectory,
+    generatedAt: '2026-08-03T16:00:00Z',
+  });
+  const originalMarkdown = await readFile(path.join(outputDirectory, 'queue.md'), 'utf8');
+  const originalJson = await readFile(path.join(outputDirectory, 'queue.json'), 'utf8');
+
+  const result = await generateSnapshots({
+    fetch,
+    owner: 'projectbluefin',
+    repositories: ['bluefin'],
+    outputDirectory,
+    generatedAt: '2026-08-03T16:15:00Z',
+  });
+
+  assert.equal(result.changed, false);
+  assert.equal(await readFile(path.join(outputDirectory, 'queue.md'), 'utf8'), originalMarkdown);
+  assert.equal(await readFile(path.join(outputDirectory, 'queue.json'), 'utf8'), originalJson);
+  await rm(outputDirectory, { recursive: true, force: true });
+});
+
+test('refresh workflow is a constrained static snapshot publisher', async () => {
+  const workflow = await readFile(
+    new URL('../../.github/workflows/update-pr-queue.yml', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(workflow, /cron: '\*\/15 \* \* \* \*'/);
+  assert.match(workflow, /contents: write/);
+  assert.match(workflow, /node --test queue\/test\/queue\.test\.mjs/);
+  assert.match(workflow, /QUEUE_OWNER: projectbluefin/);
+  assert.match(workflow, /ref: main/);
+  assert.match(workflow, /git diff --quiet -- public\/queue\.md public\/queue\.json/);
+  assert.doesNotMatch(workflow, /pull_request_target/);
+});
+
+test('static host root redirects to the Markdown queue', async () => {
+  const index = await readFile(
+    new URL('../../public/index.html', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(index, /url=queue\.md/);
+  assert.match(index, /href="queue\.md"/);
+});
