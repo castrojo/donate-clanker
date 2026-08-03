@@ -38,3 +38,11 @@ Implemented the Luna/high-reasoning default for review launches and direct image
 
 ### Commit
 - Recorded in git history as the follow-up protocol fix commit for this task.
+## Report
+Changed file:
+- .github/workflows/validate.yml
+
+Commands and results:
+- `grep -nE 'LAST_GOOSE_MODEL|last-selections\.env' .github/workflows/validate.yml >/dev/null` -> stale requirements absent
+- `grep -nF 'gpt-5.6-luna' .github/workflows/validate.yml` -> matches at lines 89 and 97
+- `git diff --check` -> exit 0
