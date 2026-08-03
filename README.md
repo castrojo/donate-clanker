@@ -75,8 +75,9 @@ Goose resource details.
 
 Goose is the only agent backend and GitHub Copilot is the only supported
 provider. `GOOSE_PROVIDER` may be unset or `github_copilot`; `GOOSE_MODEL`
-optionally overrides the `gpt-4.1` default. A `gh auth token` does not
-authenticate Copilot inference.
+optionally overrides the `gpt-5.6-luna` default, and
+`GOOSE_THINKING_EFFORT` optionally overrides the default `high` reasoning
+effort. A `gh auth token` does not authenticate Copilot inference.
 
 The container recipe inherits the Copilot and GitHub tokens by environment
 variable name, so token values are not placed on Podman's command line. The
@@ -119,6 +120,7 @@ All configuration is read at launch.
 | `REVIEW_GH_TOKEN` | Optional GitHub token override for container-only mode. |
 | `GOOSE_PROVIDER` | Unset or `github_copilot`. |
 | `GOOSE_MODEL` | Optional GitHub Copilot model override. |
+| `GOOSE_THINKING_EFFORT` | Optional Copilot reasoning-effort override. |
 | `GITHUB_COPILOT_TOKEN` | Optional Copilot credential override. |
 | `TOOL` | Agent backend selector; only `goose` is accepted. |
 

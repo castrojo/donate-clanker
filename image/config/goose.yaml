@@ -12,9 +12,10 @@
 # GOOSE_PATH_ROOT=/opt/bluefin/goose and installs this file at
 # /opt/bluefin/goose/config/config.yaml, which Goose reads instead.
 #
-# Provider and model are deliberately absent: Goose resolves environment before
-# file, and the launcher passes GOOSE_PROVIDER/GOOSE_MODEL through from the
-# contributor's own credentials.
+# Provider, model, and reasoning effort are deliberately absent: Goose
+# resolves environment before file, and the launcher passes
+# GOOSE_PROVIDER/GOOSE_MODEL/GOOSE_THINKING_EFFORT through from the
+# contributor's own launch environment.
 
 # Contributor runs are attended but Hive injects work by keystroke, so every
 # tool confirmation blocks the agent and the human at the terminal. The user

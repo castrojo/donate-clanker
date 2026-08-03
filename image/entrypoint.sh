@@ -43,10 +43,12 @@ export GOOSE_PROVIDER=github_copilot
 # Goose refuses to start without a model. Keep the direct-image fallback in
 # sync with the launcher's default for users who invoke this image directly.
 if [ -z "${GOOSE_MODEL:-}" ]; then
-	GOOSE_MODEL="gpt-4.1"
+	GOOSE_MODEL="gpt-5.6-luna"
 	note "GOOSE_MODEL not set; defaulting to ${GOOSE_MODEL} for GitHub Copilot"
 fi
 export GOOSE_MODEL
+
+export GOOSE_THINKING_EFFORT="${GOOSE_THINKING_EFFORT:-high}"
 
 # No desktop keyring exists in a container; without this Goose fails to store or
 # read provider secrets and falls back inconsistently.

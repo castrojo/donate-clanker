@@ -160,7 +160,8 @@ require image/entrypoint.sh \
   '[ "$GOOSE_PROVIDER" != github_copilot ]' \
   'review supports GitHub Copilot only.' \
   'export GOOSE_PROVIDER=github_copilot' \
-  'GOOSE_MODEL="gpt-4.1"' \
+  'GOOSE_MODEL="gpt-5.6-luna"' \
+  'GOOSE_THINKING_EFFORT="${GOOSE_THINKING_EFFORT:-high}"' \
   'GOOSE_DISABLE_KEYRING=1' \
   'CONTEXT_FILE_NAMES' \
   'CLAUDE.md' \
