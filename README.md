@@ -91,6 +91,14 @@ killed hard enough to leave its container name behind, the next launch
 reclaims that name itself (`--replace`); cleanup is a startup concern, never
 something you have to remember to do.
 
+### Bluefin Ops Control Panel
+
+Optional: the `mcp-app/` package ships a read-only Goose Desktop MCP App that
+observes evidence only. It opens the `ui://bluefin-ops-control-panel/main`
+resource from `node mcp-app/dist/server.js`, renders one snapshot, and
+refreshes only when the user clicks **Refresh all evidence**. It is
+presentation-only and is not a replacement for `ujust donate-clanker`.
+
 Attaching by hand uses Hive's own documented flow:
 
 ```bash

@@ -23,6 +23,7 @@ task itself needs.
 | Work out why a connected contributor is never handed a task | [`hive-triage.md`](skills/hive-triage.md) |
 | Change Goose configuration, Context7, or skill loading | [`goose-context.md`](skills/goose-context.md) |
 | Understand why per-repo skills are not auto-discovered | [`goose-context.md`](skills/goose-context.md) |
+| Build a Goose Desktop MCP App panel or resource | [`mcp-app.md`](skills/mcp-app.md) |
 | Modify the `Containerfile` or what gets layered into the image | [`image-build.md`](skills/image-build.md) |
 | Update or verify a pinned digest | [`image-build.md`](skills/image-build.md) |
 | Open a pull request, name a branch, or write a commit trailer | [`pr-workflow.md`](skills/pr-workflow.md) |
