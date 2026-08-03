@@ -1,6 +1,6 @@
 name: validate
 
-# just/61-donate-clanker.just is the shipped launcher. This workflow validates
+# justfile is the shipped launcher. This workflow validates
 # its Bash syntax, image contract, compatibility image, and mocked attended
 # selection flow without requiring a live Hive account or interactive terminal.
 
@@ -9,6 +9,7 @@ on:
   pull_request:
 
 permissions:
+  attestations: read
   contents: read
 
 jobs:
@@ -47,7 +48,7 @@ jobs:
       - name: Justfile parses
         run: |
           set -euo pipefail
-          just --justfile just/61-donate-clanker.just --list
+          just --justfile justfile --list
 
       - name: Guided Goose onboarding behavior
         run: |
@@ -57,8 +58,8 @@ jobs:
       - name: Recipe bodies are valid bash
         run: |
           set -euo pipefail
-          # Recipe headers in this file look like 'donate-clanker:',
-          # 'donate-clanker-doctor:' — a bare identifier + colon at column 0,
+          # Recipe headers in this file look like 'review:',
+          # 'review-doctor:' — a bare identifier + colon at column 0,
           # no parameters. Grab every indented line following one, until the
           # next non-indented, non-comment, non-blank line (next recipe or
           # variable declaration).
@@ -66,7 +67,7 @@ jobs:
             /^[a-zA-Z][a-zA-Z0-9_-]*:$/ { flag=1; next }
             /^[^ \t#]/ { flag=0 }
             flag { print }
-          ' just/61-donate-clanker.just > recipe_bodies.sh
+          ' justfile > recipe_bodies.sh
           bash -n recipe_bodies.sh
           rm -f recipe_bodies.sh
 
@@ -81,30 +82,35 @@ jobs:
           # The sed and grep patterns intentionally contain literal
           # dollar-sign syntax for the embedded shell checks.
           # shellcheck disable=SC2016
-          HIVE_PIN="$(sed -n 's/^hive_commit := "\(.*\)"$/\1/p' just/61-donate-clanker.just)"
+          HIVE_PIN="$(sed -n 's/^hive_commit := "\(.*\)"$/\1/p' justfile)"
           test -n "$HIVE_PIN"
-          grep -Fq 'LAST_GOOSE_PROVIDER' just/61-donate-clanker.just
-          grep -Fq 'last-selections.env' just/61-donate-clanker.just
-          grep -Fq 'secrets.env' just/61-donate-clanker.just
+          IMAGE_HIVE_PIN="$(sed -n 's/^ARG HIVE_COMMIT=\([0-9a-f]\{40\}\)$/\1/p' image/Containerfile)"
+          test "$HIVE_PIN" = "$IMAGE_HIVE_PIN"
+          grep -Fq 'LAST_GOOSE_MODEL' justfile
+          grep -Fq 'last-selections.env' justfile
+          grep -Fq 'require_copilot_provider' justfile
           # shellcheck disable=SC2016
-          grep -Fq 'fetch --depth 1 origin "$HIVE_COMMIT"' just/61-donate-clanker.just
-          grep -Fq 'DONATE_CLANKER_HIVE_COMMIT' just/61-donate-clanker.just
-          grep -Fq 'Run: goose configure' just/61-donate-clanker.just
+          grep -Fq 'fetch --depth 1 origin "$HIVE_COMMIT"' justfile
+          grep -Fq 'REVIEW_HIVE_COMMIT' justfile
+          grep -Fq 'Run: goose configure' justfile
           grep -Fq "$HIVE_PIN" README.md
-          grep -Fq 'DONATE_CLANKER_HIVE_COMMIT' README.md
+          grep -Fq 'REVIEW_HIVE_COMMIT' README.md
           grep -Fq 'last-selections.env' README.md
-          grep -Fq 'secrets.env' README.md
+          grep -Fq 'github_copilot' README.md
 
       - name: Compatibility image contract and build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          docker build -f image/Containerfile -t donate-clanker-compat:test .
-          test "$(docker inspect donate-clanker-compat:test --format '{{.Config.User}}')" = "dev"
-          test "$(docker inspect donate-clanker-compat:test --format '{{json .Config.Entrypoint}}')" = '["/usr/local/bin/donate-clanker-entrypoint"]'
+          docker build --secret id=github_token,env=GITHUB_TOKEN \
+            -f image/Containerfile -t review:test .
+          test "$(docker inspect review:test --format '{{.Config.User}}')" = "dev"
+          test "$(docker inspect review:test --format '{{json .Config.Entrypoint}}')" = '["/usr/local/bin/review-entrypoint"]'
           # /home/dev, not /workspace: there is no workspace mount any more —
           # the agent clones what it needs inside the disposable guest, and
           # Hive's config lives under the image's home.
-          test "$(docker inspect donate-clanker-compat:test --format '{{.Config.WorkingDir}}')" = "/home/dev"
+          test "$(docker inspect review:test --format '{{.Config.WorkingDir}}')" = "/home/dev"
 
       # The launcher is interactive by design. CI validates image metadata and
       # the build-time Goose command checks; attended use validates runtime.

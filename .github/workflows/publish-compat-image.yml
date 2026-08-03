@@ -1,4 +1,4 @@
-name: publish compatibility image
+name: publish review image
 
 on:
   push:
@@ -12,15 +12,16 @@ on:
 # publish and is cancelled. Tag builds are a release and must never be
 # cancelled: 'refs/tags/*' evaluates this to false.
 concurrency:
-  group: publish-compat-image-${{ github.ref }}
+  group: publish-review-image-${{ github.ref }}
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
+  attestations: read
   contents: read
   packages: write
 
 env:
-  IMAGE: ghcr.io/projectbluefin/donate-clanker
+  IMAGE: ghcr.io/projectbluefin/review
 
 jobs:
   publish:
@@ -89,29 +90,31 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
-      - name: Build compatibility image for smoke test
+      - name: Build review image for smoke test
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           file: image/Containerfile
           load: true
-          tags: donate-clanker-compat:smoke
+          tags: review:smoke
           build-args: |
             GOOSE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
+          secrets: |
+            github_token=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Inspect compatibility image
+      - name: Inspect review image
         shell: bash
         run: |
           set -euo pipefail
-          test "$(docker inspect donate-clanker-compat:smoke --format '{{.Config.User}}')" = dev
-          test "$(docker inspect donate-clanker-compat:smoke --format '{{json .Config.Entrypoint}}')" = '["/usr/local/bin/donate-clanker-entrypoint"]'
+          test "$(docker inspect review:smoke --format '{{.Config.User}}')" = dev
+          test "$(docker inspect review:smoke --format '{{json .Config.Entrypoint}}')" = '["/usr/local/bin/review-entrypoint"]'
           # /home/dev, not /workspace: there is no workspace mount any more.
-          test "$(docker inspect donate-clanker-compat:smoke --format '{{.Config.WorkingDir}}')" = /home/dev
+          test "$(docker inspect review:smoke --format '{{.Config.WorkingDir}}')" = /home/dev
           # The lean FSDK base has no terminal database. The entrypoint needs
           # this exact entry to create and attach the contributor tmux session.
-          docker run --rm --entrypoint /usr/bin/bash donate-clanker-compat:smoke \
+          docker run --rm --entrypoint /usr/bin/bash review:smoke \
             -lc 'TERM=xterm-256color infocmp xterm-256color >/dev/null; TERM=xterm-256color tmux new-session -d -s terminfo-smoke "sleep 30"; tmux has-session -t terminfo-smoke; tmux kill-session -t terminfo-smoke'
 
       - name: Log in to GHCR
@@ -132,6 +135,8 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
             GOOSE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
+          secrets: |
+            github_token=${{ secrets.GITHUB_TOKEN }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -148,7 +153,7 @@ jobs:
           test -n "$DIGEST"
           echo "Published $IMAGE@$DIGEST"
           {
-            echo "### Compatibility image"
+            echo "### Review image"
             echo
             echo "\`$IMAGE@$DIGEST\`"
             echo

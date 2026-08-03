@@ -1,4 +1,4 @@
-# Local + CI hygiene for donate-clanker.
+# Local + CI hygiene for review.
 #
 # Install with:
 #   pre-commit install --install-hooks
@@ -29,7 +29,7 @@ repos:
         # image/*.sh are never executed from the work tree: the Containerfile
         # installs them with `COPY --chmod=0755`.
         # tests/guest-bootstrap-consumer.py is always launched as
-        # `python3 "$DONATE_CLANKER_TEST_CONSUMER"`, never exec'd directly.
+        # `python3 "$REVIEW_TEST_CONSUMER"`, never exec'd directly.
         exclude: ^(image/.*\.sh|tests/guest-bootstrap-consumer\.py)$
 
   # ------------------------------------------------------------------ shell

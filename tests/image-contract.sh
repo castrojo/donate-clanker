@@ -43,19 +43,19 @@ forbid() {
 # shellcheck disable=SC2016
 require image/Containerfile \
   'ARG FSDK_RUNNER_IMAGE=ghcr.io/projectbluefin/lab-runner@sha256:' \
-  'ARG HIVE_COMMIT=835448c3cbef9f06d34dd3802548e1d1e16dbd2f' \
-  'ARG GOOSE_VERSION=' \
+  'ARG GOOSE_CHANNEL=canary' \
   'FROM ${FSDK_RUNNER_IMAGE}' \
   'ARG GOOSE_REFRESH=0' \
   'ARG SKILLS_COMMIT=' \
   'https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz' \
   'https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${gh_arch}.tar.gz' \
   'https://github.com/tmux/tmux-builds/releases/download/v${TMUX_VERSION}/tmux-${TMUX_VERSION}-linux-${tmux_arch}.tar.gz' \
-  'https://github.com/aaif-goose/goose/releases/download/v${GOOSE_VERSION}/goose-${goose_arch}-unknown-linux-gnu.tar.gz' \
-  'goose_sha=' \
-  'goose.tar.gz" | sha256sum -c -;' \
+  'https://github.com/aaif-goose/goose/releases/download/${GOOSE_CHANNEL}/goose-${goose_arch}-unknown-linux-gnu.tar.gz' \
+  'RUN --mount=type=secret,id=github_token' \
+  'GH_TOKEN="$(cat /run/secrets/github_token)"' \
+  'gh attestation verify "$workdir/goose.tar.gz" --repo aaif-goose/goose --signer-workflow aaif-goose/goose/.github/workflows/canary.yml' \
+  'tf.extractall(root, filter="data")' \
   'npm --prefix /opt/hive install --ignore-scripts ws@8.21.1;' \
-  'npm --prefix /opt/hive audit --audit-level=high;' \
   'https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/bin/contributor-agent.sh' \
   'https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/bin/contributor-relay.sh' \
   'https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/config/backends.conf' \
@@ -71,10 +71,20 @@ require image/Containerfile \
   'https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/docs/skills/index.json' \
   '--raw-base "https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/"' \
   '--out /home/dev/.agents/skills' \
-  'COPY --chmod=0755 image/entrypoint.sh /usr/local/bin/donate-clanker-entrypoint' \
+  'COPY --chmod=0755 scripts/generate-skills.py /usr/local/libexec/review-generate-skills' \
+  'COPY --chmod=0755 image/entrypoint.sh /usr/local/bin/review-entrypoint' \
   'USER dev' \
   'WORKDIR /home/dev' \
-  'ENTRYPOINT ["/usr/local/bin/donate-clanker-entrypoint"]'
+  'ENTRYPOINT ["/usr/local/bin/review-entrypoint"]'
+
+# Host setup and the image relay exchange the same contributor protocol, so
+# their pinned Hive revisions must remain exactly aligned.
+launcher_hive_pin="$(sed -n 's/^hive_commit := "\([0-9a-f]\{40\}\)"$/\1/p' justfile)"
+image_hive_pin="$(sed -n 's/^ARG HIVE_COMMIT=\([0-9a-f]\{40\}\)$/\1/p' image/Containerfile)"
+if [[ -z "$launcher_hive_pin" || "$launcher_hive_pin" != "$image_hive_pin" ]]; then
+  echo "::error::launcher and image Hive pins must match"
+  fail=1
+fi
 
 # No host engine sockets or unrelated runtime glue may enter the image.
 forbid image/Containerfile \
@@ -83,6 +93,7 @@ forbid image/Containerfile \
   'https://nodejs.org/dist/latest-v24.x/' \
   'https://github.com/aaif-goose/goose/releases/latest/download/' \
   'https://raw.githubusercontent.com/projectbluefin/common/main/' \
+  'npm --prefix /opt/hive audit' \
   '# renovate: datasource=github-releases depName=aaif-goose/goose' \
   'ramalama' \
   'models.json' \
@@ -139,8 +150,14 @@ require image/config/local-agent-policy.md \
 
 # GOOSE_PATH_ROOT is the whole reason our config survives Hive's rewrite, and
 # Hive's knowledge export lands on CLAUDE.md, which Goose ignores by default.
+# shellcheck disable=SC2016 # Literal source assertions, not shell expansions.
 require image/entrypoint.sh \
   'export GOOSE_PATH_ROOT=' \
+  "note() { printf 'review: %s\\n' \"\$1\" >&2; }" \
+  '[ "$GOOSE_PROVIDER" != github_copilot ]' \
+  'review supports GitHub Copilot only.' \
+  'export GOOSE_PROVIDER=github_copilot' \
+  'GOOSE_MODEL="gpt-4.1"' \
   'GOOSE_DISABLE_KEYRING=1' \
   'CONTEXT_FILE_NAMES' \
   'CLAUDE.md' \
@@ -148,14 +165,41 @@ require image/entrypoint.sh \
   '/opt/bluefin/local-agent-policy.md' \
   'core.hooksPath /opt/bluefin/git-hooks' \
   'mcp.context7.com' \
+  '"clientInfo":{"name":"review","version":"1"}' \
   'shopt -s nullglob' \
+  'validation_tools=(bats shellcheck systemd-analyze pre-commit just podman)' \
+  'validation tools unavailable:' \
   'tmux_term=xterm-256color' \
   'export TERM=' \
   '/usr/local/bin/contributor-agent.sh "$@" &' \
   'tmux has-session -t contributor' \
   'tmux readiness diagnostics' \
   'tmux attach-session -t contributor' \
+  'trap cleanup EXIT HUP INT TERM' \
+  "note 'tmux detached; the agent remains foreground in this terminal. Press Ctrl-C or close this terminal to stop it.'" \
+  'wait "$agent_pid"' \
   'tmux kill-session -t contributor'
+
+require README.md \
+  'Goose canary snapshot' \
+  'not byte-reproducible' \
+  "--build-arg GOOSE_REFRESH=\"\$(date +%s)\""
+
+require .github/workflows/validate.yml \
+  'attestations: read' \
+  'just --justfile justfile --list' \
+  "' justfile > recipe_bodies.sh" \
+  'docker build --secret id=github_token,env=GITHUB_TOKEN' \
+  '-f image/Containerfile -t review:test .' \
+  '["/usr/local/bin/review-entrypoint"]'
+
+require .github/workflows/publish-compat-image.yml \
+  'attestations: read' \
+  'IMAGE: ghcr.io/projectbluefin/review' \
+  'tags: review:smoke' \
+  '["/usr/local/bin/review-entrypoint"]' \
+  'secrets: |' \
+  "github_token=\${{ secrets.GITHUB_TOKEN }}"
 
 # ':-/config}' and ':-/workspace}' are mount points Hive never used.
 forbid image/entrypoint.sh \

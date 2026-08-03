@@ -1,9 +1,9 @@
 ---
 name: launcher
-version: "1.3"
-last_updated: 2026-08-01
+version: "1.7"
+last_updated: 2026-08-03
 id: launcher
-one_line_purpose: Change donate-clanker just recipes without breaking foreground.
+one_line_purpose: Change review just recipes without breaking foreground.
 entry_point: docs/skills/launcher.md
 category: ci-ops
 mcp_compliance_level: partial
@@ -11,166 +11,100 @@ optimization_status: draft
 status: active
 dependencies: []
 tags: [just, launcher, qemu, podman, foreground]
-description: "Covers the three donate-clanker just recipes, the foreground guarantee (and why there is no stop command), the VM versus container-only modes, and why the launcher never filters Hive's work. Use when editing just/61-donate-clanker.just."
+description: "Maintains the three foreground review recipes, VM and container-only launch paths, and credential boundaries. Use when editing justfile."
 metadata:
   type: runbook
+  context7-sources: [/websites/podman_io_en]
 ---
 
 # Launcher
 
 ## When to Use
 
-Load this before editing `just/61-donate-clanker.just`, adding or renaming a
-recipe, changing how the VM runner container is invoked, or diagnosing a
-launch that exits before the tmux session appears.
+Load this before editing `justfile` or changing VM,
+container-only, foreground, or credential-passthrough behavior.
 
-Not for how tasks arrive or why one was assigned -- that is
-[`hive-runtime.md`](hive-runtime.md). Not for image layers or pinned digests
--- that is [`image-build.md`](image-build.md).
+## When Not to Use
+
+Do not use this for Hive task selection, contributor-session triage, Goose
+configuration internals, or image-layer pinning. Those belong to the Hive,
+Goose, or image build skill documents.
 
 ## Core Process
 
-### The three public recipes
+1. Keep exactly three public recipes:
 
-| Recipe | Behavior |
-|---|---|
-| `donate-clanker` | Boots the pinned QEMU VM in the foreground, attaches to tmux session `contributor`. Ctrl-C stops it. |
-| `donate-clanker-container` | Runs only the container, no VM, attaches to the same session. Local development. |
-| `donate-clanker-doctor` | Read-only preflight. Starts nothing. |
+   | Recipe | Purpose |
+   |---|---|
+   | `review` | Run the disposable QEMU VM in the foreground. |
+   | `review-container` | Run the contributor container directly for fast local iteration. |
+   | `review-doctor` | Perform read-only preflight checks. |
 
-Both launch paths pass the contributor's Copilot credential to the agent, so
-neither stalls on a device code: the container gets it as
-`GITHUB_COPILOT_TOKEN`, the VM gets it as `provider_secret` inside the v2
-bootstrap envelope on the one-shot socket. `donate-clanker-doctor` reports
-whether one can be resolved at all, without printing it. See
-[`goose-context.md`](goose-context.md) for why a `gh auth token` is not a
-substitute.
+2. Keep both launch paths foreground. No detached Podman, background service,
+   lifecycle command, or persistent launcher state beyond launcher
+   configuration and verified caches is allowed. Ctrl-C is the stop mechanism;
+   `--replace` only reclaims a container name when a new launch starts.
+3. Keep VM isolation narrow. The guest receives per-run control data and
+   clones assigned work itself; it does not receive a host workspace or home.
+   VM disks are verified and use a disposable overlay.
+4. Keep the container path narrow too. It mounts only the read-only Hive
+   contributor configuration and runs the image entrypoint, which attaches to
+   Hive's `contributor` session.
+5. Keep Goose Copilot-only. The launcher resolves a Copilot credential for
+   the provider secret and remembers only the selected model, never a secret
+   or provider choice.
+6. For container-only mode, pass Copilot and GitHub credentials by inherited
+   environment (`--env NAME`), not command-line values or host configuration
+   mounts. Resolve the GitHub token from `REVIEW_GH_TOKEN`, existing
+   `GH_TOKEN`, then `gh auth token`.
+7. When renaming launcher-facing product identifiers, do a tracked-file sweep
+   for both active names and legacy spellings in code, comments, workflow
+   assertions, fixture image names, and environment variables. Keep only the
+   live `review` / `REVIEW_*` surface; do not leave compatibility aliases
+   behind.
 
-Doctor also warns when `~/.config/hive/contributor.env` names a backend other
-than `goose`. That file is upstream's and the launcher passes
-`AGENT_BACKEND=goose` itself, so the stale line is harmless -- but it is
-reported, never rewritten. Editing a user's file to silence a warning is worse
-than the warning.
+The VM can carry the Copilot provider secret, but the current guest has no
+compatible bootstrap mapping for a host `GH_TOKEN`. Use
+`review-container` when the task needs GitHub fork, push, or
+pull-request access. Do not attempt to fix this by mounting GitHub
+configuration or adding an unconsumed bootstrap field.
 
-The launcher is Bash, and only Bash. A Go implementation of the same
-preflight, Hive checkout, credential resolution and QEMU launch once lived
-beside it in `cmd/` and `internal/`; nothing built or installed it, so it
-drifted into a parallel universe that only its own tests visited, and it was
-deleted. Anything the launcher does belongs in this file. If a helper feels
-too big for Bash, that is a signal to make the launcher do less, not to add
-a second language.
-
-Everything else in the file is private (`_`-prefixed) recipes and variables,
-deliberately. A user browsing the repository should find one file and three
-commands, not a `bin/` of scripts they might run out of context.
-
-A running container is not automatically a container in use. The launcher
-distinguishes the two: if a foreground `podman run` client still holds the
-name, somebody is working in that terminal and the launch refuses with the
-attach command. If the container is running but its client is gone, the run
-is an orphan nobody can reach or Ctrl-C, and the launch reclaims it silently
-via `--replace`. Telling the user to run `podman rm -f` for the orphan case
-would reintroduce the stop command through the back door.
-
-There is deliberately no fourth recipe. A `donate-clanker-stop` used to exist
-and was removed: a stop verb only has meaning when something can outlive the
-terminal that started it, so shipping one contradicts the foreground
-guarantee below and invites exactly the daemon this repository refuses to
-become. Ctrl-C ends a run. A container name left behind by a hard-killed
-terminal is reclaimed by the next launch via `--replace`, so cleanup happens
-at startup rather than as a user-facing command. `tests/just-onboarding.sh`
-fails the build if any `donate-clanker-{stop,start,restart,kill,clean,down,up}`
-recipe reappears, or if the recipe count drifts from three.
-
-### The launcher never chooses the work
-
-The launcher boots a contributor and gets out of the way. It passes no
-repository, label, issue or title selector to the guest, and it must never
-grow one: Hive's `selectTask` decides what the agent works on, using the
-hub's config and cooldown. A "just skip that repo" flag added here would
-shadow selection that Hive already owns and would silently hide work the
-maintainers admitted hub-side, where the policy is visible to everyone. If
-the assigned mix is wrong, the fix is the hub's config, not this file. See
-[`hive-runtime.md`](hive-runtime.md); `tests/just-onboarding.sh` fails the
-build if selection logic appears in the launcher or the image entrypoint.
-
-### The foreground guarantee
-
-`donate-clanker` runs in the foreground and dies with its terminal. The
-launcher `exec`s or waits on `podman run --rm --interactive --tty`, captures
-the exit status, and exits with it. There is no daemon, no systemd unit, and
-no state to reap afterward.
-
-Anything that breaks this is a defect: `&`, `nohup`, `setsid`,
-`podman run -d`, `--detach`, `systemd-run`, or a recipe that returns while
-the guest is still alive.
-
-### VM mode
-
-VM mode requires `DONATE_CLANKER_VM_RUNNER_IMAGE` to name the signed
-immutable runner image. Without it the recipe fails fast with a message
-instead of falling back. The container is run with `--device /dev/kvm` and a
-per-run control/overlay bind mount at `/run/donate-clanker`. Inside, QEMU
-runs `-nographic` with a virtio serial control port.
-
-The guest receives its per-run control directory and nothing else. No
-workspace mount. No host home. No host configuration directory. Assigned
-repositories are cloned inside the disposable VM.
-
-### Container-only mode
-
-Skips QEMU and runs the derived contributor image directly under podman.
-Same tmux session name, same attach flow, much faster iteration. Use it when
-testing image layers or Goose configuration; use VM mode when testing
-isolation or anything KVM-dependent.
-
-### Credential passthrough
-
-`TOOL` selects the agent backend and is read from the environment, not as a
-recipe parameter, because `just` parameters are positional rather than
-`KEY=VALUE`. Goose is the only supported backend. `GOOSE_PROVIDER` and
-`GOOSE_MODEL` are forwarded into the guest as `--env` flags when set.
-Launcher state lives in the config directory: `last-selections.env` for the
-previous run's choices and `secrets.env`, mode `0600`, for provider and model
-values.
+Hive selects every task. The launcher must not filter, skip, rank, or decline
+assignments by repository, label, title, author, or issue.
 
 ## Common Rationalizations
 
-| Rationalization | Reality |
-|---|---|
-| "Backgrounding it just while I test something." | The foreground guarantee is the product. A run nobody is watching is an unsupervised agent with a live GitHub token. |
-| "A stop command would be more convenient." | It advertises a daemon. Ctrl-C ends a run; `--replace` reclaims a name at launch. |
-| "This helper is too gnarly for Bash." | Then the launcher is doing too much. A second language becomes a second implementation nobody runs. |
-| "Just skipping that one noisy repo." | Hive's `selectTask` owns selection. Filter hub-side, where maintainers can see the policy. |
+- "It's only a comment or test fixture." Workflow assertions, onboarding
+  fixtures, and operator comments are part of the public launcher surface and
+  must be rebranded with the code.
+- "We can leave an alias for safety." This launcher's contract is a clean
+  break; aliases preserve stale instructions and weaken test coverage.
+- "Passing `--env NAME=value` is equivalent." For secrets it is not: inherited
+  `--env NAME` avoids printing values into the Podman command line.
 
 ## Red Flags
 
-- A recipe that returns while the guest is still running.
-- A new top-level public recipe. Three commands is the contract; add private
-  helpers instead.
-- A host path bind-mounted into the runner beyond the per-run control
-  directory.
-- Silent fallback when `DONATE_CLANKER_VM_RUNNER_IMAGE` is unset. Fail loudly.
-- Duplicating anything Hive already does: session creation, prompt injection,
-  output capture, or task selection.
-- Any recipe, variable or `--env` that names a repository, label, title or
-  issue to accept or skip. Hive drives; the launcher does not filter.
-- Secrets echoed to stdout or written outside `secrets.env`.
-- A reimplementation of any launcher step in another language, or a test
-  harness whose only exercised path is its own `--self-test`. Both are
-  parallel implementations that no user reaches.
+- A fourth public recipe or any start, stop, restart, kill, clean, or daemon
+  command.
+- `&`, `nohup`, `setsid`, `podman run -d`, `--detach`, or a service unit.
+- A host directory mount beyond the per-run VM control path or read-only Hive
+  configuration for container-only mode.
+- A token in output, files, Podman arguments, or persistent launcher state.
+- A second implementation of launcher behavior in another language.
+- Task-selection policy outside Hive.
 
 ## Verification
 
 ```bash
-just --justfile just/61-donate-clanker.just --list
-just --justfile just/61-donate-clanker.just donate-clanker-doctor
+just --list
+just review-doctor
 bash tests/just-onboarding.sh
 git diff --check
-pre-commit run --all-files
 ```
 
-`--list` must show exactly the three public recipes. `doctor` must exit
-non-zero when a prerequisite is missing and must never start a container.
-Confirm the foreground guarantee by launching, backgrounding your terminal's
-job, and verifying nothing survives an interrupt.
+The recipe list must contain only the three public commands. Doctor must not
+start a VM or container.
+
+## Sources
+
+- Podman environment inheritance: Context7 `/websites/podman_io_en`

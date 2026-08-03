@@ -1,7 +1,7 @@
 ---
 name: hive-runtime
-version: "1.2"
-last_updated: 2026-08-01
+version: "1.5"
+last_updated: 2026-08-02
 id: hive-runtime
 one_line_purpose: Operate inside Hive's tmux, token, and cooldown constraints.
 entry_point: docs/skills/hive-runtime.md
@@ -11,7 +11,7 @@ optimization_status: draft
 status: active
 dependencies: []
 tags: [hive, tmux, runtime, tokens, cooldown]
-description: "Describes Hive's contributor runtime: the tmux session contract, prompt injection, the 15-line output budget, the 55-minute token, the 168-hour cooldown, the agent's GitHub identity, and why selection is Hive's alone. Use when debugging a session."
+description: "Explains Hive's tmux session, prompt and output contract, contributor credentials, token lifetime, cooldown, and exclusive task selection. Use when operating or debugging a session."
 metadata:
   type: reference
 ---
@@ -20,138 +20,38 @@ metadata:
 
 ## When to Use
 
-Load this when attaching to a running contributor, when a task appears to
-hang or produce no result, when reasoning about how long a task may run, or
-before writing any code that touches session, prompt, or output handling.
+Load this before changing code near a Hive session boundary or when an
+assigned contributor session behaves unexpectedly.
 
 ## Core Process
 
-### Hive drives selection; nothing here filters
+1. Let Hive own the WebSocket protocol, assignment selection, `contributor`
+   tmux session, prompt injection, and result capture. review starts
+   the runtime and attaches to it; it does not reproduce any of those jobs.
+2. Attach only to inspect or deliberately steer a live session:
 
-Hive's `selectTask` is the only thing that chooses work. It reads the hub's
-config — the repository pool, the suspend flag, the disabled-repository list,
-the title/author/label deny-list and mode pairs — plus the 168-hour per-issue
-cooldown and the issues already held by other live connections, then takes
-the first admissible issue. There is no ranking and no negotiation: the
-contributor accepts what it is handed.
+   ```bash
+   podman exec -it <container> tmux attach -t contributor
+   ```
 
-The candidate pool comes exclusively from the repositories listed in the
-hub's config; one that is not listed is invisible to the selector, and in this
-org admission is expressed hub-side by a queue label. Both are policy the
-maintainers set deliberately.
+   Detaching tmux changes the display, not the foreground run. Ctrl-C or
+   closing the original terminal ends the contributor.
+3. Put the final result in the final 15 pane lines. Hive captures only those
+   lines for its report.
+4. Plan around the scoped assignment token's 55-minute lifetime. It is not
+   refreshed. Report completion only after its verifiable artifact exists;
+   completion applies the 168-hour issue cooldown, while failure does not.
+5. Do not filter, decline, rank, or retry assignments in this repository.
+   Hive selection is the sole authority.
 
-So filtering here would not merely be redundant. It would shadow a lifecycle
-Hive already owns, diverge silently from the hub's policy the moment either
-side changes, and its only visible effect would be hiding work that was
-deliberately admitted. Whatever Hive assigns is what the agent works on.
+### GitHub identity
 
-The upstream relay behaves the same way: it accepts the first assignment and
-answers `task_failed` only when it already has one. Declining work means
-speaking the contributor protocol, which is Hive's, not ours.
-
-### The tmux session contract
-
-Hive's entrypoint creates a tmux session named `contributor` and launches the
-agent CLI inside it by keystroke injection. donate-clanker does not create,
-name, or manage this session. It only attaches.
-
-Attach with Hive's own documented flow:
-
-```bash
-podman exec -it <container> tmux attach -t contributor
-# docker exec -it <container> tmux attach -t contributor
-```
-
-Detach with the tmux prefix followed by `d`. Detaching leaves the agent
-running; the task continues.
-
-### How prompts arrive
-
-Task prompts are injected into the pane the same way the CLI itself is
-launched: as keystrokes. There is no API surface, no file drop, and no queue
-you can inspect. What you see in the pane is the whole truth of what the
-agent was told.
-
-Consequence: if you type into the pane while a prompt is being injected, you
-corrupt it. Attach to observe and steer deliberately, not reflexively.
-
-### The 15-line output budget
-
-Hive captures the **last 15 lines** of the pane to report results back. That
-is the entire reporting channel.
-
-Practical rules:
-
-- Put the conclusion last. Anything scrolled past line 15 from the bottom is
-  invisible to Hive.
-- Avoid trailing verbose command output before a report; it evicts the
-  summary.
-- Do not design flows that assume a full transcript reaches the server.
-
-### The agent's GitHub identity
-
-Hive runs donate-clanker with `HIVE_CONTRIBUTOR_MODE=true`. The Hive `gh`
-wrapper at `/usr/local/bin/gh` injects the hub's GitHub App token **only when
-that variable is not `true`** -- its own comment reads "Contributors keep their
-personal token -- they fork+PR with their own identity." In contributor mode it
-injects nothing, and it additionally blocks every `gh auth ...` invocation.
-
-So the agent has no GitHub identity unless the launcher gives it one. Without
-it a task is picked up, the agent runs `gh`, is told to run `gh auth login`, is
-then forbidden from running it, and stops. Every assigned task dies on arrival.
-
-`donate-clanker-container` therefore passes `GH_TOKEN` **by value**, resolved
-in this order:
-
-1. `DONATE_CLANKER_GH_TOKEN` -- a purpose-made, narrowly scoped PAT.
-2. `GH_TOKEN` already exported on the host.
-3. `gh auth token --hostname github.com`.
-
-By value, not by mounting `~/.config/gh`: the guest gets one credential for
-one host, and no view of other accounts or an enterprise login in the same
-file. Upstream's `just contribute-run` passes `-e GH_TOKEN` the same way, so
-this is Hive's model, not a deviation.
-
-The launcher prints the token's **scopes** -- never its value -- before
-handing it over, because a desktop `gh` login routinely carries `admin:org`,
-`workflow` and `delete:packages`, and that is what the agent inherits. A
-contributor who does not want to hand all of that to an autonomous agent sets
-`DONATE_CLANKER_GH_TOKEN` to a PAT with `public_repo` or `repo` only, which is
-enough to fork, push and open a pull request.
-
-`donate-clanker-doctor` reports whether a token resolves and with which
-scopes, without printing it and without starting anything.
-
-The VM path does not carry this yet: its bootstrap envelope is consumed by the
-guest image, which lives outside this repository.
-
-### The 55-minute token
-
-The scoped GitHub token Hive issues expires 55 minutes after assignment and
-is **never refreshed**. It is not a substitute for the identity above:
-`task_assign.github_token` reaches `injectGhToken` in `contributor-relay.sh`,
-which writes it to `/var/run/hive-metrics/gh-app-token.cache` -- a file the
-`gh` wrapper reads **only when not in contributor mode**, so in contributor
-mode it is written and never read. Plan every task to push or open its pull
-request well inside that window. A task that spends 50 minutes exploring and then tries to
-push will fail at the last step with an authentication error that looks like
-a permissions bug and is not.
-
-### Self-reported completion and the 168-hour cooldown
-
-Completion is self-reported by the agent. A reported *completion* puts the
-issue into a **168-hour cooldown**; a reported *failure* records no cooldown
-at all. The asymmetry is deliberate to read and easy to get backwards: a
-premature completion costs a week on that issue, while an honest failure costs
-nothing. When you cannot finish, fail — do not report success to get unstuck.
-
-It is also why one unfinishable issue can starve a hub: no cooldown plus an
-unranked scan means it is handed straight back out. See
-[`hive-triage.md`](hive-triage.md).
-
-Report completion only after the verifiable artifact exists — a pushed
-branch, an opened pull request, a green check — not after the intent to
-create one.
+Container-only mode can pass one contributor GitHub token as inherited
+`GH_TOKEN`; it does not mount the host GitHub configuration. VM mode can pass
+the Copilot provider secret but the current guest cannot map a host GitHub
+identity to `GH_TOKEN`. Use `review-container` for work requiring
+fork, push, or pull-request access until the guest supports that mapping.
+Never log or persist either credential.
 
 To inspect earlier review output, enter tmux copy-mode with `Ctrl-b [`.
 PageUp scrolls, tmux search finds text, and `q` returns to the live pane.
@@ -159,46 +59,20 @@ Copy-mode changes only your view; Hive still owns output capture.
 
 ## Red Flags
 
-- Code in this repository that creates a tmux session, injects keystrokes, or
-  scrapes pane output. That is Hive's job; deleting the duplicate is the fix.
-- Any allow-list, deny-list, or conditional keyed on an assignment's
-  repository, label, title, author, or issue number. Selection is Hive's.
-- A wrapper around `contributor-agent.sh`, or code here that reads or sends
-  `task_assignment`, `task_failed`, or `task_completed`. Those are the only
-  footholds a filter could use.
-- "We only want issues from repo X" as a request. That belongs in the hub's
-  config, where it is visible to everyone, not in this launcher.
-- Renaming or parameterizing the `contributor` session name.
-- A summary longer than 15 lines, or a report followed by more output.
-- Assuming the GitHub token can be refreshed, rotated, or re-requested.
-- Mounting `~/.config/gh` to give the agent an identity. Pass one token by
-  value; the directory holds credentials for hosts and accounts the task has
-  no business seeing.
-- Echoing, logging or persisting a token value. Scopes and presence are the
-  only reportable facts.
-- Reporting completion to unblock yourself from a stuck state. That burns 168
-  hours.
-- Treating a silent pane as a crash without attaching to look first.
+- Creating or naming tmux sessions, injecting prompts, or scraping pane output
+  in the launcher or image.
+- Adding assignment selectors or client-side retry loops.
+- Treating a tmux detach as background execution.
+- Reporting completion before the required artifact is independently visible.
+- Mounting `~/.config/gh` or printing a token to provide agent identity.
 
 ## Verification
 
 ```bash
 podman exec -it <container> tmux ls
 podman exec -it <container> tmux attach -t contributor
-```
-
-`tmux ls` must show `contributor`. Before reporting completion, confirm the
-artifact independently:
-
-```bash
-gh pr view --json url,state
-git log --oneline -1
-```
-
-Confirm the final 15 lines of the pane carry the conclusion.
-
-The no-filtering invariant is enforced statically, so it needs no live Hive:
-
-```bash
 bash tests/just-onboarding.sh
 ```
+
+Confirm that `contributor` exists, the final pane lines contain the result,
+and no launcher change duplicates Hive lifecycle behavior.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# donate-clanker container entrypoint.
+# review container entrypoint.
 #
 # This wraps Hive's contributor runtime instead of replacing it. Hive owns the
 # contributor WebSocket protocol, task selection, the tmux session, prompt
@@ -7,7 +7,15 @@
 # before handing control over.
 set -euo pipefail
 
-note() { printf 'donate-clanker: %s\n' "$1" >&2; }
+note() { printf 'review: %s\n' "$1" >&2; }
+
+# Validate the caller's requested provider before any other startup work so an
+# unsupported setting always gets the same actionable answer.
+if [ -n "${GOOSE_PROVIDER:-}" ] && [ "$GOOSE_PROVIDER" != github_copilot ]; then
+	note "ERROR: GOOSE_PROVIDER=${GOOSE_PROVIDER} is not supported — review supports GitHub Copilot only."
+	note "  Unset GOOSE_PROVIDER or set GOOSE_PROVIDER=github_copilot."
+	exit 1
+fi
 
 hive_config="${HOME}/.config/hive"
 if [ ! -f "${hive_config}/contributor.env" ]; then
@@ -24,26 +32,19 @@ note 'Bluefin Operations | contributor runtime starting'
 # ~/.config/goose/config.yaml at every startup, so our configuration cannot live
 # there. GOOSE_PATH_ROOT relocates Goose's config/data/state roots, which lets
 # the controlled config survive untouched.
-export GOOSE_PATH_ROOT="${DONATE_CLANKER_GOOSE_ROOT:-/opt/bluefin/goose}"
+export GOOSE_PATH_ROOT="${REVIEW_GOOSE_ROOT:-/opt/bluefin/goose}"
 
 # Goose resolves environment before file, so the launcher's passthrough wins
-# over anything in the controlled config.
-export GOOSE_PROVIDER="${GOOSE_PROVIDER:-github_copilot}"
+# over anything in the controlled config. This image is intentionally
+# Copilot-only; accepting another value would leave Hive to start a provider
+# whose credential path this launcher does not support.
+export GOOSE_PROVIDER=github_copilot
 
-# Goose refuses to start without a model, and our controlled config
-# deliberately pins neither provider nor model so the contributor's own
-# account decides. Supply a sane per-provider default when the launcher did
-# not pass one, otherwise the pane just shows "No model configured".
+# Goose refuses to start without a model. Keep the direct-image fallback in
+# sync with the launcher's default for users who invoke this image directly.
 if [ -z "${GOOSE_MODEL:-}" ]; then
-	case "$GOOSE_PROVIDER" in
-	github_copilot) GOOSE_MODEL="gpt-4o" ;;
-	anthropic) GOOSE_MODEL="claude-sonnet-4-20250514" ;;
-	openai) GOOSE_MODEL="gpt-4o" ;;
-	google) GOOSE_MODEL="gemini-2.0-flash" ;;
-	openrouter) GOOSE_MODEL="openai/gpt-4o" ;;
-	ollama) GOOSE_MODEL="qwen2.5" ;;
-	esac
-	note "GOOSE_MODEL not set; defaulting to ${GOOSE_MODEL} for ${GOOSE_PROVIDER}"
+	GOOSE_MODEL="gpt-4.1"
+	note "GOOSE_MODEL not set; defaulting to ${GOOSE_MODEL} for GitHub Copilot"
 fi
 export GOOSE_MODEL
 
@@ -90,7 +91,7 @@ if command -v curl >/dev/null 2>&1; then
 		--request POST \
 		--header 'Content-Type: application/json' \
 		--header 'Accept: application/json, text/event-stream' \
-		--data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"donate-clanker","version":"1"}}}' \
+		--data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"review","version":"1"}}}' \
 		https://mcp.context7.com/mcp 2>/dev/null; then
 		note 'Context7 reachable'
 	else
@@ -103,6 +104,17 @@ if [ -d "$skills_root" ]; then
 	shopt -s nullglob
 	skills=("$skills_root"/*/SKILL.md)
 	note "${#skills[@]} org skills available (load one with /<skill-name>)"
+fi
+
+validation_tools=(bats shellcheck systemd-analyze pre-commit just podman)
+missing_validation_tools=()
+for validation_tool in "${validation_tools[@]}"; do
+	if ! command -v "$validation_tool" >/dev/null 2>&1; then
+		missing_validation_tools+=("$validation_tool")
+	fi
+done
+if ((${#missing_validation_tools[@]})); then
+	note "validation tools unavailable: ${missing_validation_tools[*]}"
 fi
 
 # --- Hand over to Hive -------------------------------------------------------
@@ -123,7 +135,7 @@ cleanup() {
 	tmux kill-session -t contributor 2>/dev/null || true
 	exit "$status"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT HUP INT TERM
 
 /usr/local/bin/contributor-agent.sh "$@" &
 agent_pid=$!
@@ -149,6 +161,8 @@ done
 # fail on `tmux attach`, which refuses to run without a tty.
 if [ -t 0 ] && [ -t 1 ]; then
 	tmux attach-session -t contributor
+	note 'tmux detached; the agent remains foreground in this terminal. Press Ctrl-C or close this terminal to stop it.'
+	wait "$agent_pid"
 else
 	note 'no tty; following the agent without attaching'
 	wait "$agent_pid"

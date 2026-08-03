@@ -1,102 +1,101 @@
-# donate-clanker
+# review
 
-Donate a terminal to the Bluefin factory: a thin, foreground launcher that
-boots a self-contained QEMU VM running a Project Bluefin FSDK-derived
-contributor image with Goose, preloaded with Bluefin review context.
+`review` is a thin, foreground launcher for a self-owned
+FSDK-derived contributor image. It boots a QEMU VM or runs that image directly
+with Goose and Project Bluefin review context.
 
-## What it does
+It owns only VM boot, credential handoff, and review context. Hive owns the
+contributor protocol, task selection, the `contributor` tmux session, prompt
+injection, and output capture.
 
-`donate-clanker` is duct tape in the `brew`/`just` tradition, not a platform.
-It owns exactly three things:
+## Scope
 
-1. Booting a pinned QEMU VM in the foreground.
-2. Passing your own agent credentials through to Goose inside the guest.
-3. Assembling the review context payload (org skills, Context7, git hooks).
+The root `justfile` is the public launcher surface for this repository.
+Run `just review`, `just review-container`, and `just review-doctor` from the
+repository root. If you ship it in a custom image, keep those same recipes
+available through the installed root Justfile.
 
-Everything else belongs to Hive. Hive owns the WebSocket contributor
-protocol, task selection, the `contributor` tmux session, prompt injection,
-and output capture. donate-clanker deliberately duplicates none of it.
+## Installing this into your own setup
 
-The result feels like a dedicated terminal that runs review tasks handed to
-it by Hive, and that a human can attach to and steer at any time.
-
-## Requirements
-
-- `podman` — runs the VM runner container and the container-only mode.
-- `/dev/kvm` readable and writable by your user — the VM runner requires
-  hardware virtualization.
-- `gh` authenticated against `github.com` (`gh auth login --web --hostname
-  github.com --scopes repo,read:org`).
-- A credential for a Goose-supported model provider. Goose is the only agent
-  backend; supply `GOOSE_PROVIDER` and, optionally, `GOOSE_MODEL`.
-- For the default GitHub Copilot provider, a Copilot login on this host
-  (`goose configure`, then complete the device flow) or an exported
-  `GITHUB_COPILOT_TOKEN`. Both launch paths hand that credential to the agent
-  so it never stalls on a device code. A `gh auth token` is *not* a
-  substitute — Copilot inference rejects it.
-
-Check all of the above with `ujust donate-clanker-doctor` before filing a
-bug.
-
-> **The agent acts as you on GitHub.** Hive's contributor model is fork +
-> pull request under the contributor's own identity, so
-> `ujust donate-clanker-container` passes your `gh auth token` to the agent as
-> `GH_TOKEN`. The agent inherits every scope that token holds — a desktop `gh`
-> login often carries `admin:org`, `workflow` and `delete:packages`. The
-> launcher prints the scopes (never the value) before handing them over. To
-> narrow that, export `DONATE_CLANKER_GH_TOKEN` with a PAT scoped to
-> `public_repo` or `repo`, which is enough to fork, push and open a pull
-> request.
-
-## Installation
-
-`just/61-donate-clanker.just` is the only file that ships or installs.
-
-Bluefin's root `Justfile` (`/usr/share/ublue-os/just/00-entry.just`) imports
-a fixed list of files, not a glob. Installing this file system-wide so that
-plain `ujust donate-clanker` works therefore requires baking it into a custom
-image build, which is out of scope for this repository.
-
-For local use, run the file directly:
+For a checkout, run the recipes directly:
 
 ```bash
-just --justfile just/61-donate-clanker.just --list
-just --justfile just/61-donate-clanker.just donate-clanker
+just --list
+just review
 ```
 
-Or import it from your own personal `Justfile` so the recipes appear
-alongside your own:
+## Commands
 
-```just
-import "/absolute/path/to/donate-clanker/just/61-donate-clanker.just"
-```
+`justfile` is the installable artifact and exposes exactly
+three public recipes:
 
-## Usage
-
-| Command | What it does |
+| Command | Purpose |
 |---|---|
-| `ujust donate-clanker` | Boot the pinned QEMU VM in the **foreground** and attach to the `contributor` tmux session. Ctrl-C stops it. |
-| `ujust donate-clanker-container` | Run only the container, no VM, and attach to the same tmux session. For quick local development. |
-| `ujust donate-clanker-doctor` | Read-only preflight diagnostics. Never starts anything. |
+| `just review` | Run the contributor through a foreground QEMU VM. |
+| `just review-container` | Run the contributor container directly, without a VM. |
+| `just review-doctor` | Perform read-only launch diagnostics. |
 
-The launcher never backgrounds itself. If your terminal is gone, the run is
-gone. That is the foreground guarantee, and it is intentional: there is no
-daemon, no unit, and no orphaned state to reap.
+Every run remains attached to its originating terminal. Ctrl-C or closing that
+terminal stops it; the launcher provides no lifecycle commands or daemon.
+Detaching tmux (`prefix`, then `d`) detaches the view only—the originating
+terminal remains responsible for the foreground run.
 
-**There is no stop command, and there will not be one.** Ctrl-C is the stop
-button. A `ujust donate-clanker-stop` would only make sense if a run could
-outlive its terminal, which is precisely what this launcher refuses to allow —
-shipping one would advertise a daemon we do not have. If a previous run was
-killed hard enough to leave its container name behind, the next launch
-reclaims that name itself (`--replace`); cleanup is a startup concern, never
-something you have to remember to do.
+## Bluefin Ops Control Panel
 
-Attaching by hand uses Hive's own documented flow:
+`mcp-app/` is an optional, read-only Goose Desktop MCP App. It observes Hive
+and GitHub evidence in a single Tactical Ledger view; it does not replace the
+launcher, select work, control Hive, read tmux, persist data, or poll.
+
+Build it, then register `node mcp-app/dist/server.js` as a stdio MCP server in
+Goose Desktop:
 
 ```bash
-podman exec -it <container> tmux attach -t contributor
-# docker exec -it <container> tmux attach -t contributor
+npm --prefix mcp-app install
+npm --prefix mcp-app run build
 ```
+
+The app fetches one evidence snapshot when opened and only fetches again when
+the user activates **Refresh all evidence**. Its server uses
+`REVIEW_GH_TOKEN`, then `GH_TOKEN`, for GitHub API reads when
+available; it never uses or displays a Copilot credential. See
+[`mcp-app/README.md`](mcp-app/README.md) for Hive endpoint configuration and
+Goose resource details.
+
+## Requirements and credentials
+
+- `gh auth login --web --hostname github.com --scopes repo,read:org` is a hard
+  prerequisite for both launch modes.
+- `podman` for either launch mode.
+- Readable, writable `/dev/kvm` for VM mode.
+- For a local raw VM: `qemu-system-<host-arch>`, `qemu-img`, matching UEFI
+  firmware, `curl`, and `zstd`.
+- Goose configured for GitHub Copilot, or `GITHUB_COPILOT_TOKEN`.
+- For container-only Git operations, a separate GitHub token via
+  `REVIEW_GH_TOKEN`.
+
+Goose is the only agent backend and GitHub Copilot is the only supported
+provider. `GOOSE_PROVIDER` may be unset or `github_copilot`; `GOOSE_MODEL`
+optionally overrides the `gpt-4.1` default. A `gh auth token` does not
+authenticate Copilot inference.
+
+The container recipe inherits the Copilot and GitHub tokens by environment
+variable name, so token values are not placed on Podman's command line. The
+agent can use every scope on its GitHub token; prefer a
+`REVIEW_GH_TOKEN` limited to `public_repo` or `repo`.
+
+At startup, the contributor image reports any unavailable common validation
+commands (`bats`, `shellcheck`, `systemd-analyze`, `pre-commit`, `just`, and
+`podman`) without blocking the assigned task.
+
+The VM guest has no GitHub identity mapping. Use
+`review-container` when fork, push, or pull-request access is needed;
+a host `gh` login or PAT cannot add that identity to the VM.
+
+Run `just review-doctor` to check the selected VM path, including
+local tools, firmware, raw-artifact availability, contributor image, Hive
+setup, and credentials. It never starts a VM or container. A normal attended
+launch runs Hive's upstream setup when `~/.config/hive/contributor.env` is
+absent; doctor only reports that condition.
 
 ## Reviewing
 
@@ -107,157 +106,103 @@ Copy-mode only changes your view; Hive still owns task and output handling.
 
 ## Configuration
 
-All configuration is environment variables read at launch.
+All configuration is read at launch.
 
 | Variable | Purpose |
 |---|---|
-| `DONATE_CLANKER_VM_RUNNER_IMAGE` | Signed, immutable VM runner image reference. Required for VM mode. |
-| `DONATE_CLANKER_CONTRIBUTOR_IMAGE` | Contributor image to run. Defaults to `ghcr.io/projectbluefin/donate-clanker:stable`. See [Published image tags](#published-image-tags). |
-| `DONATE_CLANKER_HIVE_COMMIT` | Override the pinned Hive commit. Defaults to `e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e`. |
-| `GOOSE_PROVIDER` | Goose model provider. Passed through to the guest. |
-| `GOOSE_MODEL` | Goose model name. Optional; passed through to the guest. |
-| `TOOL` | Agent backend selector. Goose is the only supported value. |
+| `REVIEW_VM_RAW` | Verified local raw disk; its `.sha256` sidecar is required. |
+| `REVIEW_VM_RUNNER_IMAGE` | Immutable QEMU runner image used when no raw disk is selected. |
+| `REVIEW_VM_VERSION` | Raw-release version used when neither VM override is set. |
+| `REVIEW_CONTRIBUTOR_IMAGE` | Contributor image; defaults to `ghcr.io/projectbluefin/review:stable`. |
+| `REVIEW_HIVE_COMMIT` | Full Hive commit used for contributor setup. |
+| `REVIEW_GH_TOKEN` | Optional GitHub token override for container-only mode. |
+| `GOOSE_PROVIDER` | Unset or `github_copilot`. |
+| `GOOSE_MODEL` | Optional GitHub Copilot model override. |
+| `GITHUB_COPILOT_TOKEN` | Optional Copilot credential override. |
+| `TOOL` | Agent backend selector; only `goose` is accepted. |
 
-The launcher keeps a small amount of state under its config directory:
-`last-selections.env` remembers the previous run's selections, and
-`secrets.env` (mode `0600`) holds provider and model values so you are not
-re-prompted every launch. Neither file is mounted into the guest as a home
-or workspace directory; the VM runner receives only its per-run
-control/overlay directory.
+`~/.config/review/last-selections.env` stores launcher configuration
+state such as the last Goose/provider selection between runs.
 
-## Published image tags
+`~/.local/state/review/` stores the pinned Hive checkout and verified
+VM artifact cache. No other launcher state persists.
 
-`.github/workflows/publish-compat-image.yml` publishes the contributor image
-to `ghcr.io/projectbluefin/donate-clanker`:
+VM selection prefers an explicit raw disk, then a configured runner image,
+then an exact version-and-architecture raw release. Raw images are checksum
+verified, boot through disposable overlays, and cached by version and
+architecture. Once the requested raw image is verified, older caches for that
+architecture are removed.
 
-| Tag | Moves? | Published by | Architectures |
-|---|---|---|---|
-| `stable` | Yes | every push to `main` and `v*.*.*` tag push | `linux/amd64`, `linux/arm64` |
-| `X.Y.Z` and `vX.Y.Z` | No | a `v*.*.*` tag push | `linux/amd64`, `linux/arm64` |
-| `sha-<commit>` | No | every build | `linux/amd64`, `linux/arm64` on `main` and release builds; `linux/amd64` on manual dispatches |
+`stable` is the default contributor-image tag and is pulled at each launch.
+Use an immutable `sha-<commit>` tag or digest with
+`REVIEW_CONTRIBUTOR_IMAGE` when a reproducible image is required.
 
-There is no `:latest`, and there never will be — pointing at it fails with
-`manifest unknown`.
+## Image and context
 
-`stable` moves on every merge to `main` and is the launcher's default. A
-release tag also updates it alongside immutable version tags. To run a
-reproducible build, override the image with its immutable `sha-<commit>` tag:
+The image derives from the digest-pinned Project Bluefin FSDK lab runner and
+layers the pinned Hive runtime at `835448c3cbef9f06d34dd3802548e1d1e16dbd2f`,
+the current Goose canary snapshot, GitHub CLI, tmux, hooks, and generated
+organization skills. Goose publishes that snapshot from its active `main`
+branch; each archive is verified against GitHub's signed build provenance
+before installation.
 
-```bash
-DONATE_CLANKER_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/donate-clanker:sha-<commit> \
-  ujust donate-clanker-container
-```
+The Goose canary snapshot is intentionally not byte-reproducible: rebuilding
+the same contributor-image source later can use a newer Goose binary. Use an
+immutable contributor image digest or `sha-<commit>` image tag when a fixed
+artifact is required.
 
-For a reproducible run, pin `sha-<commit>` or an `@sha256:` digest instead of
-a moving tag.
+Hive overwrites `~/.config/goose/config.yaml` at startup. The image therefore
+uses `GOOSE_PATH_ROOT=/opt/bluefin/goose` for its controlled Goose
+configuration, including Context7.
 
-## Review context
+Organization skills are generated at image build time from
+`projectbluefin/common`'s `docs/skills/index.json` into Goose's global skill
+directory. Repositories may route agents to their own skill catalog, but
+per-repository skills are not automatically discovered at session startup.
 
-The image derives `FROM ghcr.io/projectbluefin/lab-runner`, pinned by digest,
-then layers in the minimal Hive contributor runtime, Goose, and the Bluefin
-review context.
-
-**Goose config survival.** Hive unconditionally overwrites
-`~/.config/goose/config.yaml` at every startup. donate-clanker therefore sets
-`GOOSE_PATH_ROOT` to a controlled config root at `/opt/bluefin/goose`, so our
-Goose configuration — which declares the Context7 MCP extension — survives
-Hive's rewrite.
-
-**Org skills.** Goose v1.45 has native Agent Skills: a skill is a *directory*
-containing a `SKILL.md` with YAML frontmatter (`name`, `description`). Only
-the name and description enter the system prompt; the body loads on demand
-through the `load_skill` tool, or deterministically when a human types
-`/skill-name`. Goose discovers global skills under `~/.agents/skills/`.
-
-Org skills are generated **at image build time** from
-`projectbluefin/common`'s `docs/skills/index.json` into
-`/home/dev/.agents/skills/<id>/SKILL.md`. The org keeps `docs/skills/*.md`
-plus `index.json` as the source of truth; nothing in other repositories has
-to change.
-
-**Per-repo skills.** These cannot be discovered natively. Goose starts in
-`/home/dev` before any repository is cloned, and it discovers skills at
-session start. Instead, the agent is instructed to read the cloned repo's
-`docs/skills/index.json` and open only the matching `entry_point`. This is
-model-driven, not guaranteed. Treat it as best effort.
-
-**Git hooks.** Hooks ship at `/opt/bluefin/git-hooks` and are wired through a
-global `core.hooksPath`. They are ergonomics only: `git commit --no-verify`
-bypasses them entirely. Deterministic enforcement is GitHub rulesets and
-required status checks, not hooks.
-
-## Architecture
-
-```
-  you                       host                      guest VM
-  ---                       ----                      --------
-  ujust donate-clanker
-        |
-        v
-  61-donate-clanker.just  --> podman run (VM runner)
-                                    |
-                                    v
-                              qemu-system-* -nographic
-                                    |
-                                    v
-                          fsdk-derived contributor container
-                                    |
-                                    v
-                          tmux session "contributor"
-                            + goose (agent backend)
-                                    ^
-                                    |
-                          Hive WebSocket: task in, 15 lines out
-```
-
-Foreground the whole way down: your terminal is the process tree's root.
-
-## Scope and non-goals
-
-donate-clanker does **not**:
-
-- Manage Hive sessions. Hive selects tasks, injects prompts, and captures
-  output.
-- Run local inference. Bring your own model credential.
-- Implement the Hive contributor protocol. It boots an image that already
-  speaks it.
-- Aspire to be a platform, a service, or a daemon.
-
-Hive behaviors you should know about because they will surprise you:
-completion is self-reported and applies a 168-hour cooldown to that issue,
-while a reported failure applies none at all; and the scoped GitHub token Hive
-issues expires 55 minutes after assignment and is never refreshed.
+Git hooks at `/opt/bluefin/git-hooks` are ergonomics only; GitHub rulesets and
+required checks enforce repository policy.
 
 ## Development
+
+### Iterating on the contributor image
+
+Prototype image-owned behavior in this checkout, then build a local tag:
+
+```bash
+GH_TOKEN="$(gh auth token)" podman build \
+  --secret id=github_token,env=GH_TOKEN \
+  --build-arg GOOSE_REFRESH="$(date +%s)" \
+  -f image/Containerfile -t localhost/review:dev .
+```
+
+Use that tag for a container-only trial without publishing it:
+
+```bash
+REVIEW_CONTRIBUTOR_IMAGE=localhost/review:dev \
+  just review-container
+```
+
+The launcher prefers a fresh copy of moving tags, but falls back to an already
+present local image when no registry copy is available. After the change is
+ready, commit it and use the normal publish workflow; CI publishes immutable
+`sha-<commit>` and version tags and advances `:stable` from `main`.
+The build secret exists only while GitHub CLI verifies Goose's signed
+provenance and is never included in an image layer.
+
+### Validation
 
 ```bash
 bash tests/image-contract.sh
 bash tests/just-onboarding.sh
 git diff --check
-just --justfile just/61-donate-clanker.just --list
+just --list
 pre-commit run --all-files
 ```
 
-Agent-facing rules live in [`AGENTS.md`](AGENTS.md). Task-scoped
-documentation is routed from [`docs/SKILL.md`](docs/SKILL.md).
-
-## Testing
-
-`tests/image-contract.sh` asserts the image's Containerfile, Goose config,
-entrypoint and git hooks still hold their contract. `tests/just-onboarding.sh`
-exercises the launcher's onboarding behavior against a mocked host.
-`tests/generate-skills.sh` ensures a skills manifest cannot escape its output
-root. `pre-commit run --all-files` runs the YAML/JSON/shell hygiene hooks and
-the generator regression test. `git diff --check` must be clean.
-
-## Contributing
-
-- One logical change per pull request.
-- Pull request titles must follow Conventional Commits; merges are squash-only
-  and the squash commit inherits the PR title.
-- Update the matching `docs/skills/*.md` file in the same pull request when
-  behavior changes.
+See [`AGENTS.md`](AGENTS.md) for contributor boundaries and
+[`docs/SKILL.md`](docs/SKILL.md) for task-specific documentation.
 
 ## License
 
-See the repository's license file.
+Licensed under the [Apache License 2.0](LICENSE).

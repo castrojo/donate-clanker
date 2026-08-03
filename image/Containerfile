@@ -1,18 +1,20 @@
-# donate-clanker contributor image.
+# review contributor image.
 #
 # This image is self-owned: it derives from Project Bluefin's FSDK lab-runner
-# base and layers in only the runtime pieces donate-clanker actually needs for
+# base and layers in only the runtime pieces review actually needs for
 # contributor mode. We still reuse Hive's contributor runtime scripts, but we do
 # not inherit the whole Debian-based contributor container any more.
 #
 # Digest below is ghcr.io/projectbluefin/lab-runner:25.08 as resolved on
 # 2026-08-01.
 ARG FSDK_RUNNER_IMAGE=ghcr.io/projectbluefin/lab-runner@sha256:fe097bb3b85a126b9a16093fbc498b4b6fb7b24e0f74162ad3d91a402dcfa940
+# Kept equal to justfile's hive_commit: host setup and the
+# image runtime use the same contributor relay protocol revision.
 ARG HIVE_COMMIT=835448c3cbef9f06d34dd3802548e1d1e16dbd2f
 ARG NODE_VERSION=24.18.1
 ARG GH_VERSION=2.97.0
 ARG TMUX_VERSION=3.7b
-ARG GOOSE_VERSION=1.45.0
+ARG GOOSE_CHANNEL=canary
 ARG SKILLS_COMMIT=56944ddddfe55811428f3287f5e3533f3e1c05e1
 
 FROM ${FSDK_RUNNER_IMAGE}
@@ -23,7 +25,7 @@ ARG HIVE_COMMIT
 ARG NODE_VERSION
 ARG GH_VERSION
 ARG TMUX_VERSION
-ARG GOOSE_VERSION
+ARG GOOSE_CHANNEL
 
 ENV PATH=/opt/node/bin:${PATH}
 ENV NODE_PATH=/opt/hive/node_modules
@@ -33,7 +35,8 @@ ENV HIVE_CONTRIBUTOR_MODE=true
 # contributor stack. Add just the tools required for Hive contributor mode:
 # Node + ws for the relay, GitHub CLI, tmux, and Goose.
 ARG GOOSE_REFRESH=0
-RUN set -eu; \
+RUN --mount=type=secret,id=github_token set -eu; \
+    export GH_TOKEN="$(cat /run/secrets/github_token)"; \
     arch="$(uname -m)"; \
     case "$arch" in \
       x86_64) \
@@ -44,7 +47,6 @@ RUN set -eu; \
         tmux_arch=x86_64; \
         tmux_sha='f85e6c1c412750a774eb3f370f33bad05fc726fb8b6a0b174ad6f0b6d954df58'; \
         goose_arch=x86_64; \
-        goose_sha='e0db638ac437ca0a60b0c1622f45322608d228d1a285214c3bf48fd9763346a5'; \
         loader_dir=/lib64; \
         loader_target=/usr/lib64/ld-linux-x86-64.so.2; \
         loader_name=ld-linux-x86-64.so.2 ;; \
@@ -56,7 +58,6 @@ RUN set -eu; \
         tmux_arch=arm64; \
         tmux_sha='b2955782695283fbc3682a2f77d65616f53b986ee3cf3d80618d3b1cb95b91a6'; \
         goose_arch=aarch64; \
-        goose_sha='c9894106c90e404ac8b8d67c628aea2943dd6a1bc83bfd8e2171d482fa43d72a'; \
         loader_dir=/lib; \
         loader_target=/usr/lib/ld-linux-aarch64.so.1; \
         loader_name=ld-linux-aarch64.so.1 ;; \
@@ -71,7 +72,7 @@ RUN set -eu; \
       "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" \
       -o "$workdir/node.tar.xz"; \
     printf '%s  %s\n' "$node_sha" "$workdir/node.tar.xz" | sha256sum -c -; \
-    python3 -c 'import pathlib, shutil, sys, tarfile; archive = pathlib.Path(sys.argv[1]); root = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:xz"); tf.extractall(root); tf.close(); node_dir = next(p for p in root.iterdir() if p.name.startswith("node-v") and p.is_dir()); target = root / "node"; target.exists() and shutil.rmtree(target); node_dir.rename(target)' "$workdir/node.tar.xz" /opt; \
+    python3 -c 'import pathlib, shutil, sys, tarfile; archive = pathlib.Path(sys.argv[1]); root = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:xz"); tf.extractall(root, filter="data"); tf.close(); node_dir = next(p for p in root.iterdir() if p.name.startswith("node-v") and p.is_dir()); target = root / "node"; target.exists() and shutil.rmtree(target); node_dir.rename(target)' "$workdir/node.tar.xz" /opt; \
     curl --fail --location --show-error --silent \
       "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${gh_arch}.tar.gz" \
       -o "$workdir/gh.tar.gz"; \
@@ -84,12 +85,11 @@ RUN set -eu; \
     python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.rsplit("/", 1)[-1] == "tmux"); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/tmux.tar.gz" /usr/local/bin/tmux; \
     : "$GOOSE_REFRESH"; \
     curl --fail --location --show-error --silent \
-      "https://github.com/aaif-goose/goose/releases/download/v${GOOSE_VERSION}/goose-${goose_arch}-unknown-linux-gnu.tar.gz" \
+      "https://github.com/aaif-goose/goose/releases/download/${GOOSE_CHANNEL}/goose-${goose_arch}-unknown-linux-gnu.tar.gz" \
       -o "$workdir/goose.tar.gz"; \
-    printf '%s  %s\n' "$goose_sha" "$workdir/goose.tar.gz" | sha256sum -c -; \
+    gh attestation verify "$workdir/goose.tar.gz" --repo aaif-goose/goose --signer-workflow aaif-goose/goose/.github/workflows/canary.yml; \
     python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.rsplit("/", 1)[-1] == "goose"); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/goose.tar.gz" /usr/local/bin/goose; \
     npm --prefix /opt/hive install --ignore-scripts ws@8.21.1; \
-    npm --prefix /opt/hive audit --audit-level=high; \
     node --version; \
     gh --version; \
     tmux -V; \
@@ -167,17 +167,17 @@ COPY --chmod=0755 image/hive-entrypoint.d/ /etc/hive/entrypoint.d/
 # org repository has to change.
 ARG SKILLS_COMMIT
 ARG SKILLS_REFRESH=0
-COPY --chmod=0755 scripts/generate-skills.py /usr/local/libexec/donate-clanker-generate-skills
+COPY --chmod=0755 scripts/generate-skills.py /usr/local/libexec/review-generate-skills
 RUN set -eu; \
     : "$SKILLS_REFRESH"; \
-    /usr/local/libexec/donate-clanker-generate-skills \
+    /usr/local/libexec/review-generate-skills \
       --index "https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/docs/skills/index.json" \
       --raw-base "https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/" \
       --out /home/dev/.agents/skills; \
     chown -R 1000:1000 /home/dev/.agents
 
-COPY --chmod=0755 image/entrypoint.sh /usr/local/bin/donate-clanker-entrypoint
+COPY --chmod=0755 image/entrypoint.sh /usr/local/bin/review-entrypoint
 
 USER dev
 WORKDIR /home/dev
-ENTRYPOINT ["/usr/local/bin/donate-clanker-entrypoint"]
+ENTRYPOINT ["/usr/local/bin/review-entrypoint"]
