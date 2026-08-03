@@ -1,6 +1,6 @@
 ---
 name: static-pr-queue
-version: "1.1"
+version: "1.2"
 last_updated: 2026-08-03
 id: static-pr-queue
 one_line_purpose: Publish a safe, static queue of public pull requests.
@@ -46,8 +46,9 @@ GitHub owns pull-request state and merge decisions.
 5. Compare the ordered JSON `items` array with the prior artifact before
    writing. Preserve `generated_at` when items are identical, or every
    scheduled refresh creates a meaningless commit.
-6. Refresh only static `public/queue.md` and `public/queue.json`. The root
-   `public/index.html` redirects to the Markdown view. The queue accepts
+6. Refresh only static `public/queue.md` and `public/queue.json` through a
+   GitHub Pages artifact; never push generated snapshots to protected `main`.
+   The root `public/index.html` redirects to the Markdown view. The queue accepts
    `repository_dispatch` type `renovate-completed` from the central
    Renovate workflow; retain its schedule as a fallback.
 7. Use `GITHUB_TOKEN` with only `contents: write` in the refresh workflow.
@@ -65,7 +66,8 @@ GitHub owns pull-request state and merge decisions.
 
 ## Red Flags
 
-- A workflow uses `pull_request_target`, a fork head ref, or a personal token.
+- A workflow uses `pull_request_target`, a fork head ref, a personal token, or
+  a direct push to protected `main`.
 - A local `pull_request` trigger is expected to observe Renovate PRs in other
   repositories.
 - A refresh writes an empty snapshot after a GitHub source error.

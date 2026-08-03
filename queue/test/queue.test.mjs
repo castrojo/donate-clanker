@@ -338,11 +338,16 @@ test('refresh workflow is a constrained static snapshot publisher', async () => 
   );
 
   assert.match(workflow, /cron: '\*\/15 \* \* \* \*'/);
-  assert.match(workflow, /contents: write/);
+  assert.match(workflow, /contents: read/);
+  assert.match(workflow, /pages: write/);
+  assert.match(workflow, /id-token: write/);
   assert.match(workflow, /node --test queue\/test\/queue\.test\.mjs/);
   assert.match(workflow, /QUEUE_OWNER: projectbluefin/);
   assert.match(workflow, /ref: main/);
-  assert.match(workflow, /git diff --quiet -- public\/queue\.md public\/queue\.json/);
+  assert.match(workflow, /actions\/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b/);
+  assert.match(workflow, /actions\/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b/);
+  assert.match(workflow, /actions\/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e/);
+  assert.doesNotMatch(workflow, /\bgit push\b/);
   assert.match(workflow, /repository_dispatch:\s+types: \[renovate-completed\]/);
   assert.doesNotMatch(workflow, /\bpull_request:/);
   assert.doesNotMatch(workflow, /pull_request_target/);

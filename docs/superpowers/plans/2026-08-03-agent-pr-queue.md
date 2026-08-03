@@ -7,9 +7,9 @@ Bluefin open pull requests without introducing a new queue authority.
 
 **Architecture:** A dependency-free Node ES module fetches configured public
 GitHub pull requests, normalizes and ranks them, and writes `public/queue.md`
-and `public/queue.json`. A scheduled GitHub Actions workflow runs that
-generator and commits changed snapshots; static hosting serves those tracked
-artifacts.
+and `public/queue.json` in the workflow workspace. A scheduled GitHub Actions
+workflow deploys that workspace through GitHub Pages without writing to the
+protected default branch.
 
 **Tech Stack:** Node.js built-in `fetch`, `node:test`, GitHub REST API, GitHub
 Actions, static hosting.
@@ -39,8 +39,8 @@ Actions, static hosting.
 | `queue/lib/github.mjs` | Fetch paginated public GitHub pull-request evidence with explicit errors. |
 | `queue/generate.mjs` | Read configuration, call the GitHub client and queue library, then atomically write both generated artifacts. |
 | `queue/test/queue.test.mjs` | Fixture-based unit and contract tests for classification, ranking, rendering, pagination, and source failures. |
-| `public/queue.md` | Generated human-readable queue snapshot, committed only after a successful refresh. |
-| `public/queue.json` | Generated agent queue snapshot, committed only after a successful refresh. |
+| `public/queue.md` | Generated human-readable queue snapshot, deployed as a GitHub Pages artifact. |
+| `public/queue.json` | Generated agent queue snapshot, deployed as a GitHub Pages artifact. |
 | `.github/workflows/update-pr-queue.yml` | Scheduled, manually dispatchable, and Renovate-dispatched refresh workflow. |
 | `.github/workflows/validate.yml` | Runs the queue's offline Node test suite in pull-request validation. |
 | `README.md` | Documents the static queue contract, snapshot freshness, and the custom-domain operations handoff. |
@@ -268,12 +268,14 @@ Create `.github/workflows/update-pr-queue.yml` with `schedule` cron
 `pull_request` trigger: it cannot observe Renovate pull requests opened in
 other repositories.
 
-Set top-level `permissions` to `contents: write`, check out `main` explicitly,
+Set top-level `permissions` to `contents: read`, `pages: write`, and
+`id-token: write`, then check out `main` explicitly,
 set `QUEUE_OWNER: projectbluefin`, list the approved public repositories in
 `QUEUE_REPOSITORIES`, run the offline test suite, run the generator with
-`${{ github.token }}`, and commit only changed `public/queue.md` and
-`public/queue.json` as `ci: refresh PR queue`. Do not add a secret, use
-`pull_request_target`, or run code from a pull-request head.
+`${{ github.token }}`, and deploy `public/` through the pinned
+`configure-pages`, `upload-pages-artifact`, and `deploy-pages` actions. Do
+not add a secret, write to `main`, use `pull_request_target`, or run code from
+a pull-request head.
 
 In `projectbluefin/renovate-config`, add a post-Renovate job that runs only
 when the scheduled or manually dispatched Renovate job succeeds. It creates
@@ -319,8 +321,8 @@ git commit -m "ci: refresh public PR queue"
 
 - [ ] Run `node --test queue/test/queue.test.mjs`.
 - [ ] Run `git diff --check` and `pre-commit run --all-files`.
-- [ ] Dispatch the refresh workflow from `main` and confirm it either writes
-  both updated artifacts together or leaves both prior artifacts untouched on
+- [ ] Dispatch the refresh workflow from `main` and confirm it deploys both
+  updated artifacts together or leaves the prior Pages deployment available on
   a source error.
 - [ ] Confirm `/`, `/queue.md`, and `/queue.json` through the selected static
   host after a maintainer completes the custom-domain and DNS mapping.
