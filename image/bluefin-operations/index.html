@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bluefin Operations</title>
+<style>
+  :root { color: #cdd6f4; background: #11111b; font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  body { margin: 0; padding: 20px; } a { color: #89b4fa; } .board { max-width: 860px; margin: auto; }
+  h1 { color: #89b4fa; margin: 0; font: 800 28px/1 system-ui, sans-serif; letter-spacing: .08em; } .quote { border-left: 2px solid #89b4fa; color: #bac2de; padding-left: 10px; }
+  .grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; } .card { background: #181825; border: 1px solid #313244; border-radius: 8px; padding: 12px; }
+  .label { color: #a6adc8; font: 700 10px system-ui; letter-spacing: .08em; text-transform: uppercase; } .value { color: #89b4fa; font-size: 21px; font-weight: 700; }
+  .panel { margin-top: 10px; } .ok { color: #a6e3a1; } .warn { color: #f9e2af; } #manual { display: none; border-color: #f9e2af; }
+  @media (max-width: 550px) { .grid { grid-template-columns: 1fr; } }
+</style>
+<main class="board">
+  <h1>BLUEFIN<br>OPERATIONS</h1>
+  <p class="quote">“The tide remembers every horizon.”</p>
+  <p><span id="hive-state" class="ok"></span> <span class="label">canonical Hive telemetry</span></p>
+  <section class="grid">
+    <div class="card"><div class="label">Active contributors</div><div id="active" class="value">—</div></div>
+    <div class="card"><div class="label">Registered</div><div id="registered" class="value">—</div></div>
+    <div class="card"><div class="label">Actionable items</div><div id="actionable" class="value">—</div></div>
+  </section>
+  <section class="card panel">
+    <div class="label">Reviewer truth</div>
+    <p>Hive completion means the contributor stopped. GitHub is the source of truth for pull requests, checks, review, and merge.</p>
+    <a id="contributor">Open hosted contributor dashboard</a> · <a id="dashboard">Open full Hive dashboard</a> ·
+    <a href="https://github.com/pulls?q=is%3Aopen+is%3Apr+org%3Aprojectbluefin" target="_blank" rel="noreferrer">Open project PRs</a>
+  </section>
+  <section class="card panel">
+    <div class="label">Prompt & knowledge provenance</div>
+    <p id="knowledge"></p>
+    <a id="hive-prompt">View Hive prompt source</a> · <a id="policy">Improve this prompt</a>
+  </section>
+  <section id="manual" class="card panel">
+    <div class="label warn">Manual Mode</div>
+    <p>Hive assignments are unavailable. Stop or resume Hive in its hosted dashboard; choose work directly in GitHub.</p>
+    <a id="issues">Open project issues</a>
+  </section>
+</main>
+<script>
+  const data = __SNAPSHOT__;
+  const set = (id, value) => document.getElementById(id).textContent = value ?? "—";
+  set("hive-state", data.hive.state === "online" ? "● HIVE ONLINE" : "● HIVE UNAVAILABLE");
+  set("active", data.hive.activeContributors);
+  set("registered", data.hive.registeredContributors);
+  set("actionable", data.hive.actionableItems);
+  set("knowledge", data.knowledge.state === "available" ? `Hive knowledge snapshot refreshed ${data.knowledge.refreshedAt}.` : "Hive knowledge snapshot is unavailable.");
+  for (const [id, url] of Object.entries({ contributor: data.hive.contributorUrl, dashboard: data.hive.dashboardUrl, "hive-prompt": data.sources.hivePromptUrl, policy: data.sources.bluefinPolicyUrl, issues: data.hive.manualIssuesUrl })) {
+    const link = document.getElementById(id);
+    if (url) link.href = url;
+    else link.hidden = true;
+  }
+  if (data.hive.state !== "online") document.getElementById("manual").style.display = "block";
+</script>
+</html>

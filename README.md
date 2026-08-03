@@ -174,6 +174,18 @@ session start. Instead, the agent is instructed to read the cloned repo's
 `docs/skills/index.json` and open only the matching `entry_point`. This is
 model-driven, not guaranteed. Treat it as best effort.
 
+**Bluefin Operations Tactical Board.** Ask Goose to use
+`show_bluefin_operations` to open the read-only Tactical Board. It shows
+canonical Hive contributor status, local Hive knowledge freshness, prompt
+provenance, and reviewer links to GitHub and the hosted Hive views.
+
+The board cannot control Hive, choose work, inspect tmux, expose credentials,
+or report review/merge status. When Hive is unavailable, Manual Mode links to
+GitHub's project-wide open issues so a human can choose work directly; it
+does not list, filter, rank, or assign issues. The Bluefin contributor policy
+has an **Improve this prompt** link to
+[`image/config/local-agent-policy.md`](image/config/local-agent-policy.md).
+
 **Git hooks.** Hooks ship at `/opt/bluefin/git-hooks` and are wired through a
 global `core.hooksPath`. They are ergonomics only: `git commit --no-verify`
 bypasses them entirely. Deterministic enforcement is GitHub rulesets and

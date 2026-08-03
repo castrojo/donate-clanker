@@ -151,6 +151,13 @@ RUN mkdir -p /opt/bluefin/goose/config /opt/bluefin/goose/data /opt/bluefin/goos
 COPY --chown=1000:1000 image/config/goose.yaml /opt/bluefin/goose/config/config.yaml
 COPY image/config/local-agent-policy.md /opt/bluefin/local-agent-policy.md
 
+# Bluefin Operations is a local stdio MCP App. It is started only by Goose
+# when requested, so it adds no daemon or lifecycle outside the session.
+COPY image/bluefin-operations/package.json image/bluefin-operations/package-lock.json /opt/bluefin/bluefin-operations/
+RUN npm --prefix /opt/bluefin/bluefin-operations ci --omit=dev \
+    && chown -R 1000:1000 /opt/bluefin/bluefin-operations
+COPY --chown=1000:1000 image/bluefin-operations/ /opt/bluefin/bluefin-operations/
+
 # Git hooks, wired via a global core.hooksPath by the entrypoint. Ergonomics
 # only -- `git commit --no-verify` bypasses every one of them.
 COPY --chmod=0755 image/git-hooks/ /opt/bluefin/git-hooks/
