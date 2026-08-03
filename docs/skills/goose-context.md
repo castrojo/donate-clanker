@@ -38,6 +38,9 @@ Do not use this for Hive task selection, delivery, or tmux lifecycle changes.
 1. Keep image-owned configuration under `GOOSE_PATH_ROOT`, not Hive's rewritten default path.
 2. Use global skills, then consult the cloned repository's task-specific catalog.
 3. Use Context7 only for current external documentation; otherwise use repository evidence.
+4. Keep the contributor profile at `GOOSE_MODE=auto`: Hive injects prompts by
+   keystroke, so a permission dialog blocks the session. Treat a restricted
+   `DONATE_CLANKER_GH_TOKEN` as the compensating control.
 
 ### GOOSE_PATH_ROOT is not optional
 

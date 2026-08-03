@@ -79,7 +79,7 @@ tool_env := env("TOOL", "")
 hive_repo_url := "https://github.com/kubestellar/hive"
 # origin/v2 via `git ls-remote --heads https://github.com/kubestellar/hive v2`
 # on 2026-07-29.
-hive_commit := "e73f9c6cd650ed50fff22f5d5ac232bd8b7f434e"
+hive_commit := "835448c3cbef9f06d34dd3802548e1d1e16dbd2f"
 vm_runner_image := env("DONATE_CLANKER_VM_RUNNER_IMAGE", "")
 vm_raw_image := env("DONATE_CLANKER_VM_RAW", "")
 vm_version := env("DONATE_CLANKER_VM_VERSION", "25.08.14")

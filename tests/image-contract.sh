@@ -76,6 +76,14 @@ require image/Containerfile \
   'WORKDIR /home/dev' \
   'ENTRYPOINT ["/usr/local/bin/donate-clanker-entrypoint"]'
 
+# Host setup and the image relay must speak the same Hive contributor protocol.
+launcher_hive_pin="$(sed -n 's/^hive_commit := "\([0-9a-f]\{40\}\)"$/\1/p' just/61-donate-clanker.just)"
+image_hive_pin="$(sed -n 's/^ARG HIVE_COMMIT=\([0-9a-f]\{40\}\)$/\1/p' image/Containerfile)"
+if [[ -z "$launcher_hive_pin" || "$launcher_hive_pin" != "$image_hive_pin" ]]; then
+  echo "::error::launcher and image Hive pins must match"
+  fail=1
+fi
+
 # No host engine sockets or unrelated runtime glue may enter the image.
 forbid image/Containerfile \
   '/var/run/docker.sock' \

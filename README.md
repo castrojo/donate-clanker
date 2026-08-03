@@ -100,14 +100,20 @@ podman exec -it <container> tmux attach -t contributor
 
 ## Reviewing
 
-For a Bluefin review, load `/bluefin-review` after the assigned repository is
-available. To inspect earlier output, enter tmux copy-mode with `Ctrl-b [`;
+From a shell in the assigned repository, run `bluefin-review [range]`. It is
+a compact header over Goose's native `goose review` command; it is not a Goose
+slash command. To inspect earlier output, enter tmux copy-mode with `Ctrl-b [`;
 PageUp scrolls, tmux search finds text, and `q` returns to the live pane.
 Copy-mode only changes your view; Hive still owns task and output handling.
 
 ## Configuration
 
 All configuration is environment variables read at launch.
+
+The attended contributor runtime uses Goose `auto` tool mode. This intentionally
+avoids keystroke-injected permission prompts, but allows all tools available to
+the contributor's scoped credentials. Use a restricted `DONATE_CLANKER_GH_TOKEN`
+when that scope is too broad.
 
 | Variable | Purpose |
 |---|---|
