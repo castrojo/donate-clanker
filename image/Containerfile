@@ -101,6 +101,7 @@ RUN set -eu; \
 # which the base already provides for our archive extraction.
 COPY --chmod=0755 image/bin/cmp /usr/local/bin/cmp
 COPY --chmod=0755 image/bin/find /usr/local/bin/find
+COPY --chmod=0755 image/bin/bluefin-review /usr/local/bin/bluefin-review
 RUN set -eu; \
     printf 'same\n' > /tmp/cmp-left; \
     cp /tmp/cmp-left /tmp/cmp-right; \
@@ -151,13 +152,6 @@ RUN mkdir -p /opt/bluefin/goose/config /opt/bluefin/goose/data /opt/bluefin/goos
     && chown -R 1000:1000 /opt/bluefin/goose
 COPY --chown=1000:1000 image/config/goose.yaml /opt/bluefin/goose/config/config.yaml
 COPY image/config/local-agent-policy.md /opt/bluefin/local-agent-policy.md
-
-# Bluefin Operations is a local stdio MCP App. It is started only by Goose
-# when requested, so it adds no daemon or lifecycle outside the session.
-COPY image/bluefin-operations/package.json image/bluefin-operations/package-lock.json /opt/bluefin/bluefin-operations/
-RUN npm --prefix /opt/bluefin/bluefin-operations ci --omit=dev \
-    && chown -R 1000:1000 /opt/bluefin/bluefin-operations
-COPY --chown=1000:1000 image/bluefin-operations/ /opt/bluefin/bluefin-operations/
 
 # Git hooks, wired via a global core.hooksPath by the entrypoint. Ergonomics
 # only -- `git commit --no-verify` bypasses every one of them.

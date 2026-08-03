@@ -21,6 +21,12 @@
 # explicitly accepts the contributor's scoped runtime tools.
 GOOSE_MODE: auto
 
+# Goose CLI uses bat themes for markdown and code syntax. Keep the regular
+# terminal colors under the user's terminal emulator, but make agent output
+# Catppuccin Mocha without requiring per-user configuration.
+GOOSE_CLI_THEME: dark
+GOOSE_CLI_DARK_THEME: "Catppuccin Mocha"
+
 # Goose asks an interactive yes/no telemetry question on first run. Hive drives
 # the CLI by simulated keystrokes, so that prompt blocks the agent forever
 # waiting for an answer nobody is there to give. Answer it here, up front.
@@ -31,22 +37,15 @@ GOOSE_TELEMETRY_ENABLED: false
 # dominate the context window. Keep review evidence bounded instead.
 GOOSE_MAX_TOOL_RESPONSE_SIZE: 20000
 
+# Keep complete diff and source blocks visible during reviews. Tool responses
+# remain bounded above; this only disables Goose's display-line truncation.
+GOOSE_NO_CODE_TRUNCATION: true
+
 # Summarise rather than prompt when the window fills; `goose run` already
 # defaults to this, but interactive sessions otherwise stop and ask.
 GOOSE_CONTEXT_STRATEGY: summarize
 
 extensions:
-  bluefin_operations:
-    type: stdio
-    name: bluefin_operations
-    enabled: true
-    bundled: false
-    cmd: node
-    args: ["/opt/bluefin/bluefin-operations/server.js"]
-    timeout: 30
-    description: "Show the read-only Bluefin Operations Tactical Board."
-    envs: {}
-    env_keys: []
   context7:
     type: streamable_http
     name: context7

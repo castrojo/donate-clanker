@@ -61,13 +61,11 @@ require image/Containerfile \
   'https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/config/backends.conf' \
   '/usr/local/bin/goose run --help >/dev/null' \
   'image/config/goose.yaml /opt/bluefin/goose/config/config.yaml' \
-  'image/bluefin-operations/package.json image/bluefin-operations/package-lock.json /opt/bluefin/bluefin-operations/' \
-  'npm --prefix /opt/bluefin/bluefin-operations ci --omit=dev' \
-  'image/bluefin-operations/ /opt/bluefin/bluefin-operations/' \
   'COPY --chmod=0755 image/git-hooks/ /opt/bluefin/git-hooks/' \
   'COPY --chmod=0755 image/hive-entrypoint.d/ /etc/hive/entrypoint.d/' \
   'COPY --chmod=0755 image/bin/cmp /usr/local/bin/cmp' \
   'COPY --chmod=0755 image/bin/find /usr/local/bin/find' \
+  'COPY --chmod=0755 image/bin/bluefin-review /usr/local/bin/bluefin-review' \
   'image/terminfo/xterm-256color.src /tmp/xterm-256color.src' \
   'tic -x -o /usr/share/terminfo /tmp/xterm-256color.src' \
   'https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/docs/skills/index.json' \
@@ -111,10 +109,6 @@ forbid scripts/generate-skills.py \
 # ~/.config/goose/config.yaml on every start. It must not pin a provider or a
 # model: the launcher passes those through from the contributor's own account.
 require image/config/goose.yaml \
-  'bluefin_operations:' \
-  'cmd: node' \
-  '"/opt/bluefin/bluefin-operations/server.js"' \
-  'bundled: false' \
   'type: streamable_http' \
   'name: context7' \
   'enabled: true' \
