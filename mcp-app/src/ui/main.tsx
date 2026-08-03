@@ -25,6 +25,10 @@ const INITIAL_REASON = 'waiting for the evidence bridge';
 const FACTORY_POLICY_URL =
   'https://github.com/projectbluefin/donate-clanker/blob/main/image/config/local-agent-policy.md';
 const HIVE_DASHBOARD_URL = 'https://hive.projectbluefin.io/';
+const COMPLETION_EVIDENCE_UNAVAILABLE = unknown<string>(
+  'hive',
+  'completion evidence is unavailable from the current source model',
+);
 
 type JsonRpcResult = {
   content?: Array<{ type?: string; text?: string }>;
@@ -486,13 +490,10 @@ function OpsControlPanel(): ReactNode {
           </EvidenceCell>
         </LedgerPanel>
 
-        <LedgerPanel eyebrow="Reconciliation" title="Hive-complete vs GitHub truth">
+        <LedgerPanel eyebrow="Reconciliation" title="Completion evidence unavailable">
           <div className="reconciliation">
-            <EvidenceCell label="Hive-complete" state={snapshot.hive.connectivity}>
-              <FactValue
-                state={snapshot.hive.connectivity}
-                render={() => 'Self-reported workflow completion only'}
-              />
+            <EvidenceCell label="Completion evidence" state={COMPLETION_EVIDENCE_UNAVAILABLE}>
+              <FactValue state={COMPLETION_EVIDENCE_UNAVAILABLE} />
             </EvidenceCell>
             <EvidenceCell label="GitHub truth" state={snapshot.github.pullRequests}>
               <FactValue
@@ -502,8 +503,8 @@ function OpsControlPanel(): ReactNode {
             </EvidenceCell>
           </div>
           <p className="reconciliation__note">
-            VM guests have no GitHub identity mapping. Hive completion can precede
-            GitHub-visible state; pull requests, checks, reviews, and merges remain GitHub truth.
+            GitHub merge and review state are distinct GitHub facts. VM guests lack GitHub
+            identity mapping, so the current source model cannot establish completion.
           </p>
         </LedgerPanel>
 

@@ -29,10 +29,20 @@ function validIdentifier(value: string | undefined): value is string {
   return Boolean(value && /^[A-Za-z0-9_.-]+$/.test(value));
 }
 
+function selectedApiToken(environment: Environment): string | undefined {
+  return (
+    environment.DONATE_CLANKER_GH_TOKEN?.trim() ||
+    environment.GH_TOKEN?.trim() ||
+    undefined
+  );
+}
+
+export function githubAuthAvailable(environment: Environment = runtimeEnvironment()): boolean {
+  return Boolean(selectedApiToken(environment));
+}
+
 function apiToken(): string | undefined {
-  const environment = runtimeEnvironment();
-  const token = environment.DONATE_CLANKER_GH_TOKEN ?? environment.GH_TOKEN;
-  return token?.trim() || undefined;
+  return selectedApiToken(runtimeEnvironment());
 }
 
 function requestHeaders(): HeadersInit {

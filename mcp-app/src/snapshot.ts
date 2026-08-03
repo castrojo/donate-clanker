@@ -3,7 +3,7 @@ import type {
   OpsSnapshot,
   SnapshotConfig,
 } from './contracts.js';
-import { collectGitHubEvidence } from './sources/github.js';
+import { collectGitHubEvidence, githubAuthAvailable } from './sources/github.js';
 import { collectHiveEvidence } from './sources/hive.js';
 
 type Environment = Record<string, string | undefined>;
@@ -38,8 +38,6 @@ export function snapshotConfigFromEnvironment(
     actionableCount: pathFromEnvironment(environment.HIVE_ACTIONABLE_COUNT_PATH),
     provenance: pathFromEnvironment(environment.HIVE_PROVENANCE_PATH),
   };
-  const githubToken = environment.DONATE_CLANKER_GH_TOKEN ?? environment.GH_TOKEN;
-
   return {
     hive: {
       baseUrl: environment.HIVE_API_BASE_URL,
@@ -51,7 +49,7 @@ export function snapshotConfigFromEnvironment(
         .split(',')
         .map((repository) => repository.trim())
         .filter(Boolean),
-      tokenAvailable: Boolean(githubToken?.trim()),
+      tokenAvailable: githubAuthAvailable(environment),
     },
   };
 }
