@@ -2,7 +2,8 @@
 
 `review` is a thin, foreground launcher for a self-owned
 FSDK-derived contributor image. It boots a QEMU VM or runs that image directly
-with Goose and Project Bluefin review context.
+with Goose (GitHub Copilot) or pi (DeepSeek) and Project Bluefin review
+context.
 
 It owns only VM boot, credential handoff, and review context. Hive owns the
 contributor protocol, task selection, the `contributor` tmux session, prompt
@@ -33,6 +34,7 @@ three public recipes:
 |---|---|
 | `just review` | Run the contributor through a foreground QEMU VM. |
 | `just review-container` | Run the contributor container directly, without a VM. |
+| `just pi-container` | Run pi + DeepSeek in a foreground container. |
 | `just review-doctor` | Perform read-only launch diagnostics. |
 
 Every run remains attached to its originating terminal. Ctrl-C or closing that
@@ -104,6 +106,38 @@ available. To inspect earlier output, enter tmux copy-mode with `Ctrl-b [`;
 PageUp scrolls, tmux search finds text, and `q` returns to the live pane.
 Copy-mode only changes your view; Hive still owns task and output handling.
 
+## pi + DeepSeek (alternative contributor)
+
+pi is an alternative coding agent that runs alongside Goose. It uses DeepSeek
+as the AI provider and supports 30+ extra providers including Anthropic,
+OpenAI, and Google Gemini. pi is extensible via skills, prompt templates and
+TypeScript extensions.
+
+```bash
+# Build and run the pi container
+podman build -f pi/image/Containerfile -t pi-deepseek:latest .
+DEEPSEEK_API_KEY=sk-... just pi-container
+```
+
+pi runs in a tmux session just like Goose — attach, detach, and Ctrl-C to stop.
+The container image derives from the same FSDK runner base as the Goose
+contributor image. See [`pi/README.md`](pi/README.md) for podman quadlet setup
+and DeepSeek model options.
+
+### pi quadlet (systemd service)
+
+For always-on use, pi runs as a podman quadlet:
+
+```bash
+cp pi/quadlet/pi.container ~/.config/containers/systemd/
+echo "DEEPSEEK_API_KEY=sk-..." > ~/.config/containers/pi.env
+systemctl --user daemon-reload
+systemctl --user start pi
+podman exec -it pi tmux attach -t pi
+```
+
+See [`pi/README.md`](pi/README.md) for full documentation.
+
 ## Configuration
 
 All configuration is read at launch.
@@ -119,7 +153,9 @@ All configuration is read at launch.
 | `GOOSE_PROVIDER` | Unset or `github_copilot`. |
 | `GOOSE_MODEL` | Optional GitHub Copilot model override. |
 | `GITHUB_COPILOT_TOKEN` | Optional Copilot credential override. |
-| `TOOL` | Agent backend selector; only `goose` is accepted. |
+| `TOOL` | Agent backend selector; `goose` (default) or `pi`. |
+| `REVIEW_PI_IMAGE` | pi container image; defaults to `pi-deepseek:latest`. |
+| `DEEPSEEK_API_KEY` | DeepSeek API key for pi (get one at platform.deepseek.com). |
 
 `~/.config/review/last-selections.env` stores launcher configuration
 state such as the last Goose/provider selection between runs.

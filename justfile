@@ -15,6 +15,7 @@
 #                     hand the terminal to the contributor agent.
 #   review-container  Run only the contributor container — no VM —
 #                     for quick local development. Also foreground.
+#   pi-container       Run pi + DeepSeek in a foreground container.
 #   review-doctor     Read-only preflight diagnostics. Starts nothing.
 #
 # ─────────────────────────────────────────────────────────────────────────
@@ -64,10 +65,10 @@
 # repository root. Persistent state is limited to launcher configuration; the
 # VM runner receives only its per-run control/overlay directory, never a
 # workspace or host home/configuration mount.
-# Goose is the only agent backend. There is no local inference, no model
-# profile catalogue, and no multi-CLI auto-detection: one backend means one
-# readiness check and one fix-it message when it fails.
-tool_order := "goose"
+# Goose is the primary agent backend, pi is the alternative contributor.
+# There is no local inference, no model profile catalogue, and no
+# multi-CLI auto-detection: each backend has its own readiness check.
+tool_order := "goose pi"
 
 # TOOL is read from the environment so 'TOOL=goose just review'
 # works as documented — 'just' recipe parameters are positional, not
@@ -99,6 +100,12 @@ vm_version := env("REVIEW_VM_VERSION", "25.08.14")
 # 'sha-' tag or digest.
 contributor_image := env("REVIEW_CONTRIBUTOR_IMAGE", "ghcr.io/projectbluefin/review:stable")
 
+# pi + DeepSeek container image. Built from pi/image/Containerfile.
+# Defaults to a local tag; set REVIEW_PI_IMAGE to override.
+pi_contributor_image := env("REVIEW_PI_IMAGE", "pi-deepseek:latest")
+# pi supported models (from `pi --list-models deepseek`).
+pi_default_model := "deepseek-v4-flash"
+
 # Shared bash, 'eval''d at the top of every recipe script that needs it:
 # host preflight, Goose selection, and the pinned Hive checkout. Keeping
 # this in one place instead of duplicating it per-recipe is the only
@@ -120,6 +127,7 @@ print_missing_hive_setup_guidance() {
 tool_installed() {
   case "$1" in
     goose) command -v goose &>/dev/null ;;
+    pi)    command -v pi &>/dev/null ;;
     *)     return 1 ;;
   esac
 }
@@ -128,11 +136,17 @@ tool_authenticated() {
   # passes it straight through to the guest; otherwise Goose's own config
   # must name a provider. A GitHub login alone is deliberately NOT enough:
   # Goose still needs a provider selected before it can talk to a model.
+  # For pi, DEEPSEEK_API_KEY in the environment is the credential check.
   case "$1" in
     goose)
       [[ -n "${GOOSE_PROVIDER:-}" ]] && return 0
       local cfg="${HOME}/.config/goose/config.yaml"
       [[ -s "$cfg" ]] && grep -Eq '^[[:space:]]*(GOOSE_PROVIDER|provider):[[:space:]]*[^[:space:]#]' "$cfg"
+      ;;
+    pi)
+      [[ -n "${DEEPSEEK_API_KEY:-}" ]] && return 0
+      [[ -n "${PI_API_KEY:-}" ]] && return 0
+      return 1
       ;;
     *) return 1 ;;
   esac
@@ -150,23 +164,60 @@ require_copilot_provider() {
 tool_fixit_hint() {
   case "$1" in
     goose) echo "Run: goose configure, select GitHub Copilot, and complete the device flow." ;;
+    pi)    echo "Set DEEPSEEK_API_KEY in your environment or pass it at container launch." ;;
     *)     echo "Unknown tool: $1" ;;
   esac
 }
 tool_install_hint() {
   case "$1" in
     goose) echo "Install: https://github.com/block/goose/releases" ;;
+    pi)    echo "Install: npm install -g @earendil-works/pi-coding-agent, or run in the pi container." ;;
     *)     echo "" ;;
   esac
 }
 require_goose_backend() {
   # TOOL exists only for compatibility with the documented invocation; the
-  # single supported value is the single supported backend.
+  # supported values are goose (default) and pi.
   local requested="${1:-}"
   [[ -z "$requested" || "$requested" == "goose" ]] && return 0
-  echo "ERROR: TOOL=${requested} is not supported — review runs Goose only." >&2
-  echo "  Unset TOOL, or pass TOOL=goose." >&2
+  echo "ERROR: TOOL=${requested} is not supported — review runs Goose (default) or pi." >&2
+  echo "  Unset TOOL, pass TOOL=goose, or pass TOOL=pi." >&2
   return 1
+}
+require_pi_backend() {
+  local requested="${1:-}"
+  [[ "$requested" == "pi" ]] && return 0
+  [[ -n "$requested" ]] && { echo "ERROR: TOOL=${requested} is not recognized for pi-container." >&2; return 1; }
+  return 0
+}
+resolve_deepseek_key() {
+  # pi reads DEEPSEEK_API_KEY from the environment automatically.
+  # The host supplies it at launch; check it is available.
+  DEEPSEEK_KEY="${DEEPSEEK_API_KEY:-}"
+  [[ -n "$DEEPSEEK_KEY" ]] && return 0
+  DEEPSEEK_KEY="${PI_API_KEY:-}"
+  return 0
+}
+report_missing_deepseek_key() {
+  echo "! no DeepSeek API key found; the agent cannot start." >&2
+  echo "  Set DEEPSEEK_API_KEY in your environment before launching." >&2
+  echo "  Get a key at: https://platform.deepseek.com/api_keys" >&2
+  return 0
+}
+pi_preflight_agent() {
+  # pi runs inside its own container, so the host only needs podman
+  # and the container image. The entrypoint handles the rest.
+  command -v podman &>/dev/null || {
+    echo "ERROR: Podman is required to run the pi container." >&2
+    echo "  Install Podman, then re-run." >&2
+    return 1
+  }
+  resolve_deepseek_key
+  if [[ -z "${DEEPSEEK_KEY:-}" ]]; then
+    report_missing_deepseek_key
+    return 1
+  fi
+  return 0
 }
 preflight_agent() {
   # Exactly one ERROR line per failure, each with the command that fixes it.
@@ -967,6 +1018,99 @@ review-container:
     echo "  Stop any time with Ctrl-C — that is the only way it ends."
     exec "${CONTAINER_ARGS[@]}"
 
+# Run pi in a foreground container — no VM, no Hive, just the coding agent.
+# pi runs in a tmux session with DeepSeek as the default provider.
+# The terminal belongs to the agent until you stop it. Ctrl-C stops.
+#
+# The pi image is built from pi/image/Containerfile and must be built first:
+#     podman build -f pi/image/Containerfile -t pi-deepseek:latest .
+# Usage: just pi-container
+#        DEEPSEEK_API_KEY=sk-... just pi-container
+pi-container:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    {{shared_functions}}
+    TOOL="{{tool_env}}"
+    PI_DEFAULT_MODEL="{{pi_default_model}}"
+
+    CFG_DIR="${HOME}/.config/review"
+    LAST_FILE="${CFG_DIR}/last-selections.env"
+    mkdir -p "${CFG_DIR}"
+
+    require_pi_backend "$TOOL"
+    pi_preflight_agent
+
+    CONTAINER_NAME="pi-container"
+    PI_IMAGE="{{pi_contributor_image}}"
+    require_no_running_instance "$CONTAINER_NAME"
+
+    # Ensure the pi image is available. Try: local build tag, then the
+    # registry tag (once published), then fall back to building it.
+    PI_IMAGE_AVAILABLE=false
+    if contributor_image_available "$PI_IMAGE"; then
+      PI_IMAGE_AVAILABLE=true
+    elif [[ -f pi/image/Containerfile ]]; then
+      echo "Building pi container image from pi/image/Containerfile..."
+      if podman build -f pi/image/Containerfile -t pi-deepseek:latest .; then
+        PI_IMAGE="pi-deepseek:latest"
+        PI_IMAGE_AVAILABLE=true
+      fi
+    fi
+    [[ "$PI_IMAGE_AVAILABLE" == true ]] || {
+      echo "ERROR: cannot obtain the pi container image." >&2
+      echo "  Build it: podman build -f pi/image/Containerfile -t pi-deepseek:latest ." >&2
+      echo "  Or set REVIEW_PI_IMAGE to a published image reference." >&2
+      exit 1
+    }
+
+    # Load saved pi model preference.
+    LAST_PI_MODEL=""
+    [[ -f "${LAST_FILE}" ]] && source "$LAST_FILE"
+
+    PI_MODEL="${PI_MODEL:-${LAST_PI_MODEL:-$PI_DEFAULT_MODEL}}"
+    if gum_can_prompt && [[ -z "${PI_MODEL_OVERRIDE:-}" ]]; then
+      PI_MODEL="$(gum input --value "${PI_MODEL}" --placeholder "e.g. deepseek-v4-flash" --header "pi model (default: ${PI_DEFAULT_MODEL}):")"
+      PI_MODEL="${PI_MODEL:-$PI_DEFAULT_MODEL}"
+    fi
+
+    # Persist model selection.
+    printf 'LAST_PI_MODEL=%q\n' "$PI_MODEL" > "$LAST_FILE"
+
+    PI_THINKING="${PI_THINKING:-}"
+    if gum_can_prompt && [[ -z "${PI_THINKING:-}" ]]; then
+      PI_THINKING="$(gum choose --header "pi thinking level:" off minimal low medium high)" || true
+    fi
+
+    CONTAINER_ARGS=(
+      podman run --rm --interactive --tty --replace --name "$CONTAINER_NAME"
+      --env "PI_PROVIDER=deepseek"
+      --env "PI_MODEL=${PI_MODEL}"
+    )
+    [[ -n "$PI_THINKING" ]] && CONTAINER_ARGS+=(--env "PI_THINKING=${PI_THINKING}")
+
+    # DeepSeek API key — pass by env var name, not value, per review convention.
+    export DEEPSEEK_API_KEY="${DEEPSEEK_KEY}"
+    CONTAINER_ARGS+=(--env DEEPSEEK_API_KEY)
+    echo "✓ DeepSeek API key passed to the agent."
+
+    # Optional GitHub token for gh operations.
+    resolve_gh_token
+    if [[ -n "${GH_TOKEN_VALUE:-}" ]]; then
+      export GH_TOKEN="$GH_TOKEN_VALUE"
+      CONTAINER_ARGS+=(--env GH_TOKEN)
+      report_gh_token_blast_radius "${GH_TOKEN_SOURCE}"
+    else
+      report_missing_gh_token
+    fi
+
+    CONTAINER_ARGS+=("$PI_IMAGE")
+
+    echo "✓ starting pi container (no VM, provider: deepseek, model: ${PI_MODEL})."
+    echo "  The entrypoint attaches to the 'pi' tmux session for you."
+    echo "  From a second terminal: podman exec -it ${CONTAINER_NAME} tmux attach -t pi"
+    echo "  Stop any time with Ctrl-C — that is the only way it ends."
+    exec "${CONTAINER_ARGS[@]}"
+
 # Preflight check: is this machine actually ready for 'just review'?
 # Never starts the VM or the container — read-only diagnostics only.
 review-doctor:
@@ -1111,6 +1255,32 @@ review-doctor:
     fi
     echo ""
 
+    echo "=== Agent backend (pi + DeepSeek) ==="
+    DOCTOR_PI_IMAGE="{{pi_contributor_image}}"
+    if contributor_image_available "$DOCTOR_PI_IMAGE"; then
+      echo "  ✓ pi container image is resolvable: ${DOCTOR_PI_IMAGE}"
+      pass=$((pass+1))
+    elif [[ -f pi/image/Containerfile ]]; then
+      echo "  ! pi container image not found; Containerfile is present and can be built"
+      echo "    Build it: podman build -f pi/image/Containerfile -t pi-deepseek:latest ."
+    else
+      echo "  ✗ pi container image cannot be resolved: ${DOCTOR_PI_IMAGE}"
+      echo "    Build it: podman build -f pi/image/Containerfile -t pi-deepseek:latest ."
+      echo "    Or set REVIEW_PI_IMAGE to a published image reference."
+      fail=$((fail+1))
+    fi
+    resolve_deepseek_key
+    if [[ -n "${DEEPSEEK_KEY:-}" ]]; then
+      echo "  ✓ a DeepSeek API key is available (not shown)"
+      pass=$((pass+1))
+    else
+      echo "  ✗ no DeepSeek API key is available"
+      echo "    Set DEEPSEEK_API_KEY in your environment."
+      echo "    Get a key at: https://platform.deepseek.com/api_keys"
+      fail=$((fail+1))
+    fi
+    echo ""
+
     echo "=== Copilot credential ==="
     resolve_copilot_token
     if [[ -n "${COPILOT_TOKEN:-}" ]]; then
@@ -1145,9 +1315,9 @@ review-doctor:
       echo "  ✓ ${HIVE_CONTRIBUTOR_ENV} exists"
       pass=$((pass+1))
       DOCTOR_BACKEND="$(hive_contributor_backend "$HIVE_CONTRIBUTOR_ENV")"
-      if [[ -n "$DOCTOR_BACKEND" && "$DOCTOR_BACKEND" != "goose" ]]; then
-        echo "  ! ${HIVE_CONTRIBUTOR_ENV} says AGENT_BACKEND=${DOCTOR_BACKEND}, but review always launches goose."
-        echo "    Harmless — the launcher passes AGENT_BACKEND=goose itself — but stale."
+      if [[ -n "$DOCTOR_BACKEND" && "$DOCTOR_BACKEND" != "goose" && "$DOCTOR_BACKEND" != "pi" ]]; then
+        echo "  ! ${HIVE_CONTRIBUTOR_ENV} says AGENT_BACKEND=${DOCTOR_BACKEND}, but review always launches goose or pi."
+        echo "    Harmless — the launcher passes AGENT_BACKEND itself — but stale."
         echo "    Edit that line yourself if you want the file to match; review will not touch it."
       fi
     else

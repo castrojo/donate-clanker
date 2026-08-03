@@ -1,0 +1,66 @@
+# pi + DeepSeek Hive contributor quadlet
+#
+# Runs pi as an ongoing Hive contributor, receiving tasks from the hosted
+# Project Bluefin Hive instance. pi connects via the Hive contributor
+# protocol and runs deepseek-v4-flash as the default model.
+#
+# Prerequisites:
+#   1. Build the image: podman build -f pi/image/Containerfile -t pi-deepseek:latest .
+#   2. Register with Hive: the hosted instance issues a registration token
+#   3. Set credentials in ~/.config/containers/pi.env
+#
+# Install:
+#   cp pi/quadlet/pi.container ~/.config/containers/systemd/
+#   systemctl --user daemon-reload
+#
+# Start:   systemctl --user start pi
+# Attach:  podman exec -it pi tmux attach -t contributor
+# Logs:    journalctl --user -u pi.service -f
+# Stop:    systemctl --user stop pi
+
+[Container]
+Image=pi-deepseek:latest
+ContainerName=pi
+HostName=pi
+
+# Credentials — put secrets in a separate env file, not on the command line.
+EnvironmentFile=%h/.config/containers/pi.env
+
+# ── Hive contributor configuration ──────────────────────────────────────
+# When HIVE_HUB + HIVE_REGISTRATION_TOKEN are set, the entrypoint
+# auto-detects Hive mode and runs contributor-agent.sh instead of
+# standalone pi.
+
+# Hosted Project Bluefin Hive instance.
+Environment=HIVE_HUB=wss://hosted-projectbluefin-knuckle-gjvq.hive.kubestellar.io/contribute
+
+# Registration token from Hive setup (set in the env file).
+# HIVE_REGISTRATION_TOKEN is read from the EnvironmentFile above.
+
+# ── Agent configuration ─────────────────────────────────────────────────
+Environment=AGENT_BACKEND=pi
+Environment=PI_PROVIDER=deepseek
+Environment=PI_MODEL=deepseek-v4-flash
+
+# ── Volumes ─────────────────────────────────────────────────────────────
+# Session persistence across container restarts.
+Volume=%h/.local/share/pi/sessions:/home/dev/.pi/agent/sessions:Z
+Volume=%h/.local/share/pi/skills:/home/dev/.pi/agent/skills:Z
+
+# Hive config — needed for contributor.env (registration token, etc.).
+Volume=%h/.config/hive:/home/dev/.config/hive:ro,Z
+
+# Optional: mount git config and gh CLI for fork/PR operations.
+# Volume=%h/.gitconfig:/home/dev/.gitconfig:ro,Z
+# Volume=%h/.config/gh:/home/dev/.config/gh:ro,Z
+
+[Service]
+# Restart on failure to keep the contributor online.
+Restart=on-failure
+RestartSec=10
+
+# Give the relay time to drain.
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

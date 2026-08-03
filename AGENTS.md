@@ -17,6 +17,11 @@ Keep this repository small. Do not add a daemon, service, background
 lifecycle, persistent state beyond launcher configuration, task-selection
 logic, or a second implementation of the launcher.
 
+pi is a parallel contributor agent. Its image (`pi/image/`), quadlet
+(`pi/quadlet/`), and recipes follow the same foreground-only convention
+as the Goose launcher. Do not add a second Hive contributor protocol
+implementation for pi; hanthor/hive v2 already includes pi in backends.conf.
+
 `mcp-app/` is a separate, read-only Goose Desktop presentation layer. It may
 observe evidence from Hive and GitHub through its foreground stdio MCP server,
 but it must never select work, control Hive, read tmux, expose credentials,
@@ -48,7 +53,7 @@ the Hive-managed path.
 ## Permitted changes
 
 Agents may change `justfile`, `mcp-app/`, `image/`,
-`tests/`, `docs/`, `README.md`, `AGENTS.md`, and `.github/workflows/`.
+`pi/`, `tests/`, `docs/`, `README.md`, `AGENTS.md`, and `.github/workflows/`.
 
 Do not modify `ublue-os/*`, or commit generated `.agents/skills/` content.
 The generator is the artifact; `projectbluefin/common`'s

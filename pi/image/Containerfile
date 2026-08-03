@@ -1,0 +1,129 @@
+# pi + DeepSeek Hive contributor container.
+#
+# Derives from the same FSDK lab-runner base as the review contributor image.
+# Adds pi, Node.js, tmux, and the Hive contributor runtime from upstream
+# kubestellar/hive v4 (pi is a supported backend upstream). Connects to the
+# hosted Project Bluefin Hive instance for ongoing, task-driven contributions.
+#
+# FSDK runner digest (ghcr.io/projectbluefin/lab-runner:25.08)
+# resolved 2026-08-01.
+ARG FSDK_RUNNER_IMAGE=ghcr.io/projectbluefin/lab-runner@sha256:fe097bb3b85a126b9a16093fbc498b4b6fb7b24e0f74162ad3d91a402dcfa940
+ARG NODE_VERSION=24.18.1
+ARG TMUX_VERSION=3.7b
+
+# kubestellar/hive v4 commit (latest, pi backend is upstream).
+ARG HIVE_COMMIT=454ea77e40c652906108cc06de1068160336cc23
+
+FROM ${FSDK_RUNNER_IMAGE}
+
+USER root
+
+ARG NODE_VERSION
+ARG TMUX_VERSION
+ARG HIVE_COMMIT
+
+ENV PATH=/opt/node/bin:${PATH}
+
+# ── Node.js + tmux ─────────────────────────────────────────────────────
+# Same SHA-verified downloads as the review contributor image.
+RUN set -eu; \
+    arch="$(uname -m)"; \
+    case "$arch" in \
+      x86_64) \
+        node_arch=x64; \
+        node_sha='d6c664df3f3f61458e8c277585571328522d705166723a7c7823a9253a4d15a0'; \
+        tmux_arch=x86_64; \
+        tmux_sha='f85e6c1c412750a774eb3f370f33bad05fc726fb8b6a0b174ad6f0b6d954df58'; \
+        loader_dir=/lib64; \
+        loader_target=/usr/lib64/ld-linux-x86-64.so.2; \
+        loader_name=ld-linux-x86-64.so.2 ;; \
+      aarch64|arm64) \
+        node_arch=arm64; \
+        node_sha='7201e3a09dc825bac57867c81913e2b8f0ef87d04cb9082af4cda82f6ff3d88c'; \
+        tmux_arch=arm64; \
+        tmux_sha='b2955782695283fbc3682a2f77d65616f53b986ee3cf3d80618d3b1cb95b91a6'; \
+        loader_dir=/lib; \
+        loader_target=/usr/lib/ld-linux-aarch64.so.1; \
+        loader_name=ld-linux-aarch64.so.1 ;; \
+      *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
+    esac; \
+    mkdir -p "$loader_dir"; \
+    [ -e "${loader_dir}/${loader_name}" ] || ln -sf "$loader_target" "${loader_dir}/${loader_name}"; \
+    workdir="$(mktemp -d)"; \
+    trap 'rm -rf "$workdir"' EXIT; \
+    mkdir -p /usr/local/bin; \
+    curl --fail --location --show-error --silent \
+      "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" \
+      -o "$workdir/node.tar.xz"; \
+    printf '%s  %s\n' "$node_sha" "$workdir/node.tar.xz" | sha256sum -c -; \
+    python3 -c 'import pathlib, shutil, sys, tarfile; archive = pathlib.Path(sys.argv[1]); root = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:xz"); tf.extractall(root, filter="data"); tf.close(); node_dir = next(p for p in root.iterdir() if p.name.startswith("node-v") and p.is_dir()); target = root / "node"; target.exists() and shutil.rmtree(target); node_dir.rename(target)' "$workdir/node.tar.xz" /opt; \
+    curl --fail --location --show-error --silent \
+      "https://github.com/tmux/tmux-builds/releases/download/v${TMUX_VERSION}/tmux-${TMUX_VERSION}-linux-${tmux_arch}.tar.gz" \
+      -o "$workdir/tmux.tar.gz"; \
+    printf '%s  %s\n' "$tmux_sha" "$workdir/tmux.tar.gz" | sha256sum -c -; \
+    python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.rsplit("/", 1)[-1] == "tmux"); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/tmux.tar.gz" /usr/local/bin/tmux; \
+    node --version; \
+    tmux -V
+
+# ── pi ──────────────────────────────────────────────────────────────────
+RUN set -eu; \
+    npm install --global --ignore-scripts \
+      @earendil-works/pi-coding-agent@latest; \
+    pi --version
+
+# ── Hive contributor runtime (kubestellar/hive v4, pi is upstream) ─────
+# contributor-relay.sh uses Node with the 'ws' package for WebSocket comms.
+# Install ws to /opt/hive/node_modules and set NODE_PATH so the relay
+# can require('ws') regardless of the runtime user.
+ENV NODE_PATH=/opt/hive/node_modules
+RUN set -eu; \
+    mkdir -p /usr/local/etc/hive /etc/hive/restrictions /opt/hive; \
+    npm --prefix /opt/hive install --ignore-scripts ws@8.21.1; \
+    curl --fail --location --show-error --silent \
+      "https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/bin/contributor-agent.sh" \
+      -o /usr/local/bin/contributor-agent.sh; \
+    curl --fail --location --show-error --silent \
+      "https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/bin/contributor-relay.sh" \
+      -o /usr/local/bin/contributor-relay.sh; \
+    curl --fail --location --show-error --silent \
+      "https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/bin/agent-launch.sh" \
+      -o /usr/local/bin/agent-launch.sh; \
+    curl --fail --location --show-error --silent \
+      "https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/config/backends.conf" \
+      -o /usr/local/etc/hive/backends.conf; \
+    chmod 0755 /usr/local/bin/contributor-agent.sh \
+      /usr/local/bin/contributor-relay.sh \
+      /usr/local/bin/agent-launch.sh
+
+# ── Terminfo ────────────────────────────────────────────────────────────
+# The FSDK runner omits it. Compile xterm-256color so tmux works.
+COPY pi/image/terminfo/xterm-256color.src /tmp/xterm-256color.src
+RUN set -eu; \
+    if command -v tic >/dev/null 2>&1; then \
+      tic -x -o /usr/share/terminfo /tmp/xterm-256color.src; \
+    fi; \
+    rm -f /tmp/xterm-256color.src
+
+# ── Hosted knowledge hook (Bluefin hosted Hive) ──────────────────────────
+# Rewrites the knowledge export URL to use the authenticated v1 API.
+COPY pi/image/hosted-knowledge.sh /etc/hive/entrypoint.d/hosted-knowledge.sh
+RUN chmod 0755 /etc/hive/entrypoint.d/hosted-knowledge.sh
+
+# ── Runtime user ────────────────────────────────────────────────────────
+RUN set -eu; \
+    grep -q '^dev:' /etc/group || echo 'dev:x:1000:' >> /etc/group; \
+    grep -q '^dev:' /etc/passwd || echo 'dev:x:1000:1000:Developer:/home/dev:/usr/bin/bash' >> /etc/passwd; \
+    mkdir -p /home/dev/.pi/agent /home/dev/.config/hive /home/dev/.config/gh /run/hive-metrics; \
+    chown -R 1000:1000 /home/dev /run/hive-metrics
+
+# pi writable directories.
+RUN mkdir -p /home/dev/.pi/agent/sessions /home/dev/.pi/agent/skills \
+    && chown -R 1000:1000 /home/dev/.pi
+
+COPY pi/image/entrypoint.sh /usr/local/bin/pi-entrypoint
+RUN chmod 0755 /usr/local/bin/pi-entrypoint
+
+USER dev
+WORKDIR /home/dev
+ENV HOME=/home/dev
+ENTRYPOINT ["/usr/local/bin/pi-entrypoint"]

@@ -1,0 +1,50 @@
+# pi + DeepSeek Justfile
+#
+# Standalone recipes for building and running the pi container.
+# For the quadlet workflow, see pi/README.md.
+#
+# These recipes are separate from the root justfile's Goose recipes.
+# pi is a different agent with a different provider; it does not
+# participate in Hive contributor protocol.
+
+# Build the pi + DeepSeek container image.
+pi-build:
+    podman build -f pi/image/Containerfile -t pi-deepseek:latest .
+
+# Run pi in a foreground container.
+# Attaches you directly to pi's interactive terminal.
+# Ctrl-C stops it.
+pi:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    podman run -it --rm --name pi \
+      -v "$(pwd):/home/dev/work:Z" \
+      -e DEEPSEEK_API_KEY \
+      pi-deepseek:latest
+
+# Run pi in headless (one-shot) mode with a prompt.
+pi-run prompt:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    podman run --rm --name pi-run \
+      -v "$(pwd):/home/dev/work:Z" \
+      -e DEEPSEEK_API_KEY \
+      -e PI_MODE=headless \
+      -e "PI_PROMPT={{prompt}}" \
+      pi-deepseek:latest
+
+# Start pi as a podman quadlet (systemd service).
+# Requires the .container file in ~/.config/containers/systemd/
+pi-quadlet-install:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p ~/.config/containers/systemd ~/.config/containers
+    cp pi/quadlet/pi.container ~/.config/containers/systemd/
+    if [ ! -f ~/.config/containers/pi.env ]; then
+      echo "Create ~/.config/containers/pi.env with your DeepSeek API key:"
+      echo "  DEEPSEEK_API_KEY=sk-your-key-here"
+    fi
+    systemctl --user daemon-reload
+    echo "✓ pi quadlet installed. Start with: systemctl --user start pi"
+    echo "  Attach with:  podman exec -it pi tmux attach -t pi"
+    echo "  Logs:         journalctl --user -u pi.service -f"
