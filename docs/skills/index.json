@@ -117,6 +117,25 @@
       "doc_type": "runbook"
     },
     {
+      "id": "static-pr-queue",
+      "name": "static-pr-queue",
+      "one_line_purpose": "Publish a safe, static queue of public pull requests.",
+      "entry_point": "docs/skills/static-pr-queue.md",
+      "category": "ci-ops",
+      "status": "active",
+      "tags": [
+        "github",
+        "actions",
+        "queue",
+        "static",
+        "pullrequest"
+      ],
+      "description": "Publishes the public static PR queue without creating queue authority. Use when changing queue generation, ranking, artifacts, or refresh automation.",
+      "version": "1.0",
+      "last_updated": "2026-08-03",
+      "doc_type": "procedure"
+    },
+    {
       "id": "pr-workflow",
       "name": "pr-workflow",
       "one_line_purpose": "Open review pull requests that merge cleanly.",
