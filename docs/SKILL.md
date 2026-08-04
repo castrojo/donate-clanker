@@ -3,9 +3,12 @@
 After reading [`AGENTS.md`](../AGENTS.md) and the local
 [agentic model](factory/agentic-model.md), choose the one task-specific
 document below. Load only the matching skill.
+[`contribution-culture.md`](skills/contribution-culture.md) is the exception:
+it scopes every task, so read it alongside the matching skill.
 
 | Task | Skill |
 |---|---|
+| Scope a change, size a pull request, or address a maintainer | [`contribution-culture.md`](skills/contribution-culture.md) |
 | Change a launcher recipe, VM mode, or container-only mode | [`launcher.md`](skills/launcher.md) |
 | Investigate the contributor runtime, task delivery, or token lifetime | [`hive-runtime.md`](skills/hive-runtime.md) |
 | Investigate an assigned-task or connection problem | [`hive-triage.md`](skills/hive-triage.md) |

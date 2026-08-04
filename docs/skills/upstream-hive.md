@@ -101,6 +101,9 @@ issue.
    burden, so waiting for the real field is the cooperative choice.
 9. **Sign contributions if we send code.** Any pull request to Hive needs a
    `Signed-off-by:` trailer for their DCO check and a scope-matched title.
+   Keep it small and single-purpose, and disclose agent authorship in line
+   with their `ai-generated` label practice. Upstream maintainer attention is
+   the cost we are trying to lower, not spend.
 
 ## Red Flags
 

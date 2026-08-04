@@ -49,6 +49,14 @@ only when that PID is alive, in the same boot, and still names the container in
 Do not filter, skip, reorder, prioritize, or decline Hive assignments. Hive is
 the sole authority for task selection.
 
+This is a toil-reduction factory for under-maintained projects, not a feature
+factory. Repair what is broken and finish what a project already decided to
+do; do not add features, dependencies, configuration surfaces, or
+architecture, and size every change to be reviewable by a tired maintainer.
+When a task can only be completed by out-of-scope work, an evidenced written
+finding is the deliverable. See
+[`docs/skills/contribution-culture.md`](docs/skills/contribution-culture.md).
+
 Reporting downstream evidence upstream to `kubestellar/hive` is expected work,
 and filed issues are followed up rather than abandoned. Report observations,
 reproductions, and options; upstream owns the design decision and the triage

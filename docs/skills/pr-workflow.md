@@ -33,7 +33,10 @@ request in this repository.
    ```
 
 2. Open one logical change per pull request. Link its issue with `Closes #NNN`
-   when appropriate.
+   when appropriate. Size it for a tired maintainer: repair what is broken,
+   leave unrelated fixes for their own change, and never bundle a refactor,
+   feature, or new dependency with a fix. See
+   [`contribution-culture.md`](contribution-culture.md).
 3. Make the pull request title a Conventional Commit. Squash merging makes
    that title the permanent commit message.
 4. Update the matching skill document when behavior changes. Do not treat
@@ -96,6 +99,8 @@ gh api repos/<owner>/<repo>/commits/<sha> --jq '.commit.committer.date'
 - Pushing directly to `main`.
 - A non-Conventional pull request title.
 - Combining unrelated changes in one pull request.
+- Growing a diff because scoping it was harder than writing it.
+- Adding a feature, dependency, or refactor to a repair.
 - Omitting the Hive task trailer from assigned work.
 - Using `--no-verify` to bypass a real failure.
 - Reporting task completion before the required artifact exists.
