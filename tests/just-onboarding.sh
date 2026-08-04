@@ -644,13 +644,19 @@ run_recipe review GH_READY=1 REVIEW_VM_RUNNER_IMAGE= \
   REVIEW_TEST_SKIP_VM_FETCH=0 TEST_UNAME_M=x86_64 TEST_CURL_MODE=checksum-fail
 assert_nonzero_status "$STATUS" "a failed sidecar download must fail the launch"
 assert_contains "VM release checksum sidecar is not published yet" "$OUT"
-assert_file_contains "review-vm-25.08.14-x86_64.raw" "$curl_log"
+assert_file_contains "review-vm-25.08.15-x86_64.raw" "$curl_log"
+# fsdk-containers still publishes the pre-rename asset name. Fetching
+# 'review-vm-...' 404s, so the URL must carry the name the release actually has
+# while the local cache keeps our own review-vm-* name.
+assert_file_contains "releases/download/v25.08.15/donate-clanker-vm-25.08.15-x86_64.raw.zst" "$curl_log"
+assert_file_contains "releases/download/v25.08.15/donate-clanker-vm-25.08.15-x86_64.raw.sha256" "$curl_log"
+assert_file_not_contains "releases/download/v25.08.15/review-vm-" "$curl_log"
 assert_file_not_contains "25.08.13-x86_64.raw.zst" "$curl_log"
 assert_file_exists "$stale_raw"
-assert_file_not_exists "$state_dir/review-vm-25.08.14-x86_64.raw"
-assert_file_not_exists "$state_dir/review-vm-25.08.14-x86_64.raw.partial"
-assert_file_not_exists "$state_dir/review-vm-25.08.14-x86_64.raw.sha256"
-assert_file_not_exists "$state_dir/review-vm-25.08.14-x86_64.raw.sha256.partial"
+assert_file_not_exists "$state_dir/review-vm-25.08.15-x86_64.raw"
+assert_file_not_exists "$state_dir/review-vm-25.08.15-x86_64.raw.partial"
+assert_file_not_exists "$state_dir/review-vm-25.08.15-x86_64.raw.sha256"
+assert_file_not_exists "$state_dir/review-vm-25.08.15-x86_64.raw.sha256.partial"
 
 begin "fetch: a successful raw fetch leaves command substitution with only the raw path"
 rm -rf "$home/.local/state"
@@ -658,20 +664,20 @@ mkdir -p "$state_dir"
 reset_logs
 run_recipe review GH_READY=1 REVIEW_VM_RUNNER_IMAGE= \
   REVIEW_TEST_SKIP_VM_FETCH=0 TEST_UNAME_M=x86_64 TEST_CURL_MODE=fetch-success
-assert_file_exists "$state_dir/review-vm-25.08.14-x86_64.raw"
-assert_file_exists "$state_dir/review-vm-25.08.14-x86_64.raw.sha256"
+assert_file_exists "$state_dir/review-vm-25.08.15-x86_64.raw"
+assert_file_exists "$state_dir/review-vm-25.08.15-x86_64.raw.sha256"
 assert_not_contains "VM raw disk not found:" "$OUT"
-assert_contains "Fetching review VM 25.08.14 for x86_64..." "$OUT"
+assert_contains "Fetching review VM 25.08.15 for x86_64..." "$OUT"
 assert_contains "Decompressing VM image..." "$OUT"
 
 begin "verify: an incomplete exact cache entry is never reused"
 mkdir -p "$state_dir"
-raw_x86="$state_dir/review-vm-25.08.14-x86_64.raw"
-raw_arm="$state_dir/review-vm-25.08.14-aarch64.raw"
+raw_x86="$state_dir/review-vm-25.08.15-x86_64.raw"
+raw_arm="$state_dir/review-vm-25.08.15-aarch64.raw"
 printf 'x86 guest\n' >"$raw_x86"
 run_recipe review GH_READY=1 REVIEW_VM_RUNNER_IMAGE= TEST_UNAME_M=x86_64
 assert_nonzero_status "$STATUS" "an incomplete cache must not boot"
-assert_contains "cached VM 25.08.14 for x86_64 is incomplete or failed verification; refetching it" "$OUT"
+assert_contains "cached VM 25.08.15 for x86_64 is incomplete or failed verification; refetching it" "$OUT"
 assert_file_not_exists "$raw_x86"
 
 printf 'x86 guest\n' >"$raw_x86"
@@ -980,7 +986,7 @@ run_recipe review-doctor GH_READY=1 TEST_UNAME_M=aarch64 \
 assert_nonzero_status "$STATUS" "an unavailable aarch64 raw asset must fail doctor"
 assert_contains "aarch64 VM release artifact is unavailable" "$OUT"
 assert_contains "REVIEW_VM_RUNNER_IMAGE" "$OUT"
-assert_file_contains "review-vm-25.08.14-aarch64.raw.zst" "$curl_log"
+assert_file_contains "donate-clanker-vm-25.08.15-aarch64.raw.zst" "$curl_log"
 assert_eq "$(wc -c <"$qemu_log")" 0 "doctor must not start a VM"
 assert_file_not_contains "run --rm" "$runner_log"
 
@@ -1119,6 +1125,47 @@ fi
 # The recipe list is exactly: launch the VM, launch the container, diagnose.
 assert_eq "$(grep -cE '^review[a-z-]*:' "$code")" 3 \
   "expected exactly three recipes (review, -container, -doctor)"
+
+begin "static: upstream contribute-setup runs with upstream's own version-check opt-out"
+# Our Hive checkout is a pinned detached SHA on purpose. Upstream's private
+# 'check-version' recipe is a prerequisite of 'contribute-setup' and aborts
+# whenever HEAD != origin/v2, telling the user to
+# "export HIVE_SKIP_VERSION_CHECK=true". Without that flag, first-run
+# onboarding is guaranteed to fail the moment v2 moves past the pin.
+# shellcheck disable=SC2016 # the launcher source is matched literally
+grep -q 'HIVE_SKIP_VERSION_CHECK=true just --working-directory "\$HIVE_SRC_DIR"' "$code" ||
+  fail "upstream contribute-setup must run with HIVE_SKIP_VERSION_CHECK=true"
+if grep -nE '^[[:space:]]*export HIVE_SKIP_VERSION_CHECK' "$code"; then
+  fail "the version-check opt-out must be scoped to the one upstream invocation"
+fi
+# The pin itself stays load-bearing: no branch name may be executed.
+grep -q 'must be a full 40-character commit SHA' "$code" ||
+  fail "the Hive checkout must remain pinned to a full commit SHA"
+
+begin "static: the VM URL builder names the asset the release actually publishes"
+# projectbluefin/fsdk-containers never renamed its assets after this repository
+# became 'review', so 'review-vm-<version>-<arch>.raw.zst' 404s on every
+# release. Doctor and the fetch path must build the identical URL, or doctor
+# can pass while 'just review' 404s.
+grep -q "releases/download/v%s/donate-clanker-vm-%s-%s.raw.zst" "$code" ||
+  fail "the VM release URL must use the published donate-clanker-vm asset name"
+if grep -n 'releases/download/v%s/review-vm-' "$code"; then
+  fail "no release URL may use the unpublished review-vm asset name"
+fi
+assert_eq "$(grep -c 'releases/download/' "$code")" 1 \
+  "the release URL must be built in exactly one place"
+# shellcheck disable=SC2016 # the launcher source is matched literally
+grep -q 'VM_RELEASE_URL="$(vm_release_url "{{vm_version}}" "$VM_ARCH")"' "$code" ||
+  fail "doctor must report the same URL the fetch path builds"
+# shellcheck disable=SC2016 # the launcher source is matched literally
+grep -q 'vm_release_asset_available "{{vm_version}}" "$VM_ARCH"' "$code" ||
+  fail "doctor must probe the same version and architecture it reports"
+# Checksum verification stays mandatory whatever the asset is called.
+grep -q 'sha256sum -c' "$code" ||
+  fail "the VM raw disk must always be checksum-verified"
+# shellcheck disable=SC2016 # the launcher source is matched literally
+grep -q '\[\[ -f "$raw" && -f "${raw}.sha256" \]\] || return 1' "$code" ||
+  fail "verification must require the checksum sidecar"
 
 begin "static: no legacy backends survive in the launcher"
 for legacy in copilot_live_models 'Multiple AI CLIs' LAST_TOOL AGENT_MODEL=; do
