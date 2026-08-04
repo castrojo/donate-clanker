@@ -17,7 +17,7 @@
         "config"
       ],
       "description": "Keeps Goose configuration and global and repository skill routing available in the guest, and records that Context7 is Hive's hub-side capability the image must never configure. Use when Goose loses its config or misses a skill.",
-      "version": "1.8",
+      "version": "1.9",
       "last_updated": "2026-08-04",
       "doc_type": "reference"
     },
@@ -75,7 +75,7 @@
         "contribution"
       ],
       "description": "Defines how this repository reports evidence to kubestellar/hive and follows up on filed issues. Use before opening, commenting on, or responding to an upstream Hive issue or pull request.",
-      "version": "1.0",
+      "version": "1.1",
       "last_updated": "2026-08-04",
       "doc_type": "policy"
     },
@@ -133,8 +133,8 @@
         "foreground"
       ],
       "description": "Maintains the three foreground review recipes, VM and container-only launch paths, and credential boundaries. Use when editing justfile.",
-      "version": "1.7",
-      "last_updated": "2026-08-03",
+      "version": "1.8",
+      "last_updated": "2026-08-04",
       "doc_type": "runbook"
     },
     {

@@ -45,6 +45,11 @@ request in this repository.
    and a completion carrying a PR link starts a 168-hour cooldown; report
    completion only after the pull request or other required artifact is
    verifiable.
+7. Never add or remove a task-admission label on an issue or pull request —
+   including in this repository — to influence what work Hive assigns. Hive is
+   the sole authority for task selection, and relabelling to attract or shed an
+   assignment is task selection. See [`upstream-hive.md`](upstream-hive.md) for
+   the full rule and for upstream triage boundaries.
 
 ## Reconciling A Long-Lived Branch
 
@@ -94,6 +99,7 @@ gh api repos/<owner>/<repo>/commits/<sha> --jq '.commit.committer.date'
 - Omitting the Hive task trailer from assigned work.
 - Using `--no-verify` to bypass a real failure.
 - Reporting task completion before the required artifact exists.
+- Adding or removing a task-admission label to influence a Hive assignment.
 - Rebasing a long-lived branch onto `main` instead of merging `main` into it.
 - Resolving a conflicted file with `--ours` or `--theirs` when both sides
   carry changes worth keeping.

@@ -23,9 +23,28 @@ observe evidence from Hive and GitHub through its foreground stdio MCP server,
 but it must never select work, control Hive, read tmux, expose credentials,
 persist state, or poll.
 
-The public launcher is foreground-only: no `&`, `nohup`, `--detach`, systemd
-unit, or `podman run -d`. Ctrl-C is the stop mechanism. A hard-killed run may
-leave a container name behind; the next launch reclaims it with `--replace`.
+The public launcher is foreground-only. Every launch path must end in a
+process that is `exec`'d, or is the last foreground command whose exit status
+propagates verbatim: no `nohup`, `--detach`, systemd unit, or `podman run -d`,
+and no background job that outlives the run. Ctrl-C is the stop mechanism.
+
+That rule scopes how the launcher starts the VM or container; it is not a ban
+on `&` anywhere in the repository. Backgrounding is required where it is what
+preserves the guarantee. Bash defers a trap handler while it waits on a
+foreground child, so `image/entrypoint.sh` runs the contributor agent and
+`tmux attach-session` as background jobs it `wait`s on, keeping PID 1
+signal-responsive; a foreground attach swallowed SIGTERM for the whole session
+and forced podman's ten-second SIGKILL. The `justfile`'s one-shot bootstrap
+socket server is likewise a background job, reaped by an `EXIT/INT/TERM` trap.
+Do not "fix" either one.
+
+`podman run --rm -it` does not bind a container's lifetime to its client:
+`conmon` supervises the container, survives the client, and reparents to the
+user manager, so a hard-killed run can leave a fully running, ownerless,
+unreachable container rather than merely a name. Each launch therefore stamps
+`--label review.owner=<boot-id>:<client-pid>` and treats a container as owned
+only when that PID is alive, in the same boot, and still names the container in
+`/proc`. Anything else is an orphan and is reclaimed silently with `--replace`.
 
 Do not filter, skip, reorder, prioritize, or decline Hive assignments. Hive is
 the sole authority for task selection.
