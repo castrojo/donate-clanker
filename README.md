@@ -24,6 +24,8 @@ available through the installed root Justfile.
 
 ## Installing this into your own setup
 
+NOTE: WIP - you want to run this in projectbluefin/common: the container AUTOMOUNTS the repo's agentic skills in the container so that the project context is given to every client. This is important because this let's us make more things deterministic. The more docs and scripts we can put in this thing the easier it is for less capable models to do this work. Local models are VIABLE!
+
 For a checkout, run the recipes directly:
 
 ```bash
