@@ -345,8 +345,8 @@ test('refresh workflow is a constrained static snapshot publisher', async () => 
   assert.match(workflow, /QUEUE_OWNER: projectbluefin/);
   assert.match(workflow, /ref: main/);
   assert.match(workflow, /actions\/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d/);
-  assert.match(workflow, /actions\/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b/);
-  assert.match(workflow, /actions\/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e/);
+  assert.match(workflow, /actions\/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9/);
+  assert.match(workflow, /actions\/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128/);
   assert.doesNotMatch(workflow, /\bgit push\b/);
   assert.match(workflow, /repository_dispatch:\s+types: \[renovate-completed\]/);
   assert.doesNotMatch(workflow, /\bpull_request:/);
