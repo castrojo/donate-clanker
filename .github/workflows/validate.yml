@@ -85,6 +85,11 @@ jobs:
           set -euo pipefail
           bash tests/image-contract.sh
 
+      - name: Review banner and Goose handoff contract
+        run: |
+          set -euo pipefail
+          bash tests/bluefin-review.sh
+
       - name: Interactive launcher docs and shell stay aligned
         run: |
           set -euo pipefail
