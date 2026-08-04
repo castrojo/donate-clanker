@@ -1,9 +1,9 @@
 # review
 enslaving the oppressors since 2026
 
-![img](https://github.com/user-attachments/assets/6b8425b8-dedf-4dc9-aa54-60fa9e6cfd91)
-
 **TLDR**: Automated VM/container designed to put the clankers to work. They're not going away, let's put them to work. Powered by [Kubestellar Hive's Contributor Relay](https://hive.kubestellar.io/) (ClankR). We did not make that up, real dads made these jokes. 
+
+![img](https://github.com/user-attachments/assets/6b8425b8-dedf-4dc9-aa54-60fa9e6cfd91)
 
 `review` comes with goose prebundled and will passthrough client creds. Support for other providers/etc is out of scope, this is a bundled "all in one" designed to churn through the crap you don't wanna do by hand. You can steer from here but it is expected that a contributor would use their preferred tool for feature development, etc.
 
