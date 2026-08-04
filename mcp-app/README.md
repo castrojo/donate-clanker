@@ -57,3 +57,9 @@ to the UI, and never logs them.
 - It does not replace the launcher or its foreground-only behavior.
 - When an endpoint or payload shape is unsupported, the UI should show
   `unknown`, not invent a value.
+- The panel HTML is inlined into `dist/server.js` at build time, so the server
+  imports no filesystem module and holds no read or write path.
+- `bash tests/mcp-app-contract.sh` enforces the read-only property: it builds
+  the package, drives the real stdio server over MCP, and asserts the tool and
+  resource surface plus the absence of mutating requests, timers, persistence,
+  and credential leakage.

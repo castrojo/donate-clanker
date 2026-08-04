@@ -6,10 +6,11 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-// The isolated package intentionally has no @types/node dependency.
-// @ts-ignore Node resolves this built-in module at runtime.
-import { readFile } from 'node:fs/promises';
 import { snapshotConfigFromEnvironment, getSnapshot } from './snapshot.js';
+
+// Substituted by scripts/build.mjs. The server therefore imports no
+// filesystem module and holds no read or write path at runtime.
+declare const __OPS_CONTROL_PANEL_HTML__: string;
 
 const RESOURCE_URI = 'ui://bluefin-ops-control-panel/main';
 const RESOURCE_MIME_TYPE = 'text/html;profile=mcp-app';
@@ -70,7 +71,7 @@ server.setRequestHandler(ListResourcesRequestSchema, () => ({
 }));
 
 async function start(): Promise<void> {
-  const html = await readFile(new URL('./index.html', import.meta.url), 'utf8');
+  const html = __OPS_CONTROL_PANEL_HTML__;
   const snapshotConfig = snapshotConfigFromEnvironment();
 
   server.setRequestHandler(ReadResourceRequestSchema, (request) => {

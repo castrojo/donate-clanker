@@ -154,6 +154,18 @@ function isGitHubEvidence(value: unknown): value is GitHubEvidence {
   );
 }
 
+// The referrer of an inline-framed resource is the host document that framed
+// it, so its origin is the only host identity available before the host
+// speaks. Returns the wildcard only when that origin is opaque or absent.
+function hostDocumentOrigin(): string {
+  try {
+    const { origin } = new URL(document.referrer);
+    return origin && origin !== 'null' ? origin : '*';
+  } catch {
+    return '*';
+  }
+}
+
 function isOpsSnapshot(value: unknown): value is OpsSnapshot {
   return (
     isRecord(value) &&
@@ -172,6 +184,14 @@ class HostBridge {
 
   private readonly parent = window.parent;
 
+  // Outbound target origin. The host frames this resource as inline HTML, so
+  // this document's own origin is opaque and the host origin is not statically
+  // knowable. Seed it from the referring host document, then narrow it to the
+  // origin the browser reports on the first message the host actually sends. A
+  // wildcard survives only where the host origin itself serialises to 'null',
+  // which postMessage rejects as a target.
+  private targetOrigin = hostDocumentOrigin();
+
   private readonly pending = new Map<
     number,
     { resolve: (result: JsonRpcResult) => void; reject: () => void }
@@ -179,7 +199,15 @@ class HostBridge {
 
   constructor() {
     window.addEventListener('message', (event: MessageEvent<JsonRpcMessage>) => {
-      if (event.source !== this.parent || typeof event.data?.id !== 'number') {
+      if (event.source !== this.parent) {
+        return;
+      }
+
+      if (event.origin && event.origin !== 'null') {
+        this.targetOrigin = event.origin;
+      }
+
+      if (typeof event.data?.id !== 'number') {
         return;
       }
 
@@ -228,7 +256,7 @@ class HostBridge {
   }
 
   private notify(method: string, params: Record<string, never>): void {
-    this.parent.postMessage({ jsonrpc: '2.0', method, params }, '*');
+    this.parent.postMessage({ jsonrpc: '2.0', method, params }, this.targetOrigin);
   }
 
   private request(method: string, params: Record<string, unknown>): Promise<JsonRpcResult> {
@@ -236,7 +264,7 @@ class HostBridge {
 
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.parent.postMessage({ jsonrpc: '2.0', id, method, params }, '*');
+      this.parent.postMessage({ jsonrpc: '2.0', id, method, params }, this.targetOrigin);
     });
   }
 }
