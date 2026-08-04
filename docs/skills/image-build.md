@@ -1,6 +1,6 @@
 ---
 name: image-build
-version: "2.3"
+version: "2.4"
 last_updated: 2026-08-04
 id: image-build
 one_line_purpose: Derive and pin the review contributor image safely.
@@ -26,10 +26,12 @@ or published contributor-image behavior.
 ## Core Process
 
 1. Derive from the FSDK lab-runner base pinned by a tagged digest
-   (`name:tag@sha256:`). The tag gives Renovate's `dockerfile` manager a
-   resolvable reference; the digest is what the build actually uses. Keep the
-   Hive commit in the image equal to the launcher setup commit so both use the
-   same protocol revision.
+   (`name:tag@sha256:`). The digest is what the build resolves to and is the
+   security property; the tag is what makes the pin *trackable*, because a
+   reference carrying no tag gives an update manager no version series to
+   compare against. A bare digest is not a stricter pin, it is an untracked
+   one. Keep the Hive commit in the image equal to the launcher setup commit
+   so both use the same protocol revision.
 2. Audit the exact base digest at runtime before adding anything. Moving FSDK
    source, image labels, and SBOM package records can disagree with the
    filesystem; command execution and file inspection against the pinned digest
@@ -80,12 +82,13 @@ required. Do not use `:latest`.
 
 ## Pin Maintenance
 
-Every pin in this image needs an update path. A pin with no update path is the
-root-cause bug class here: the Hive pin had no Renovate manager at all, and
-the FSDK base pinned a bare digest with no tag, so Renovate's `dockerfile`
-manager silently never fired on either. Both stayed frozen without any failing
-check. When adding a pin, add or confirm its manager in the same change, and
-give an image reference a `name:tag@sha256:` form so the digest is trackable.
+**An unmaintainable pin is a stale pin.** A pin's strictness is worthless if no
+automation can see past it, and a frozen pin raises no failing check — it looks
+maximally strict while being maximally stale. Both pins in this image reached
+that state at once: the Hive commit had no manager able to match it, and the
+FSDK base carried a digest with no tag, so neither was ever proposed for
+update. When adding or reshaping a pin, establish its update path in the same
+change and prefer a reference shape a manager can resolve.
 
 The Hive SHA lives in three places that must move together in one commit:
 
@@ -127,9 +130,12 @@ dynamic-library closure from another distribution.
 
 ## Common Rationalizations
 
-- "Renovate covers it." Confirm the manager actually matches the pin's syntax.
-  A bare `image@sha256:` reference and an unmanaged shell variable both look
-  pinned and never move.
+- "Renovate covers it." Confirm the pin's shape is one a manager can actually
+  resolve. A bare `image@sha256:` reference and an unmanaged shell variable
+  both look pinned and never move.
+- "A digest with no tag is the safest possible pin." It is the safest possible
+  *build*, and the least maintainable pin. Safety that decays unobserved is not
+  safety; carry the tag so the digest can be moved forward deliberately.
 - "It's only a SHA bump, automerge it." Hive is a protocol dependency; verify
   the three consumed files are unchanged before trusting an automerge.
 - "Adding every validator makes contributors more useful." The image must stay
@@ -149,8 +155,9 @@ dynamic-library closure from another distribution.
 
 - A floating base image or an unverified download. Goose's canary source is
   intentionally mutable, but its archive must have verified signed provenance.
-- A new pin with no Renovate manager, or a digest-only image reference that no
-  manager can resolve.
+- An image reference pinned by bare digest with no tag. It cannot be tracked
+  and will silently freeze; it reads as the strictest pin in the file.
+- Any other pin with no established update path.
 - Treating current FSDK source or labels as proof of an older pinned digest's
   runtime contents.
 - A Hive pin that differs from the launcher setup pin, or a Hive bump that
