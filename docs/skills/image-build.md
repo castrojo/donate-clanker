@@ -1,6 +1,6 @@
 ---
 name: image-build
-version: "2.11"
+version: "2.12"
 last_updated: 2026-08-04
 id: image-build
 one_line_purpose: Derive and pin the review contributor image safely.
@@ -133,22 +133,22 @@ Do not use this runbook to change Hive assignment, checkout, or contributor prot
 
 ## Common Rationalizations
 
-- "Renovate covers it." Confirm the pin's shape is one a manager can actually
-  resolve. A bare `image@sha256:` reference and an unmanaged shell variable
-  both look pinned and never move.
-- "A digest with no tag is the safest possible pin." It is the safest possible
-  *build*, and the least maintainable pin. Safety that decays unobserved is
-  not safety; carry the tag so the digest moves forward deliberately.
-- "It's only a SHA bump, automerge it." Hive is a protocol dependency; verify
-  the three consumed files are unchanged before trusting an automerge.
-- "Adding every validator makes contributors more useful." The image must stay
-  a narrow contributor runtime; report a missing tool and let the assigned
+- "Renovate covers it." Confirm the pin's shape is one a manager can resolve. A
+  bare `image@sha256:` reference and an unmanaged shell variable both look
+  pinned and never move.
+- "A digest with no tag is the safest possible pin." It is the safest *build*
+  and the least maintainable pin. Safety that decays unobserved is not safety;
+  carry the tag so the digest moves forward deliberately.
+- "It's only a SHA bump, automerge it." Hive is a protocol dependency; verify the
+  three consumed files are unchanged first.
+- "Adding every validator makes contributors more useful." The image must stay a
+  narrow contributor runtime; report a missing tool and let the assigned
   repository choose its validation environment.
 - "Replacing grep/find/cat/ls makes every agent faster." These commands are a
-  script interface, and the scripts are not all yours: Hive's relay calls
-  `find` too. Install modern tools alongside them, never substituting
-  semantics.- "A multi-stage build makes copied libraries safe." Multi-stage syntax does
-  not make a manually selected ABI closure maintainable. Keep the final image
+  script interface, and the scripts are not all yours: Hive's relay calls `find`
+  too. Install modern tools beside them, never substituting semantics.
+- "A multi-stage build makes copied libraries safe." Multi-stage syntax does not
+  make a manually selected ABI closure maintainable. Keep the final image
   directly on the verified FSDK shell base.
 - "Passing `--env NAME=value` is harmless." Podman exposes command arguments
   locally; export the value and use `--env NAME` so Podman inherits only that
@@ -156,23 +156,21 @@ Do not use this runbook to change Hive assignment, checkout, or contributor prot
 
 ## Red Flags
 
-- A floating base image or an unverified download. Goose's canary source is
-  intentionally mutable, but its archive must have verified signed provenance.
-- An image reference pinned by bare digest with no tag. It cannot be tracked
-  and will silently freeze; it reads as the strictest pin in the file.
-- Any other pin with no established update path.
-- Treating current FSDK source or labels as proof of an older pinned digest's
-  runtime contents.
-- A Hive pin that differs from the launcher setup pin, or a Hive bump that
-  moves fewer than all three pin locations.
-- Automerging a Hive bump whose consumed upstream files changed.
+- A floating base image or unverified download. Goose's canary source is
+  mutable by design, but its archive needs verified signed provenance.
+- A bare-digest reference with no tag, or any pin with no update path: untrackable,
+  silently frozen, and reads as the file's strictest pin.
+- Treating current FSDK source or labels as proof of an older digest.
+- A Hive pin differing from the launcher setup pin, a bump moving fewer than all
+  three locations, or an automerge whose consumed upstream files changed.
 - A secret, host workspace, or host configuration baked into a layer.
 - Writing Goose configuration to `~/.config/goose`.
-- Keeping a legacy `CONTEXT_FILE_NAMES` override after the pinned Hive runtime provides Goose-native knowledge links.
-- Committing generated `.agents/skills/` output.
-- Adding a second agent backend or unrelated runtime package.
-- A custom compile, repacked binary bundle, package manager, command shadow, or
-  copied cross-distribution library closure.
+- Keeping a legacy `CONTEXT_FILE_NAMES` override once the pinned Hive runtime
+  provides Goose-native knowledge links.
+- Committing generated `.agents/skills/` output, or adding a second agent
+  backend or unrelated runtime package.
+- A custom compile, repacked bundle, package manager, command shadow, or copied
+  cross-distribution closure.
 
 ## Verification
 
@@ -191,10 +189,14 @@ git diff --check
 ```
 
 Inspect the built image only for the controlled Goose root and generated skill
-directories; never expose credentials. The audit reads public manifests and
-local metadata; use native amd64 and arm64 hosts for runtime evidence. To
-refresh local canary, resolve both release-asset digests and pass
-`GOOSE_X86_64_SHA256` and `GOOSE_AARCH64_SHA256`; never use the channel name
-as artifact identity.
+directories; never expose credentials. The audit reads public manifests and local
+metadata; use native amd64 and arm64 hosts for runtime evidence. To refresh local
+canary, resolve both release-asset digests and pass `GOOSE_X86_64_SHA256` and
+`GOOSE_AARCH64_SHA256`; never use the channel name as artifact identity. Build off
+the workstation: a warm native amd64 build plus `--derived` audit takes about
+seventy seconds on a lab node with a persistent `/var/lib/containers`, but never
+replaces the publish workflow, which alone yields both platforms, provenance, SBOM,
+and the attestation. Run `tests/find-semantics.sh` against the shim installed in
+the image; that copy, not the checkout's, is what Hive's relay calls.
 ## Sources
 - Hive `v2` files: `bin/contributor-agent.sh`, `bin/contributor-relay.sh`, and `config/backends.conf`; Goose `canary` assets; Context7 `/npm/cli`, `/websites/podman_io_en`, `/websites/cli_github_manual`, `/websites/github_en_actions`, `/docker/docs`, and `/docker/build-push-action`.
