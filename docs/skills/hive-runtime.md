@@ -1,6 +1,6 @@
 ---
 name: hive-runtime
-version: "1.6"
+version: "1.7"
 last_updated: 2026-08-04
 id: hive-runtime
 one_line_purpose: Operate inside Hive's tmux, token, and cooldown constraints.
@@ -51,9 +51,11 @@ assigned contributor session behaves unexpectedly.
    is Hive's, not ours: when the hub declines to assign work it sends
    `task_unavailable` with a reason (`no_work`, `token_mint_failed`,
    `tier_disabled`, `concurrency_limit`), which the relay logs before re-asking
-   after a fixed delay. A relay revision that predates that case treats the
-   decline as silence and idles forever while holding the slot; move the pin
-   rather than adding a downstream retry.
+   after a fixed delay. A relay revision predating that case logs the message
+   as an unknown type and then has no path back to asking, because every
+   `ready` it sends is event-driven and none is timed; it wedges idle. No task
+   was assigned in that state, so nothing is held. Move the pin rather than
+   adding a downstream retry.
 
 ### GitHub identity
 
@@ -85,6 +87,10 @@ Hive's session creation to accomplish either behavior.
 - Adding a local retry, poll, or timeout to compensate for a relay revision
   that ignores `task_unavailable`.
 - Reporting completion before the required artifact is independently visible.
+- Assuming an abruptly killed contributor strands its assigned task. The hub
+  releases `currentTask` in its disconnect handler and books a cooldown, and
+  its heartbeat loop closes a half-open socket, so no downstream release,
+  timeout, or slot-reclaim step belongs here.
 - Mounting `~/.config/gh` or printing a token to provide agent identity.
 
 ## Verification
@@ -100,7 +106,12 @@ and no launcher change duplicates Hive lifecycle behavior.
 
 ## Sources
 
-- Hive contributor runtime: `kubestellar/hive` (default branch `v2`)
-  `bin/contributor-agent.sh` and `bin/contributor-relay.sh`, read at the pinned
-  `HIVE_COMMIT`.
+Cite upstream by pinned permalink, never a branch path.
+
+- Relay message cases, including `task_unavailable`:
+  [`bin/contributor-relay.sh` @ 4d61ad7c](https://github.com/kubestellar/hive/blob/4d61ad7ce8b646a4e380865c521d5b12677240c9/bin/contributor-relay.sh)
+- Workspace preparation and tmux rooting:
+  [`bin/contributor-agent.sh` @ 4d61ad7c](https://github.com/kubestellar/hive/blob/4d61ad7ce8b646a4e380865c521d5b12677240c9/bin/contributor-agent.sh)
+- Task release on disconnect:
+  [`v2/pkg/dashboard/contribute_ws.go#L1057-L1090` @ 4d61ad7c](https://github.com/kubestellar/hive/blob/4d61ad7ce8b646a4e380865c521d5b12677240c9/v2/pkg/dashboard/contribute_ws.go#L1057-L1090)
 - tmux terminal and mouse configuration: Context7 `/tmux/tmux`

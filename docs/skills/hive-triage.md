@@ -1,6 +1,6 @@
 ---
 name: hive-triage
-version: "1.2"
+version: "1.3"
 last_updated: 2026-08-04
 id: hive-triage
 one_line_purpose: Diagnose why an attached contributor is never handed work.
@@ -33,9 +33,9 @@ arrived and the session then failed.
    `task_unavailable` negative-ack and the relay prints the reason
    (`no_work`, `token_mint_failed`, `tier_disabled`, `concurrency_limit`)
    before re-asking on its own fixed delay. That reason is the classification;
-   do not reconstruct it from the hub dashboard. Silence where a reason is
-   expected means the pinned relay predates that case, which is a pin problem,
-   not a hub problem.
+   do not reconstruct it from the hub dashboard. A relay predating that case
+   logs the message as an unknown type instead of a reason and then stops
+   asking; that is a pin problem, not a hub problem.
 3. Check the hub's current contributor status and activity through its
    supported operator interface. Compare assignments made during the same
    window; do not infer availability from a displayed backlog count alone.
@@ -52,8 +52,8 @@ arrived and the session then failed.
 ## Red Flags
 
 - Treating a generic backlog count as proof that work is assignable.
-- Diagnosing a silent idle contributor as a hub fault before confirming the
-  pinned relay handles `task_unavailable`.
+- Diagnosing a permanently idle contributor as a hub fault before confirming
+  the pinned relay handles `task_unavailable`.
 - Treating an assigned-but-idle session with no checkout on disk as a triage
   case. That was an upstream workspace gap, fixed by `HIVE_WORKSPACE_DIR`;
   check the pin instead.
