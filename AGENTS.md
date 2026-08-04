@@ -108,6 +108,7 @@ boundaries.
 bash scripts/check-skill-frontmatter.sh
 bash tests/generate-skills.sh
 bash tests/image-contract.sh
+bash tests/mcp-app-contract.sh
 bash tests/just-onboarding.sh
 git diff --check
 just --list
