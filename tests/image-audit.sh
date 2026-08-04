@@ -103,8 +103,8 @@ done
 }
 if ! "$verify_base_evidence"; then
   [[ -n "$derived_image" ]] || {
-  echo "--derived is required" >&2
-  exit 2
+    echo "--derived is required" >&2
+    exit 2
   }
 fi
 if { "$require_attestations" || "$require_github_attestation"; } &&
