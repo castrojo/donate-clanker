@@ -44,6 +44,10 @@ labels. Never add a local workaround for an accepted upstream gap. See
   artifact and does not participate in launcher lifecycle.
 - `image/` builds the FSDK-derived contributor image and its layered runtime
   configuration.
+- `package.json` and `package-lock.json` at the root pin only the contributor
+  relay's `ws` dependency for the image build. This repository is not a Node
+  project.
+- `queue/` generates the static PR queue published from `public/`.
 - `scripts/` contains build-time skill generation and documentation checks.
 - `tests/` contains launcher and image contracts.
 - `docs/` contains the skill router and catalog.
@@ -54,12 +58,14 @@ the Hive-managed path.
 
 ## Permitted changes
 
-Agents may change `justfile`, `mcp-app/`, `image/`,
+Agents may change `justfile`, `mcp-app/`, `image/`, `queue/`, `scripts/`,
 `tests/`, `docs/`, `README.md`, `AGENTS.md`, and `.github/workflows/`.
 
 Do not modify `ublue-os/*`, or commit generated `.agents/skills/` content.
 The generator is the artifact; `projectbluefin/common`'s
-`docs/skills/index.json` is the organization-skill source.
+`docs/skills/index.json` is the organization-skill source. `public/` is
+likewise generated: `update-pr-queue.yml` runs `queue/generate.mjs` and
+deploys the result, so change the generator, not its output.
 
 When behavior changes, update the matching user documentation. Treat the
 launcher, image, and tests as the sources of truth for this repository's
@@ -89,12 +95,23 @@ boundaries.
 bash scripts/check-skill-frontmatter.sh
 bash tests/generate-skills.sh
 bash tests/image-contract.sh
+bash tests/hive-compatibility.sh
+bash tests/find-semantics.sh
 bash tests/mcp-app-contract.sh
+bash tests/bluefin-review.sh
 bash tests/just-onboarding.sh
 git diff --check
 just --list
 pre-commit run --all-files
 ```
+
+`tests/image-audit.sh` needs a container engine and network. It defaults to
+`docker`; on a podman host pass `CONTAINER_ENGINE=podman`. Check the pinned
+FSDK input alone with `--verify-base-evidence`; audit a built or published
+image with `--derived <image>`.
+
+The `pre-commit` shellcheck hook needs a container socket. Without one, run
+`SKIP=shellcheck pre-commit run --all-files` and lint separately.
 
 ## References
 
@@ -102,4 +119,6 @@ pre-commit run --all-files
   `kubestellar/hive` (default branch `v2`; no contributing guide or issue
   templates, DCO sign-off required on pull requests).
 - Organization skills and factory rules: `projectbluefin/common`.
-- External API details: Context7 documentation.
+- External API details: Context7 documentation. Context7 is a Hive hub
+  capability delivered through Hive's knowledge export; never configure it in
+  this repository's image.

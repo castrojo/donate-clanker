@@ -1,6 +1,6 @@
 ---
 name: pr-workflow
-version: "1.4"
+version: "1.5"
 last_updated: 2026-08-04
 id: pr-workflow
 one_line_purpose: Open review pull requests that merge cleanly.
@@ -40,9 +40,10 @@ request in this repository.
    documentation-only work as exempt from the protected-branch workflow.
 5. Treat local hooks as feedback, not enforcement. GitHub rulesets and
    required checks determine whether a pull request can merge.
-6. Push and open the pull request early for Hive work. The scoped token
-   expires after 55 minutes and task completion starts a 168-hour cooldown;
-   report completion only after the pull request or other required artifact is
+6. Push and open the pull request early for Hive work. The scoped token lasts
+   55 minutes and is refreshed at 50 minutes only while the socket stays up,
+   and a completion carrying a PR link starts a 168-hour cooldown; report
+   completion only after the pull request or other required artifact is
    verifiable.
 
 ## Reconciling A Long-Lived Branch

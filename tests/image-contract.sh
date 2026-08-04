@@ -45,23 +45,97 @@ grep -qE '^ARG FSDK_RUNNER_IMAGE=ghcr\.io/projectbluefin/lab-runner(:[^@[:space:
   echo "::error file=image/Containerfile::FSDK_RUNNER_IMAGE must be digest-pinned to ghcr.io/projectbluefin/lab-runner"
   fail=1
 }
+for goose_checksum_arg in GOOSE_X86_64_SHA256 GOOSE_AARCH64_SHA256; do
+  goose_checksum="$(sed -n "s/^ARG ${goose_checksum_arg}=\([0-9a-f]\{64\}\)$/\1/p" image/Containerfile | head -n 1)"
+  if [[ ! "$goose_checksum" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "::error file=image/Containerfile::${goose_checksum_arg} must default to a SHA-256 digest"
+    fail=1
+  fi
+done
+
+if ! python3 - <<'PY'; then
+import json
+from pathlib import Path
+
+errors = []
+manifest = json.loads(Path("package.json").read_text())
+lock = json.loads(Path("package-lock.json").read_text())
+expected_manifest = {
+    "name": "review-relay-runtime",
+    "private": True,
+    "dependencies": {"ws": "8.21.1"},
+}
+if manifest != expected_manifest:
+    errors.append("package.json must declare only the exact ws relay dependency")
+if lock.get("lockfileVersion") != 3:
+    errors.append("package-lock.json must use lockfileVersion 3")
+if set(lock.get("packages", {})) != {"", "node_modules/ws"}:
+    errors.append("package-lock.json must lock only ws")
+root = lock.get("packages", {}).get("", {})
+ws = lock.get("packages", {}).get("node_modules/ws", {})
+if root.get("dependencies") != {"ws": "8.21.1"} or ws.get("version") != "8.21.1":
+    errors.append("package-lock.json must lock ws at 8.21.1")
+if not ws.get("resolved") or not ws.get("integrity"):
+    errors.append("package-lock.json must record ws resolution and integrity")
+
+container = Path("image/Containerfile").read_text()
+try:
+    fixed_layer = container.index("COPY package.json package-lock.json /opt/hive/")
+    fixed_install = container.index("npm --prefix /opt/hive ci --omit=dev --ignore-scripts;")
+    goose_labels = container.index("LABEL io.projectbluefin.review.goose.channel=")
+    goose_refresh = container.index("ARG GOOSE_REFRESH=0")
+    goose_download = container.index(
+        "https://github.com/aaif-goose/goose/releases/download/${GOOSE_CHANNEL}/"
+    )
+except ValueError as error:
+    errors.append(f"missing locked relay or Goose layer marker: {error}")
+else:
+    if not fixed_layer < fixed_install < goose_labels < goose_refresh < goose_download:
+        errors.append("fixed tools must precede Goose labels and refresh layer")
+    for tool_url in (
+        "https://nodejs.org/dist/v${NODE_VERSION}/",
+        "https://github.com/cli/cli/releases/download/v${GH_VERSION}/",
+        "https://github.com/tmux/tmux-builds/releases/download/v${TMUX_VERSION}/",
+    ):
+        if container.index(tool_url) > goose_refresh:
+            errors.append(f"fixed tool download must precede Goose refresh: {tool_url}")
+
+for error in errors:
+    print(f"::error::{error}")
+raise SystemExit(bool(errors))
+PY
+  fail=1
+fi
 
 # SC2016: every argument here is a literal to grep for, never an expansion.
 # shellcheck disable=SC2016
 require image/Containerfile \
   'ARG GOOSE_CHANNEL=canary' \
+  'ARG GOOSE_X86_64_SHA256=' \
+  'ARG GOOSE_AARCH64_SHA256=' \
+  'io.projectbluefin.review.goose.channel="${GOOSE_CHANNEL}"' \
+  'io.projectbluefin.review.goose.x86_64-unknown-linux-musl.sha256="${GOOSE_X86_64_SHA256}"' \
+  'io.projectbluefin.review.goose.aarch64-unknown-linux-musl.sha256="${GOOSE_AARCH64_SHA256}"' \
   'FROM ${FSDK_RUNNER_IMAGE}' \
   'ARG GOOSE_REFRESH=0' \
   'ARG SKILLS_COMMIT=' \
   'https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz' \
   'https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${gh_arch}.tar.gz' \
   'https://github.com/tmux/tmux-builds/releases/download/v${TMUX_VERSION}/tmux-${TMUX_VERSION}-linux-${tmux_arch}.tar.gz' \
-  'https://github.com/aaif-goose/goose/releases/download/${GOOSE_CHANNEL}/goose-${goose_arch}-unknown-linux-gnu.tar.gz' \
+  'https://github.com/aaif-goose/goose/releases/download/${GOOSE_CHANNEL}/goose-${goose_arch}-unknown-linux-musl.tar.gz' \
+  'printf '\''%s  %s\n'\'' "$goose_sha" "$workdir/goose.tar.gz" | sha256sum -c -;' \
   'RUN --mount=type=secret,id=github_token' \
   'GH_TOKEN="$(cat /run/secrets/github_token)"' \
   'gh attestation verify "$workdir/goose.tar.gz" --repo aaif-goose/goose --signer-workflow aaif-goose/goose/.github/workflows/canary.yml' \
   'tf.extractall(root, filter="data")' \
-  'npm --prefix /opt/hive install --ignore-scripts ws@8.21.1;' \
+  'COPY package.json package-lock.json /opt/hive/' \
+  'npm --prefix /opt/hive ci --omit=dev --ignore-scripts;' \
+  'npm cache clean --force;' \
+  'test ! -e /root/.npm;' \
+  'rm -rf /opt/node/include /opt/node/share/doc;' \
+  'test ! -e /opt/node/include;' \
+  'test ! -e /opt/node/share/doc;' \
+  'corepack --version;' \
   'https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/bin/contributor-agent.sh' \
   'https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/bin/contributor-relay.sh' \
   'https://raw.githubusercontent.com/kubestellar/hive/${HIVE_COMMIT}/config/backends.conf' \
@@ -81,10 +155,26 @@ require image/Containerfile \
   '--raw-base "https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/"' \
   '--out /home/dev/.agents/skills' \
   'COPY --chmod=0755 scripts/generate-skills.py /usr/local/libexec/review-generate-skills' \
+  'rm -f /usr/local/libexec/review-generate-skills;' \
+  'test ! -e /usr/local/libexec/review-generate-skills' \
   'COPY --chmod=0755 image/entrypoint.sh /usr/local/bin/review-entrypoint' \
   'USER dev' \
   'WORKDIR /home/dev' \
   'ENTRYPOINT ["/usr/local/bin/review-entrypoint"]'
+
+require .dockerignore \
+  '!package.json' \
+  '!package-lock.json'
+
+require tests/image-audit.sh \
+  '#### Size deltas' \
+  'Compressed delta (derived - base)' \
+  'Local unpacked delta (derived - base)' \
+  '--verify-base-evidence' \
+  'projectbluefin/fsdk-containers' \
+  'must contain exactly linux/amd64 and linux/arm64 manifests' \
+  '--require-github-attestation' \
+  'org.opencontainers.image.base.digest'
 
 # Host setup and the image relay exchange the same contributor protocol, so
 # their pinned Hive revisions must remain exactly aligned.
@@ -209,8 +299,10 @@ forbid image/Containerfile \
   '/run/podman/podman.sock' \
   'https://nodejs.org/dist/latest-v24.x/' \
   'https://github.com/aaif-goose/goose/releases/latest/download/' \
+  'unknown-linux-gnu.tar.gz' \
   'https://raw.githubusercontent.com/projectbluefin/common/main/' \
   'npm --prefix /opt/hive audit' \
+  'npm --prefix /opt/hive install' \
   '# renovate: datasource=github-releases depName=aaif-goose/goose' \
   'ramalama' \
   'models.json' \
@@ -262,8 +354,9 @@ require image/config/local-agent-policy.md \
 forbid image/config/local-agent-policy.md \
   'context7'
 
-# GOOSE_PATH_ROOT is the whole reason our config survives Hive's rewrite, and
-# Hive's knowledge export lands on CLAUDE.md, which Goose ignores by default.
+# GOOSE_PATH_ROOT keeps controlled policy/data/state out of Hive's runtime
+# config. The pinned runtime now links its knowledge export to Goose-native
+# AGENTS.md and .goosehints itself, so no filename compatibility override stays.
 # shellcheck disable=SC2016 # Literal source assertions, not shell expansions.
 require image/entrypoint.sh \
   'export GOOSE_PATH_ROOT=' \
@@ -274,8 +367,6 @@ require image/entrypoint.sh \
   'GOOSE_MODEL="gpt-5.6-luna"' \
   'GOOSE_THINKING_EFFORT="${GOOSE_THINKING_EFFORT:-high}"' \
   'GOOSE_DISABLE_KEYRING=1' \
-  'CONTEXT_FILE_NAMES' \
-  'CLAUDE.md' \
   'GOOSE_MOIM_MESSAGE_FILE' \
   '/opt/bluefin/local-agent-policy.md' \
   'core.hooksPath /opt/bluefin/git-hooks' \
@@ -299,31 +390,64 @@ require image/entrypoint.sh \
   'tmux kill-session -t contributor'
 forbid image/entrypoint.sh \
   'context7' \
-  'mcp.context7.com'
+  'mcp.context7.com' \
+  'CONTEXT_FILE_NAMES'
 
 require README.md \
   'Goose canary snapshot' \
-  'not byte-reproducible' \
+  'not an artifact identity' \
+  'GOOSE_X86_64_SHA256' \
+  'GOOSE_AARCH64_SHA256' \
   "--build-arg GOOSE_REFRESH=\"\$(date +%s)\""
 
 # shellcheck disable=SC2016 # Literal workflow text, not shell expansion.
 require .github/workflows/validate.yml \
   'attestations: read' \
+  'Verify pinned FSDK input provenance and native platforms' \
+  'bash tests/image-audit.sh --verify-base-evidence' \
   'just --justfile justfile --list' \
   "' justfile > recipe_bodies.sh" \
   'bash tests/image-contract.sh' \
+  'bash tests/hive-compatibility.sh' \
   'GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}' \
-  'docker build --secret id=github_token,env=GITHUB_TOKEN' \
+  'Resolve official Goose canary asset identities' \
+  'repos/aaif-goose/goose/releases/tags/canary' \
+  'goose-x86_64-unknown-linux-musl.tar.gz' \
+  'goose-aarch64-unknown-linux-musl.tar.gz' \
+  'GOOSE_X86_64_SHA256="${{ steps.goose.outputs.x86_64_sha256 }}"' \
+  'GOOSE_AARCH64_SHA256="${{ steps.goose.outputs.aarch64_sha256 }}"' \
+  '--secret id=github_token,env=GITHUB_TOKEN' \
   '-f image/Containerfile -t review:test .' \
-  '["/usr/local/bin/review-entrypoint"]'
+  '["/usr/local/bin/review-entrypoint"]' \
+  'bash tests/image-audit.sh --derived review:test'
 
+# shellcheck disable=SC2016 # Literal workflow text, not shell expansion.
 require .github/workflows/publish-compat-image.yml \
-  'attestations: read' \
+  'attestations: write' \
+  'id-token: write' \
   'IMAGE: ghcr.io/projectbluefin/review' \
+  'Derive review image metadata' \
   'tags: review:smoke' \
   '["/usr/local/bin/review-entrypoint"]' \
   'secrets: |' \
-  "github_token=\${{ secrets.GITHUB_TOKEN }}"
+  "github_token=\${{ secrets.GITHUB_TOKEN }}" \
+  'Resolve official Goose canary asset identities' \
+  "GOOSE_X86_64_SHA256=\${{ steps.goose.outputs.x86_64_sha256 }}" \
+  "GOOSE_AARCH64_SHA256=\${{ steps.goose.outputs.aarch64_sha256 }}" \
+  'org.opencontainers.image.title=Bluefin review contributor' \
+  'org.opencontainers.image.description=Foreground contributor runtime for projectbluefin/review.' \
+  'org.opencontainers.image.base.name=${{ steps.metadata.outputs.base_name }}' \
+  'org.opencontainers.image.base.digest=${{ steps.metadata.outputs.base_digest }}' \
+  'annotations: |' \
+  'index:org.opencontainers.image.title=Bluefin review contributor' \
+  'provenance: mode=max' \
+  'sbom: true' \
+  'actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d' \
+  'subject-digest: ${{ steps.publish.outputs.digest }}' \
+  'push-to-registry: true' \
+  '--require-attestations' \
+  '--require-github-attestation' \
+  '--attestation-repository "${GITHUB_REPOSITORY}"'
 
 # ':-/config}' and ':-/workspace}' are mount points Hive never used.
 forbid image/entrypoint.sh \
@@ -336,6 +460,14 @@ forbid image/entrypoint.sh \
 require image/tmux.conf \
   'set -g default-terminal "tmux-256color"' \
   'set -g mouse on'
+
+# This source-backed behavioral check fetches the exact pin and exercises the
+# hosted hook's curl rewrite without reaching the hosted service.
+require tests/hive-compatibility.sh \
+  'AGENTS.md' \
+  '.goosehints' \
+  'GOOSE_PATH_ROOT' \
+  'KNOWN_BACKENDS="claude copilot goose codex agy bob pi aider litellm"'
 
 # Hooks run in every repository via a global core.hooksPath, so they must never
 # claim to be enforcement: --no-verify bypasses all of them.
