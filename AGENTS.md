@@ -97,6 +97,7 @@ bash tests/generate-skills.sh
 bash tests/image-contract.sh
 bash tests/hive-compatibility.sh
 bash tests/find-semantics.sh
+bash tests/mcp-app-contract.sh
 bash tests/bluefin-review.sh
 bash tests/just-onboarding.sh
 git diff --check

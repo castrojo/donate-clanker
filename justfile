@@ -81,7 +81,7 @@ hive_commit := "4d61ad7ce8b646a4e380865c521d5b12677240c9"
 copilot_default_model := "gpt-5.6-luna"
 vm_runner_image := env("REVIEW_VM_RUNNER_IMAGE", "")
 vm_raw_image := env("REVIEW_VM_RAW", "")
-vm_version := env("REVIEW_VM_VERSION", "25.08.14")
+vm_version := env("REVIEW_VM_VERSION", "25.08.15")
 # The fsdk-derived contributor image. Used by
 # review-container; the VM path gets the same image from inside the
 # guest, so this only matters for local development.
@@ -518,7 +518,18 @@ ensure_hive_contributor_env() {
   done
   prepare_pinned_hive_checkout || return 1
   echo "Running upstream pinned setup: just contribute-setup goose"
-  just --working-directory "$HIVE_SRC_DIR" --justfile "$HIVE_SRC_DIR/Justfile" contribute-setup goose
+  # HIVE_SKIP_VERSION_CHECK=true is upstream's own documented opt-out, not a
+  # local workaround. Upstream's private 'check-version' recipe — a prerequisite
+  # of 'contribute-setup' — compares HEAD against origin/v2 and aborts when they
+  # differ, printing "Or skip: export HIVE_SKIP_VERSION_CHECK=true". That check
+  # assumes a tracking checkout of v2. We deliberately run a pinned, detached
+  # SHA (see prepare_pinned_hive_checkout), so the comparison can only ever
+  # fail once v2 moves past the pin, and it would abort first-run onboarding on
+  # every clean machine. Taking upstream's flag for exactly the case it
+  # documents keeps Hive the authority; removing it would break setup without
+  # unpinning, and unpinning would mean executing unreviewed upstream code.
+  # Scoped to this one invocation so nothing else in the run inherits it.
+  HIVE_SKIP_VERSION_CHECK=true just --working-directory "$HIVE_SRC_DIR" --justfile "$HIVE_SRC_DIR/Justfile" contribute-setup goose
   [[ -f "$HIVE_CONTRIBUTOR_ENV" ]] || { echo "ERROR: contribute-setup ran but ${HIVE_CONTRIBUTOR_ENV} still missing." >&2; return 1; }
   echo "✓ Upstream contribute-setup complete."
 }
@@ -674,8 +685,16 @@ cleanup_obsolete_vm_cache() {
   shopt -u nullglob
 }
 vm_release_url() {
+  # projectbluefin/fsdk-containers still publishes the VM under its pre-rename
+  # asset name. This repository was renamed donate-clanker -> review, but that
+  # rename was never carried into the release artifacts: every published asset
+  # on v25.08.14 and v25.08.15 is 'donate-clanker-vm-<version>-<arch>...'.
+  # Verified with 'gh release view v25.08.15 --repo projectbluefin/fsdk-containers'.
+  # Track the name the publisher actually uses, not the name we wish it used;
+  # change this constant when fsdk-containers republishes under 'review-vm'.
+  # The local cache keeps the review-vm-* name — that is ours, not theirs.
   local version="$1" arch="$2"
-  printf 'https://github.com/projectbluefin/fsdk-containers/releases/download/v%s/review-vm-%s-%s.raw.zst
+  printf 'https://github.com/projectbluefin/fsdk-containers/releases/download/v%s/donate-clanker-vm-%s-%s.raw.zst
 '     "$version" "$version" "$arch"
 }
 vm_release_asset_available() {
@@ -1186,6 +1205,8 @@ review-doctor:
       echo "  ✗ ${HIVE_CONTRIBUTOR_ENV} is missing"
       echo "    review runs upstream 'just contribute-setup goose' from"
       echo "    kubestellar/hive @ ${HIVE_COMMIT:0:12} on first attended launch."
+      echo "    That runs with upstream's documented HIVE_SKIP_VERSION_CHECK=true,"
+      echo "    because the pinned checkout is detached and cannot match origin/v2."
       fail=$((fail+1))
     fi
     echo ""

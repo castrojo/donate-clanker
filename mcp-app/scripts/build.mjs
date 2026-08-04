@@ -50,8 +50,9 @@ async function exists(filePath) {
   }
 }
 
-async function bundleNode(entryPath, fallbackSource) {
+async function bundleNode(entryPath, fallbackSource, define) {
   const result = await build({
+    define,
     entryPoints: (await exists(entryPath)) ? [entryPath] : undefined,
     stdin: (await exists(entryPath))
       ? undefined
@@ -104,8 +105,7 @@ async function main() {
   await rm(distDir, { recursive: true, force: true });
   await mkdir(distDir, { recursive: true });
 
-  const [serverBundle, browserBundle, template] = await Promise.all([
-    bundleNode(serverEntry, fallbackServerSource),
+  const [browserBundle, template] = await Promise.all([
     bundleBrowser(clientEntry, fallbackClientSource),
     readFile(templatePath, 'utf8'),
   ]);
@@ -117,14 +117,20 @@ async function main() {
     .replace(/<\/style/gi, '<\\/style')
     .replace(/<!--/g, '<\\!--');
 
-  await writeFile(path.join(distDir, 'server.js'), serverBundle);
-  await writeFile(
-    path.join(distDir, 'index.html'),
-    template.replace(
-      '<!--CLIENT_BUNDLE-->',
-      `<style>\n${safeStyles}\n</style>\n<script type="module">\n${safeClientBundle}\n</script>`,
-    ),
+  const panelHtml = template.replace(
+    '<!--CLIENT_BUNDLE-->',
+    `<style>\n${safeStyles}\n</style>\n<script type="module">\n${safeClientBundle}\n</script>`,
   );
+
+  // The panel HTML is substituted into the server bundle at build time so the
+  // shipped server imports no filesystem module and holds no read or write
+  // path of any kind.
+  const serverBundle = await bundleNode(serverEntry, fallbackServerSource, {
+    __OPS_CONTROL_PANEL_HTML__: JSON.stringify(panelHtml),
+  });
+
+  await writeFile(path.join(distDir, 'server.js'), serverBundle);
+  await writeFile(path.join(distDir, 'index.html'), panelHtml);
 }
 
 main().catch((error) => {
