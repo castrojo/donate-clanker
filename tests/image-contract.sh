@@ -101,8 +101,10 @@ fi
 # equally ancient pins pass it. That is exactly how the pin sat 69 commits
 # behind kubestellar/hive `v2` for days while upstream added the
 # `task_unavailable` message case (hive#2436) that our pinned
-# contributor-relay.sh has no `case` for — so a declined assignment fell into
-# the old silent-nil path and held a task slot forever. Nothing reported it.
+# contributor-relay.sh has no `case` for — so a declined assignment was logged
+# as an unknown message type and the relay, whose every `ready` is
+# event-driven and none timed, had no path back to asking and wedged idle.
+# Nothing reported it.
 #
 # Warning, not failure, and deliberately so:
 #   * Pin equality stays a hard error: it is fully determined by files in this
