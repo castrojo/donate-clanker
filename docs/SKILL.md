@@ -1,7 +1,8 @@
 # review Skill Router
 
-Choose the one task-specific document below after reading
-[`AGENTS.md`](../AGENTS.md). Load only the matching skill.
+After reading [`AGENTS.md`](../AGENTS.md) and the local
+[agentic model](factory/agentic-model.md), choose the one task-specific
+document below. Load only the matching skill.
 
 | Task | Skill |
 |---|---|
@@ -14,6 +15,7 @@ Choose the one task-specific document below after reading
 | Change the contributor image or pinned image inputs | [`image-build.md`](skills/image-build.md) |
 | Change the public static pull-request queue | [`static-pr-queue.md`](skills/static-pr-queue.md) |
 | Prepare a branch, commit, or pull request | [`pr-workflow.md`](skills/pr-workflow.md) |
+| Maintain documentation, skills, or factory compliance | [`skill-improvement.md`](skills/skill-improvement.md) |
 
 `docs/skills/index.json` is the machine-readable catalog. Its entries mirror
 the frontmatter in each skill file. When changing a skill, update its catalog

@@ -112,8 +112,8 @@
         "build"
       ],
       "description": "Maintains the pinned FSDK-derived contributor image, Hive runtime, Goose configuration, and generated skills. Use when editing image layers, pins, or image publication behavior.",
-      "version": "2.1",
-      "last_updated": "2026-08-03",
+      "version": "2.2",
+      "last_updated": "2026-08-04",
       "doc_type": "procedure"
     },
     {
@@ -168,10 +168,28 @@
         "hooks",
         "branches"
       ],
-      "description": "Defines protected-branch pull request, branch, title, trailer, and validation requirements. Use before branching, committing, or opening a review pull request.",
-      "version": "1.3",
-      "last_updated": "2026-08-02",
+      "description": "Defines protected-branch pull request, branch, title, trailer, and validation requirements, and how to reconcile a long-lived branch with a squash-merged main. Use before branching, committing, opening a review pull request, or resolving merge conflicts.",
+      "version": "1.4",
+      "last_updated": "2026-08-04",
       "doc_type": "policy"
+    },
+    {
+      "id": "skill-improvement",
+      "name": "skill-improvement",
+      "one_line_purpose": "Keep review documentation source-backed, current, and compact.",
+      "entry_point": "docs/skills/skill-improvement.md",
+      "category": "meta",
+      "status": "active",
+      "tags": [
+        "skills",
+        "documentation",
+        "maintenance",
+        "factory"
+      ],
+      "description": "Maintains review documentation and skill contracts from local source evidence. Use when auditing docs, correcting stale guidance, or recording durable agent learning.",
+      "version": "1.0",
+      "last_updated": "2026-08-03",
+      "doc_type": "reference"
     }
   ]
 }

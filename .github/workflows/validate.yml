@@ -91,8 +91,7 @@ jobs:
           test -n "$HIVE_PIN"
           IMAGE_HIVE_PIN="$(sed -n 's/^ARG HIVE_COMMIT=\([0-9a-f]\{40\}\)$/\1/p' image/Containerfile)"
           test "$HIVE_PIN" = "$IMAGE_HIVE_PIN"
-          grep -Fq 'LAST_GOOSE_MODEL' justfile
-          grep -Fq 'last-selections.env' justfile
+          grep -Fq 'gpt-5.6-luna' justfile
           grep -Fq 'require_copilot_provider' justfile
           # shellcheck disable=SC2016
           grep -Fq 'fetch --depth 1 origin "$HIVE_COMMIT"' justfile
@@ -100,7 +99,7 @@ jobs:
           grep -Fq 'Run: goose configure' justfile
           grep -Fq "$HIVE_PIN" README.md
           grep -Fq 'REVIEW_HIVE_COMMIT' README.md
-          grep -Fq 'last-selections.env' README.md
+          grep -Fq 'gpt-5.6-luna' README.md
           grep -Fq 'github_copilot' README.md
 
       - name: Compatibility image contract and build

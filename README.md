@@ -15,6 +15,15 @@ It owns only VM boot, credential handoff, and review context. Hive owns the
 contributor protocol, task selection, the `contributor` tmux session, prompt
 injection, and output capture.
 
+## Operating model
+
+`review` participates in the **Bluefin Agentic Factory Feedback Loop**. Its
+canonical local model is [`docs/factory/agentic-model.md`](docs/factory/agentic-model.md):
+Hive dispatches work to Factory Workers, maintainers retain review and merge
+authority, and the MCP app presents read-only Review Evidence. The
+documentation, launcher, image, and tests describe one model; none may
+silently create a second workflow, authority path, or task queue.
+
 ## Reporting upstream
 
 Running a downstream consumer of Hive's contributor protocol means we find
@@ -114,8 +123,9 @@ an operations task outside this repository automation.
 
 Goose is the only agent backend and GitHub Copilot is the only supported
 provider. `GOOSE_PROVIDER` may be unset or `github_copilot`; `GOOSE_MODEL`
-optionally overrides the `gpt-4.1` default. A `gh auth token` does not
-authenticate Copilot inference.
+optionally overrides the `gpt-5.6-luna` default, and
+`GOOSE_THINKING_EFFORT` optionally overrides the default `high` reasoning
+effort. A `gh auth token` does not authenticate Copilot inference.
 
 The container recipe inherits the Copilot and GitHub tokens by environment
 variable name, so token values are not placed on Podman's command line. The
@@ -141,7 +151,8 @@ absent; doctor only reports that condition.
 For a Bluefin review, load `/bluefin-review` after the assigned repository is
 available. To inspect earlier output, enter tmux copy-mode with `Ctrl-b [`;
 PageUp scrolls, tmux search finds text, and `q` returns to the live pane.
-Copy-mode only changes your view; Hive still owns task and output handling.
+The mouse wheel also enters copy-mode and scrolls long output. Copy-mode only
+changes your view; Hive still owns task and output handling.
 
 ## Configuration
 
@@ -157,6 +168,7 @@ All configuration is read at launch.
 | `REVIEW_GH_TOKEN` | Optional GitHub token override for container-only mode. |
 | `GOOSE_PROVIDER` | Unset or `github_copilot`. |
 | `GOOSE_MODEL` | Optional GitHub Copilot model override. |
+| `GOOSE_THINKING_EFFORT` | Optional Copilot reasoning-effort override. |
 | `GITHUB_COPILOT_TOKEN` | Optional Copilot credential override. |
 | `TOOL` | Agent backend selector; only `goose` is accepted. |
 
@@ -198,6 +210,10 @@ Organization skills are generated at image build time from
 `projectbluefin/common`'s `docs/skills/index.json` into Goose's global skill
 directory. Repositories may route agents to their own skill catalog, but
 per-repository skills are not automatically discovered at session startup.
+
+The image supplies `xterm-256color` and `tmux-256color` terminfo definitions.
+It preserves a recognized terminal type when attaching tmux and falls back to
+`xterm-256color` only when that type is unavailable in the image.
 
 Git hooks at `/opt/bluefin/git-hooks` are ergonomics only; GitHub rulesets and
 required checks enforce repository policy.

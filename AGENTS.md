@@ -8,8 +8,9 @@ context. Hive owns the WebSocket contributor protocol, task selection, the
 ## Read order
 
 1. This file.
-2. [`docs/SKILL.md`](docs/SKILL.md).
-3. The one matching file in `docs/skills/`.
+2. [`docs/factory/agentic-model.md`](docs/factory/agentic-model.md).
+3. [`docs/SKILL.md`](docs/SKILL.md).
+4. The one matching file in `docs/skills/`.
 
 ## Boundaries
 
@@ -63,6 +64,24 @@ The generator is the artifact; `projectbluefin/common`'s
 When behavior changes, update the matching user documentation. Treat the
 launcher, image, and tests as the sources of truth for this repository's
 behavior.
+
+## Documentation Is the Model
+
+[`docs/factory/agentic-model.md`](docs/factory/agentic-model.md) is the
+canonical local model for the Bluefin Agentic Factory Feedback Loop. It defines
+the roles, authority boundaries, and vocabulary that explain this repository.
+Code, tests, user documentation, and skills must agree with it.
+
+Every session ships the requested work and records any durable, source-backed
+learning in the closest matching document under `docs/skills/`. Update
+`docs/skills/index.json` in the same change. Do not commit changelogs, session
+notes, implementation plans, design scratchpads, or "append here" documents.
+Remove stale records of that kind and route durable guidance to the matching
+skill instead.
+
+Local repository contracts take precedence; use `projectbluefin/common` as the
+pinned shared factory sidecar, never as a reason to override this repository's
+boundaries.
 
 ## Validation
 

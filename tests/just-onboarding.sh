@@ -480,15 +480,21 @@ assert_nonzero_status "$STATUS" "the fake runner always exits non-zero"
 assert_not_contains "is not supported" "$OUT"
 assert_not_contains "Unset TOOL" "$OUT"
 
-begin "selection: without gum, Copilot and its default model are named"
-rm -f "$cfg_dir/last-selections.env"
+begin "selection: default Copilot model is noninteractive"
 reset_logs
 run_recipe review-container GH_READY=1
 assert_nonzero_status "$STATUS" "the fake runner always exits non-zero"
-assert_contains "GitHub Copilot is the default; using gpt-4.1 (gum unavailable)" "$OUT"
 assert_file_contains "--env GOOSE_PROVIDER=github_copilot" "$runner_log"
-assert_file_contains "--env GOOSE_MODEL=gpt-4.1" "$runner_log"
+assert_file_contains "--env GOOSE_MODEL=gpt-5.6-luna" "$runner_log"
+assert_file_not_exists "$cfg_dir/last-selections.env"
 assert_file_not_exists "$cfg_dir/secrets.env"
+assert_eq "$(wc -c <"$gum_log")" 0 "gum must not be invoked"
+
+begin "review-container: thinking-effort overrides are passed through"
+reset_logs
+run_recipe review-container GH_READY=1 GOOSE_MODEL=gpt-test \
+  GOOSE_THINKING_EFFORT=medium
+assert_file_contains "--env GOOSE_THINKING_EFFORT=medium" "$runner_log"
 
 # ══ 3. Doctor: advisory VM limitation, no failure on a fully provisioned host ══
 if kvm_usable; then
@@ -509,20 +515,13 @@ fi
 # ══ 4. VM runner path (container-hosted QEMU runner) ══════════════════════
 if kvm_usable; then
   begin "VM runner: foreground podman run, v2 bootstrap handshake, no secrets"
-  cat >"$cfg_dir/last-selections.env" <<'EOF'
-LAST_GOOSE_MODEL=llama3.1
-EOF
   reset_logs
   run_recipe review GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-    GUM_INPUT_RESPONSE=gpt-test REVIEW_TEST_RECV_SIZE=1
+    GOOSE_MODEL=gpt-test REVIEW_TEST_RECV_SIZE=1
   assert_nonzero_status "$STATUS" "the fake runner always exits non-zero"
 
-  # Picker memory retains just the selected Copilot model.
-  assert_file_contains 'input --value llama3.1 --placeholder e.g. gpt-4.1 — blank for the default --header GitHub Copilot model (default: gpt-4.1):' "$gum_log"
-  assert_file_not_contains 'Multiple AI CLIs' "$gum_log"
-  assert_file_contains 'LAST_GOOSE_MODEL=gpt-test' "$cfg_dir/last-selections.env"
-  assert_file_not_contains 'LAST_TOOL=' "$cfg_dir/last-selections.env"
-  assert_file_not_contains 'LAST_GOOSE_PROVIDER=' "$cfg_dir/last-selections.env"
+  assert_eq "$(wc -c <"$gum_log")" 0 "gum must not be invoked"
+  assert_file_not_exists "$cfg_dir/last-selections.env"
 
   # The runner is foreground and gets no host secret material.
   assert_file_contains "run --rm --interactive --tty --replace --name review-vm" "$runner_log"
@@ -555,7 +554,7 @@ EOF
   begin "VM runner: waits for the bootstrap socket before passing its path to podman"
   reset_logs
   run_recipe review GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-    GUM_INPUT_RESPONSE=gpt-4o REVIEW_TEST_BOOTSTRAP_MODE=delayed
+    GOOSE_MODEL=gpt-4o REVIEW_TEST_BOOTSTRAP_MODE=delayed
   assert_nonzero_status "$STATUS" "the fake runner always exits non-zero"
   assert_file_contains "bootstrap-socket-before-podman:present" "$credential_log"
   assert_file_exists "$consumed_marker"
@@ -563,7 +562,7 @@ EOF
   begin "VM runner: a bootstrap process that dies before bind fails before podman"
   reset_logs
   run_recipe review GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-    GUM_INPUT_RESPONSE=gpt-4o REVIEW_TEST_BOOTSTRAP_MODE=exit
+    GOOSE_MODEL=gpt-4o REVIEW_TEST_BOOTSTRAP_MODE=exit
   assert_nonzero_status "$STATUS" "a dead bootstrap process must fail the launch"
   assert_contains "VM bootstrap server exited before binding" "$OUT"
   assert_contains "simulated bootstrap bind failure" "$OUT"
@@ -574,7 +573,7 @@ EOF
   # boots an agent that stalls on a device code nobody is there to type.
   reset_logs
   run_recipe review GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-    GUM_INPUT_RESPONSE=gpt-4o \
+    GOOSE_MODEL=gpt-4o \
     FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token REVIEW_TEST_SPLIT_ACK=1
   assert_contains "Copilot credential passed" "$OUT"
   assert_file_contains "provider_secret:present" "$consumed_marker"
@@ -589,7 +588,7 @@ EOF
   begin "VM runner: a GitHub identity is resolved but withheld until guest support ships"
   reset_logs
   run_recipe review GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-    GUM_INPUT_RESPONSE=gpt-4o \
+    GOOSE_MODEL=gpt-4o \
     FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token FAKE_GH_TOKEN=gho-test-token
   assert_contains "VM GitHub identity is blocked" "$OUT"
   assert_contains "host GitHub token was found" "$OUT"
@@ -603,7 +602,7 @@ EOF
   begin "VM runner: a missing Copilot credential is named plainly, not discovered in the guest"
   reset_logs
   run_recipe review GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-    GUM_INPUT_RESPONSE=gpt-4o
+    GOOSE_MODEL=gpt-4o
   assert_contains "no Copilot credential found" "$OUT"
   assert_contains "gh auth token' is NOT a substitute" "$OUT"
   assert_contains "goose configure" "$OUT"
@@ -741,7 +740,7 @@ fi
 begin "review-container: exactly one foreground podman run, hive mount only"
 reset_logs
 run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-  GUM_INPUT_RESPONSE=gpt-test
+  GOOSE_MODEL=gpt-test
 assert_nonzero_status "$STATUS" "the fake podman always exits non-zero"
 assert_eq "$(wc -l <"$runner_log")" 1 "expected exactly one podman invocation"
 assert_file_contains "run --rm --interactive --tty --replace --name review-container" "$runner_log"
@@ -767,7 +766,7 @@ begin "review-container: the Copilot credential is passed, never a gh token"
 # pane sits on "enter code XXXX-XXXX" until a human types one in.
 reset_logs
 run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-  GUM_INPUT_RESPONSE=gpt-4o \
+  GOOSE_MODEL=gpt-4o \
   GITHUB_COPILOT_TOKEN=ghu-test-token
 assert_contains "Copilot credential passed" "$OUT"
 assert_file_contains "--env GITHUB_COPILOT_TOKEN" "$runner_log"
@@ -777,7 +776,7 @@ assert_file_contains "GITHUB_COPILOT_TOKEN:present" "$credential_log"
 begin "review-container: the credential is read from the login keyring when unexported"
 reset_logs
 run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-  GUM_INPUT_RESPONSE=gpt-4o \
+  GOOSE_MODEL=gpt-4o \
   FAKE_KEYRING_COPILOT_TOKEN=ghu-keyring-token
 assert_contains "Copilot credential passed" "$OUT"
 assert_file_contains "--env GITHUB_COPILOT_TOKEN" "$runner_log"
@@ -788,7 +787,7 @@ assert_not_contains "ghu-keyring-token" "$OUT"
 begin "review-container: no credential says so plainly and names the fix"
 reset_logs
 run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-  GUM_INPUT_RESPONSE=gpt-4o
+  GOOSE_MODEL=gpt-4o
 assert_contains "no Copilot credential found" "$OUT"
 assert_contains "gh auth token' is NOT a substitute" "$OUT"
 assert_contains "goose configure" "$OUT"
@@ -799,7 +798,7 @@ begin "review-container: a GitHub identity is inherited, never mounted"
 # login' (which the Hive wrapper blocks in contributor mode) and stops.
 reset_logs
 run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-  GUM_INPUT_RESPONSE=gpt-4o \
+  GOOSE_MODEL=gpt-4o \
   FAKE_GH_TOKEN=gho-test-token
 assert_contains "GitHub identity passed to the agent" "$OUT"
 assert_file_contains "--env GH_TOKEN" "$runner_log"
@@ -813,7 +812,7 @@ assert_not_contains "gho-test-token" "$OUT"
 begin "review-container: the blast radius is named, the token is not"
 reset_logs
 run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-  GUM_INPUT_RESPONSE=gpt-4o \
+  GOOSE_MODEL=gpt-4o \
   FAKE_GH_TOKEN=gho-test-token FAKE_GH_SCOPES="'admin:org', 'repo', 'workflow'"
 assert_contains "admin:org" "$OUT"
 assert_contains "REVIEW_GH_TOKEN" "$OUT"
@@ -822,7 +821,7 @@ assert_not_contains "gho-test-token" "$OUT"
 begin "review-container: an explicit scoped PAT beats the desktop login"
 reset_logs
 run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-  GUM_INPUT_RESPONSE=gpt-4o \
+  GOOSE_MODEL=gpt-4o \
   FAKE_GH_TOKEN=gho-desktop-token REVIEW_GH_TOKEN=gho-scoped-pat
 assert_file_contains "--env GH_TOKEN" "$runner_log"
 assert_file_not_contains "GH_TOKEN=gho-scoped-pat" "$runner_log"
@@ -832,7 +831,7 @@ assert_file_not_contains "gho-desktop-token" "$runner_log"
 begin "review-container: no GitHub token says so plainly and names the fix"
 reset_logs
 run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-  GUM_INPUT_RESPONSE=gpt-4o
+  GOOSE_MODEL=gpt-4o
 assert_contains "no GitHub token found" "$OUT"
 assert_contains "gh auth login" "$OUT"
 assert_file_not_contains "GH_TOKEN=" "$runner_log"
@@ -840,7 +839,7 @@ assert_file_not_contains "GH_TOKEN=" "$runner_log"
 begin "review-container: an unobtainable image is one actionable error"
 reset_logs
 run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-  GUM_INPUT_RESPONSE=gpt-test \
+  GOOSE_MODEL=gpt-test \
   FAKE_PODMAN_IMAGE_MISSING=1
 assert_nonzero_status "$STATUS" "an unobtainable contributor image must fail the run"
 assert_eq "$(error_line_count "$OUT")" 1 "expected exactly one ERROR line"
@@ -855,7 +854,7 @@ begin "review-container: an immutable reference is not re-pulled"
 # work on every launch; only moving tags need the pull.
 reset_logs
 run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-  GUM_INPUT_RESPONSE=gpt-test \
+  GOOSE_MODEL=gpt-test \
   REVIEW_CONTRIBUTOR_IMAGE=ghcr.io/projectbluefin/review:sha-deadbeef
 assert_file_contains "image exists" "$image_log"
 assert_file_not_contains "pull" "$image_log"
@@ -863,7 +862,7 @@ assert_file_not_contains "pull" "$image_log"
 begin "review-container: a live session is never replaced silently"
 reset_logs
 run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-  GUM_INPUT_RESPONSE=gpt-test \
+  GOOSE_MODEL=gpt-test \
   FAKE_PODMAN_RUNNING=1 FAKE_PODMAN_OWNED=1
 assert_nonzero_status "$STATUS" "a container owned by another terminal must stop the relaunch"
 assert_eq "$(error_line_count "$OUT")" 1 "expected exactly one ERROR line"
@@ -877,7 +876,7 @@ begin "review-container: an orphaned run is reclaimed without a second command"
 # the launch takes the name back instead of demanding manual cleanup.
 reset_logs
 run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
-  GUM_INPUT_RESPONSE=gpt-test \
+  GOOSE_MODEL=gpt-test \
   FAKE_PODMAN_RUNNING=1 FAKE_PODMAN_OWNED=0
 assert_contains "reclaiming" "$OUT"
 assert_not_contains "ERROR:" "$OUT"

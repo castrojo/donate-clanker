@@ -1,7 +1,7 @@
 ---
 name: image-build
-version: "2.1"
-last_updated: 2026-08-03
+version: "2.2"
+last_updated: 2026-08-04
 id: image-build
 one_line_purpose: Derive and pin the review contributor image safely.
 entry_point: docs/skills/image-build.md
@@ -28,31 +28,49 @@ or published contributor-image behavior.
 1. Derive from the digest-pinned FSDK lab-runner base. Keep the Hive commit in
    the image equal to the launcher setup commit so both use the same protocol
    revision.
-2. Add only the contributor delta: Goose, tmux, GitHub CLI, Node with `ws`,
-   the pinned Hive runtime, the minimal `cmp` compatibility wrapper, and the
-   required terminal definition. Do not turn the image into a general-purpose
-   distribution.
-3. Pin Node, GitHub CLI, and tmux versions and verify their checksums. Goose
+2. Audit the exact base digest at runtime before adding anything. Moving FSDK
+   source, image labels, and SBOM package records can disagree with the
+   filesystem; command execution and file inspection against the pinned digest
+   define the base interface.
+3. Add only the contributor delta: Goose, tmux, GitHub CLI, Node with `ws`,
+   the pinned Hive runtime, controlled policy/configuration, and approved agent
+   tools. Do not duplicate a capability already present in the verified base.
+   Do not turn the image into a general-purpose distribution.
+4. Preserve canonical command semantics. Never shadow `grep`, `find`, `cat`, or
+   `ls` with modern alternatives. Add tools such as `rg` under their native
+   names and teach agents to prefer them for exploration.
+5. Missing standard runtime utilities belong at the FSDK seam. Prefer real
+   FSDK-owned findutils, diffutils, and terminfo over local Python command
+   replacements or reconstructed databases. If the existing FSDK artifact
+   cannot provide them, record the base gap rather than inventing a second
+   implementation.
+6. Pin Node, GitHub CLI, and tmux versions and verify their checksums. Goose
    follows upstream's mutable `canary` release instead: verify each archive
    with `gh attestation verify`, constrained to the official repository and
    `canary.yml` signer workflow. Keep archive extraction constrained to safe
-   archive members. Install `ws` with `npm --ignore-scripts`; advisory churn is
-   not an image-build gate.
-4. Place controlled Goose configuration under `/opt/bluefin/goose`, because
-   Hive overwrites the default config path. The entrypoint sets the Copilot
-   provider, default model, telemetry setting, context file names, and
-   image-owned agent policy before it starts Hive.
-5. Generate org skills at build time from the pinned common catalog into
+   archive members. Prefer an official static-musl artifact when it is
+   behaviorally equivalent on both architectures; never compile or repack
+   Goose locally. Lock `ws` and disable lifecycle scripts.
+7. Place controlled Goose configuration under `/opt/bluefin/goose` as the
+   image-owned policy, data, and state seam. Revalidate compatibility settings
+   against the pinned Hive runtime before retaining them; do not preserve stale
+   workarounds solely because an older Hive revision needed them.
+8. Generate org skills at build time from the pinned common catalog into
    `/home/dev/.agents/skills`. Review the generator and catalog inputs, never
-   generated output.
-6. Keep credentials, workspaces, and host configuration out of image layers.
+   generated output. Remove build-only generation tooling from the final
+   filesystem when the build shape permits it.
+9. Keep credentials, workspaces, and host configuration out of image layers.
    Supply the GitHub token used for canary provenance verification as the
    required `github_token` build secret; it is available only to that `RUN`
    step and must not be an argument or environment layer.
-7. Treat the image as a task runtime, not a general validation distribution.
+10. Treat the image as a task runtime, not a general validation distribution.
    At startup, report unavailable baseline validation commands (`bats`,
    `shellcheck`, `systemd-analyze`, `pre-commit`, `just`, and `podman`) without
    blocking Hive or installing them solely to hide the absence.
+11. Measure before and after every composition change: compressed manifest,
+    unpacked filesystem, layer and directory deltas, cold/warm builds, and
+    native amd64/arm64 runtime behavior. Deleting inherited files in a later
+    layer does not reclaim the base layer.
 
 The publish workflow moves `:stable` on main. It also publishes immutable
 `sha-<commit>` tags; use an immutable tag or digest when reproducibility is
@@ -63,12 +81,20 @@ required. Do not use `:latest`.
 Do not use this runbook to change Hive assignment, checkout, or contributor
 protocol behavior; those belong in Hive. Do not add task-specific validation
 dependencies to the image when an unavailable-command report is sufficient.
+Do not switch the final image to a shell-less base or copy a hand-selected
+dynamic-library closure from another distribution.
 
 ## Common Rationalizations
 
 - "Adding every validator makes contributors more useful." The image must stay
   a narrow contributor runtime; report a missing tool and let the assigned
   repository choose its validation environment.
+- "Replacing grep/find/cat/ls makes every agent faster." These commands are a
+  script interface. Install modern tools alongside them; never substitute
+  incompatible semantics.
+- "A multi-stage build makes copied libraries safe." Multi-stage syntax does
+  not make a manually selected ABI closure maintainable. Keep the final image
+  directly on the verified FSDK shell base.
 - "Passing `--env NAME=value` is harmless." Podman exposes command arguments
   locally; export the value and use `--env NAME` so Podman inherits only that
   host environment entry.
@@ -77,11 +103,15 @@ dependencies to the image when an unavailable-command report is sufficient.
 
 - A floating base image or an unverified download. Goose's canary source is
   intentionally mutable, but its archive must have verified signed provenance.
+- Treating current FSDK source or labels as proof of an older pinned digest's
+  runtime contents.
 - A Hive pin that differs from the launcher setup pin.
 - A secret, host workspace, or host configuration baked into a layer.
 - Writing Goose configuration to `~/.config/goose`.
 - Committing generated `.agents/skills/` output.
 - Adding a second agent backend or unrelated runtime package.
+- A custom compile, repacked binary bundle, package manager, command shadow, or
+  copied cross-distribution library closure.
 
 ## Verification
 
@@ -97,8 +127,11 @@ git diff --check
 
 Inspect the built image only for the controlled Goose root and generated skill
 directories; never use image history or command output to expose credentials.
+Verify the exact FSDK input digest's attestation and runtime command contract,
+then verify the derived image on native amd64 and arm64.
 
 ## Sources
 
 - Podman environment inheritance: Context7 `/websites/podman_io_en`
 - GitHub CLI attestation verification: Context7 `/websites/cli_github_manual`
+- Docker image and multi-stage best practices: Context7 `/docker/docs`

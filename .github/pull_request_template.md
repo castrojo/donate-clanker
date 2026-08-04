@@ -9,17 +9,6 @@
 <!-- Link the issue this closes: "Closes #NNN" -->
 Closes #
 
-## PR pipeline
-
-```
-opened ──▶ review ──▶ approved ──▶ merged
-                    [lgtm]      auto-merge
-                                when CI green
-```
-
-> Add `do-not-merge` at any time to block automation.
-> `/approve` or `lgtm` from a maintainer triggers merge queue.
-
 ## Checklist
 
 - [ ] PR title follows Conventional Commits (`fix:`, `feat:`, `docs:`, `ci:`, `refactor:`, etc.)
@@ -30,7 +19,7 @@ opened ──▶ review ──▶ approved ──▶ merged
 - [ ] `git diff --check` is clean
 - [ ] `just --list` parses
 - [ ] `pre-commit run --all-files` passes
-- [ ] Skill doc updated if the change affects agent-facing conventions or behavior (see [`docs/SKILL.md`](../docs/SKILL.md))
+- [ ] Durable, source-backed learning is captured in the matching skill when this change reveals one (see [`docs/skills/skill-improvement.md`](../docs/skills/skill-improvement.md))
 - [ ] `AGENTS.md` / `docs/SKILL.md` / `docs/skills/` links remain valid
 - [ ] CI is green after push: `gh run list --repo projectbluefin/review --limit 5`
 
