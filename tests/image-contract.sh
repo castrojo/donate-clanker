@@ -288,6 +288,10 @@ require image/entrypoint.sh \
   'tmux readiness diagnostics' \
   'tmux attach-session -t contributor' \
   'trap cleanup EXIT HUP INT TERM' \
+  'tmux attach-session -t contributor <&3 &' \
+  'wait "$attach_pid"' \
+  'shutdown_grace_deciseconds=20' \
+  'kill -TERM "$agent_pid"' \
   "note 'tmux detached; the agent remains foreground in this terminal. Press Ctrl-C or close this terminal to stop it.'" \
   'wait "$agent_pid"' \
   'tmux kill-session -t contributor'
