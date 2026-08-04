@@ -7,9 +7,9 @@ enslaving the oppressors since 2026
 
 `review` comes with goose prebundled and will passthrough client creds. Support for other providers/etc is out of scope, this is a bundled "all in one" designed to churn through the crap you don't wanna do by hand. You can steer from here but it is expected that a contributor would use their preferred tool for feature development, etc.
 
-There are NOT anonymous "donations" - it's tied to your github account, reputation in the queue is based on your real life reputation in the project. The cream will rise to the top. 
+**These are NOT anonymous "donations"** - it's tied to the person's github account, reputation in the queue is based on your real life reputation in the project. The cream will rise to the top. 
 
-The Bluefin Hive will send these agents work and coordinate - which will dole out work based on your standing in the project. New contributors will be given easier tasks until they level up, and maintainers are given more important tasks. Everything in here is `clanker-queue` only, the `human-queue` is not managed here, this is managed by hive. 
+The Bluefin Hive will send these agents work and coordinate - which will dole out work based on your standing in the project. New contributors will be given easier tasks until they level up, and maintainers are given more important tasks. Everything in here is `clanker-queue` only, the `human-queue` is not managed here. 
 
 It owns only VM boot, credential handoff, and review context. Hive owns the
 contributor protocol, task selection, the `contributor` tmux session, prompt
