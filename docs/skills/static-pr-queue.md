@@ -1,7 +1,7 @@
 ---
 name: static-pr-queue
-version: "1.2"
-last_updated: 2026-08-03
+version: "1.3"
+last_updated: 2026-08-04
 id: static-pr-queue
 one_line_purpose: Publish a safe, static queue of public pull requests.
 entry_point: docs/skills/static-pr-queue.md
@@ -54,6 +54,10 @@ GitHub owns pull-request state and merge decisions.
 7. Use `GITHUB_TOKEN` with only `contents: write` in the refresh workflow.
    Check out `main` explicitly and never use `pull_request_target` or execute
    pull-request head code in a write-capable job.
+8. Keep the surface one document. Do not add `/org`, `/repo`, `/batch`,
+   `/next`, content negotiation, `/.well-known/agent-queue`, webhooks, claims,
+   leases, a key-value store, or private-repository support until a real
+   consumer proves the need. The JSON is small enough to filter client-side.
 
 ## Common Rationalizations
 
