@@ -78,6 +78,8 @@ GitHub owns pull-request state and merge decisions.
 - A refresh writes an empty snapshot after a GitHub source error.
 - `generated_at` changes when the ranked `items` array did not.
 - Queue code mutates labels, assignments, Hive, or pull requests.
+- A new action suggests feature work instead of repairing a stalled pull
+  request.
 - A static artifact includes private repository data or credentials.
 
 ## Verification

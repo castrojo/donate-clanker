@@ -3,6 +3,25 @@
   "schema_version": "1.0",
   "skills": [
     {
+      "id": "contribution-culture",
+      "name": "contribution-culture",
+      "one_line_purpose": "Do maintainer toil in small changes, never feature development.",
+      "entry_point": "docs/skills/contribution-culture.md",
+      "category": "meta",
+      "status": "active",
+      "tags": [
+        "culture",
+        "toil",
+        "scope",
+        "maintainers",
+        "contribution"
+      ],
+      "description": "Defines the scope and manners of factory work: toil reduction for under-maintained projects in small, reviewable changes, never feature development. Use before deciding how large a change should be or what a task's deliverable is.",
+      "version": "1.1",
+      "last_updated": "2026-08-04",
+      "doc_type": "policy"
+    },
+    {
       "id": "goose-context",
       "name": "goose-context",
       "one_line_purpose": "Keep Goose config and skill routing working in the guest.",
