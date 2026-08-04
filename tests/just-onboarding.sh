@@ -1052,6 +1052,13 @@ assert_contains "VM GitHub identity is blocked" "$OUT"
 begin "static: the launcher can never background a VM or a container"
 # Comments in this file legitimately discuss --detach/nohup/setsid, so they
 # are stripped before any of these greps run.
+# Only whole-line comments are stripped, deliberately. A trailing '# --detach'
+# on a code line is still scanned and would fail this test, which is a false
+# positive — but the alternative is worse: the justfile contains '#' inside
+# quoted strings and inside ${...} expansions, and no line-level rule can tell
+# those apart from a comment. An over-eager strip would silently truncate a
+# real launch line and turn a false positive into a hole in the guarantee.
+# Move the comment to its own line instead.
 code="$scratch/justfile-code"
 sed -E 's/^[[:space:]]*#.*$//' "$justfile" >"$code"
 
@@ -1070,6 +1077,89 @@ assert_eq "$(grep -c 'podman run --rm --interactive --tty' "$code")" 2 \
 # A stale container from a hard-killed terminal must never block a relaunch.
 assert_eq "$(grep -c 'podman run --rm --interactive --tty --replace --name' "$code")" 2 \
   "every named foreground run must reclaim its name with --replace"
+
+begin "static: a launch cannot detach through an option form or a second line"
+# The greps above read one physical line at a time and only recognise a
+# space-delimited '-d'/'--detach' sitting on the same line as 'podman run'.
+# Both launches are actually built as multi-line CONTAINER_ARGS arrays, so
+# '--detach' on a continuation line of the array — or '-itd', '--detach=true',
+# or a '\'-continued launch — would sail straight past them. Rebuild the
+# scan around the argument region instead of the single launch line.
+#
+# Line continuations are joined first so a launch split with '\' is scanned
+# as the one command it becomes.
+joined="$scratch/justfile-code-joined"
+sed -e :a -e '/\\$/N; s/\\\n//; ta' "$code" >"$joined"
+# Everything that contributes arguments to a real launch: both podman
+# argument arrays (opened as CONTAINER_ARGS=( and appended to with +=), any
+# bare 'podman run'/'podman create', and the qemu invocation.
+launch_args="$scratch/justfile-launch-args"
+awk '
+  /CONTAINER_ARGS\+?=\(/           { inargs = 1 }
+  inargs                           { print; if ($0 ~ /\)[[:space:]]*$/) inargs = 0; next }
+  /podman[[:space:]]+(run|create)/ { print; next }
+  /qemu-system-/                   { print }
+' "$joined" >"$launch_args"
+# 'podman run --detach-keys' is a foreground detach *sequence*, not
+# backgrounding, so the character after '--detach' has to be checked.
+if grep -nE -- '--detach([^-]|$)' "$launch_args"; then
+  fail "no launch argument may detach the run (--detach/--detach=true)"
+fi
+if grep -nE -- '(^|[[:space:]])-d([[:space:]=]|$)' "$launch_args"; then
+  fail "no launch argument may detach the run (-d/-d=true)"
+fi
+# '-itd' and '-dit' bundle the detach flag into the short-flag cluster the
+# foreground launches already use. Only clusters built from podman's own
+# bundleable short flags are matched, so qemu's '-drive'/'-device' and the
+# shell's '-rf'/'-euo' cannot trip this.
+if grep -nE -- '(^|[[:space:]])-([aditq]+d[aditq]*|d[aditq]+)([[:space:]]|$)' "$launch_args"; then
+  fail "no launch argument may bundle the detach flag into a short-flag cluster"
+fi
+# qemu daemonizes with its own flag, which shares nothing with podman's.
+if grep -nE -- '(^|[[:space:]])-{1,2}daemonize([[:space:]]|$)' "$launch_args"; then
+  fail "the qemu invocation must never daemonize"
+fi
+# A background '&' anywhere in the launch region, not only at end of line:
+# 'podman run ... & wait' backgrounds the launch just as effectively while
+# still ending the line in 'wait'. '&&', '&>' and '2>&1' must not match.
+if grep -nE '[^&>]&([^&>]|$)' "$launch_args"; then
+  fail "a launch must never be backgrounded with '&'"
+fi
+
+begin "static: the launcher cannot daemonize through a second command"
+# Every one of these hands the run to something that outlives the terminal
+# without ever writing '-d' on a 'podman run' line. 'podman create' is the
+# subtlest: it never detaches by itself, but it exists only to be handed to
+# 'podman start', which does.
+if grep -nE 'podman[[:space:]]+(create|start|restart)([[:space:]]|$)' "$joined"; then
+  fail "podman create/start/restart would resurrect a run outside its terminal"
+fi
+if grep -nE '(^|[^[:alnum:]_-])(systemd-run|disown|daemonize)([^[:alnum:]_-]|$)' "$joined"; then
+  fail "systemd-run/disown/daemonize must never appear on a launch path"
+fi
+if grep -nE '(screen[[:space:]]+-[A-Za-z]*d|tmux[[:space:]]+new(-session)?[[:space:]]+.*-[A-Za-z]*d)' "$joined"; then
+  fail "a detached screen/tmux session is a daemon wearing a multiplexer"
+fi
+# 'at'/'batch' only in command position: the scheduler runs the job under a
+# daemon, detached from this terminal by construction.
+if grep -nE '(^|[;&|])[[:space:]]*(at|batch)[[:space:]]+' "$joined"; then
+  fail "a launch must never be handed to the at/batch scheduler"
+fi
+
+begin "static: the launcher ships no systemd unit, quadlet or otherwise"
+# A quadlet unit ('.container', '.kube', '.pod', '.volume', '.network',
+# '.build') is a systemd service in disguise: podman-system-generator turns
+# it into a unit, and the run then belongs to systemd rather than to the
+# terminal. It would bypass every regex above, because none of the words
+# those match ever appear. So the check is the absence of the file, plus the
+# absence of any reference that could install or start one.
+tracked_units="$(git -C "$repo_root" ls-files \
+  '*.container' '*.kube' '*.pod' '*.volume' '*.network' '*.build' 2>/dev/null || true)"
+[[ -z "$tracked_units" ]] ||
+  fail "this repository must ship no quadlet unit: $tracked_units"
+if grep -nE '(quadlet|containers/systemd|systemctl|systemd-analyze)' "$joined"; then
+  fail "the launcher must never install, generate or drive a systemd unit"
+fi
 
 begin "static: the verified master image is never booted directly"
 # shellcheck disable=SC2016 # the launcher source is matched literally, not expanded
