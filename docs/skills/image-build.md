@@ -1,6 +1,6 @@
 ---
 name: image-build
-version: "2.2"
+version: "2.4"
 last_updated: 2026-08-04
 id: image-build
 one_line_purpose: Derive and pin the review contributor image safely.
@@ -10,8 +10,8 @@ mcp_compliance_level: partial
 optimization_status: draft
 status: active
 dependencies: []
-tags: [containerfile, image, digest, pinning, build]
-description: "Maintains the pinned FSDK-derived contributor image, Hive runtime, Goose configuration, and generated skills. Use when editing image layers, pins, or image publication behavior."
+tags: [containerfile, image, digest, pinning, build, renovate]
+description: "Maintains the pinned FSDK-derived contributor image, Hive runtime, Goose configuration, generated skills, and the pin update path. Use when editing image layers, pins, or image publication behavior."
 metadata:
   type: procedure
 ---
@@ -25,9 +25,13 @@ or published contributor-image behavior.
 
 ## Core Process
 
-1. Derive from the digest-pinned FSDK lab-runner base. Keep the Hive commit in
-   the image equal to the launcher setup commit so both use the same protocol
-   revision.
+1. Derive from the FSDK lab-runner base pinned by a tagged digest
+   (`name:tag@sha256:`). The digest is what the build resolves to and is the
+   security property; the tag is what makes the pin *trackable*, because a
+   reference carrying no tag gives an update manager no version series to
+   compare against. A bare digest is not a stricter pin, it is an untracked
+   one. Keep the Hive commit in the image equal to the launcher setup commit
+   so both use the same protocol revision.
 2. Audit the exact base digest at runtime before adding anything. Moving FSDK
    source, image labels, and SBOM package records can disagree with the
    filesystem; command execution and file inspection against the pinned digest
@@ -76,6 +80,46 @@ The publish workflow moves `:stable` on main. It also publishes immutable
 `sha-<commit>` tags; use an immutable tag or digest when reproducibility is
 required. Do not use `:latest`.
 
+## Pin Maintenance
+
+**An unmaintainable pin is a stale pin.** A pin's strictness is worthless if no
+automation can see past it, and a frozen pin raises no failing check — it looks
+maximally strict while being maximally stale. Both pins in this image reached
+that state at once: the Hive commit had no manager able to match it, and the
+FSDK base carried a digest with no tag, so neither was ever proposed for
+update. When adding or reshaping a pin, establish its update path in the same
+change and prefer a reference shape a manager can resolve.
+
+The Hive SHA lives in three places that must move together in one commit:
+
+| Location | Form |
+|---|---|
+| `justfile` | `hive_commit := "<sha>"` |
+| `image/Containerfile` | `ARG HIVE_COMMIT=<sha>` |
+| `README.md` | the bare SHA in prose |
+
+CI enforces this: `tests/image-contract.sh` requires the launcher and image
+pins to be equal, and `.github/workflows/validate.yml` requires `README.md` to
+contain the launcher pin. Updating any two of the three fails the build.
+
+Hive's default branch is `v2`, not `main`. Resolve a candidate SHA from `v2`
+and use the full 40-character commit; the launcher rejects a branch name.
+
+Hive is a **protocol** dependency, not a library. The image consumes exactly
+three upstream files — `bin/contributor-agent.sh`, `bin/contributor-relay.sh`,
+and `config/backends.conf`. A bump is only safe to automerge when those three
+are unchanged between the old and new SHA; otherwise read the diff and update
+[`hive-runtime.md`](hive-runtime.md) and [`hive-triage.md`](hive-triage.md)
+in the same change. That condition is machine-checked by
+`.github/workflows/hive-pin-gate.yml`, which derives the consumed-file list
+from `image/Containerfile` rather than from a hand-maintained list; keep the
+two in step when the image starts or stops consuming an upstream file.
+
+Never add a downstream workaround for an upstream protocol gap. Moving the pin
+is the fix; a local retry, poll, timeout, or shim becomes a permanent
+compatibility burden for both sides. See
+[`upstream-hive.md`](upstream-hive.md).
+
 ## When Not to Use
 
 Do not use this runbook to change Hive assignment, checkout, or contributor
@@ -86,6 +130,14 @@ dynamic-library closure from another distribution.
 
 ## Common Rationalizations
 
+- "Renovate covers it." Confirm the pin's shape is one a manager can actually
+  resolve. A bare `image@sha256:` reference and an unmanaged shell variable
+  both look pinned and never move.
+- "A digest with no tag is the safest possible pin." It is the safest possible
+  *build*, and the least maintainable pin. Safety that decays unobserved is not
+  safety; carry the tag so the digest can be moved forward deliberately.
+- "It's only a SHA bump, automerge it." Hive is a protocol dependency; verify
+  the three consumed files are unchanged before trusting an automerge.
 - "Adding every validator makes contributors more useful." The image must stay
   a narrow contributor runtime; report a missing tool and let the assigned
   repository choose its validation environment.
@@ -103,9 +155,14 @@ dynamic-library closure from another distribution.
 
 - A floating base image or an unverified download. Goose's canary source is
   intentionally mutable, but its archive must have verified signed provenance.
+- An image reference pinned by bare digest with no tag. It cannot be tracked
+  and will silently freeze; it reads as the strictest pin in the file.
+- Any other pin with no established update path.
 - Treating current FSDK source or labels as proof of an older pinned digest's
   runtime contents.
-- A Hive pin that differs from the launcher setup pin.
+- A Hive pin that differs from the launcher setup pin, or a Hive bump that
+  moves fewer than all three pin locations.
+- Automerging a Hive bump whose consumed upstream files changed.
 - A secret, host workspace, or host configuration baked into a layer.
 - Writing Goose configuration to `~/.config/goose`.
 - Committing generated `.agents/skills/` output.
@@ -118,6 +175,7 @@ dynamic-library closure from another distribution.
 ```bash
 bash tests/image-contract.sh
 bash tests/generate-skills.sh
+grep -Fq "$(sed -n 's/^hive_commit := "\(.*\)"$/\1/p' justfile)" README.md
 GH_TOKEN="$(gh auth token)" podman build \
   --secret id=github_token,env=GH_TOKEN \
   --build-arg GOOSE_REFRESH="$(date +%s)" \
@@ -132,6 +190,9 @@ then verify the derived image on native amd64 and arm64.
 
 ## Sources
 
+- Hive consumed files and default branch `v2`: `kubestellar/hive`
+  `bin/contributor-agent.sh`, `bin/contributor-relay.sh`,
+  `config/backends.conf`.
 - Podman environment inheritance: Context7 `/websites/podman_io_en`
 - GitHub CLI attestation verification: Context7 `/websites/cli_github_manual`
 - Docker image and multi-stage best practices: Context7 `/docker/docs`

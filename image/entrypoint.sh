@@ -111,10 +111,47 @@ if ! infocmp "${TERM:-}" >/dev/null 2>&1; then
 	export TERM="$tmux_fallback_term"
 fi
 agent_pid=
+attach_pid=
+# Podman sends SIGTERM and waits ten seconds before SIGKILL, so teardown has
+# to be BOUNDED: an unbounded wait on a stuck agent stalls until that deadline
+# and dies by SIGKILL, which is the "Ctrl-C stops it" promise failing in the
+# only way a user can see. Two short steps, three seconds worst case, leave
+# the deadline untouched.
+#
+# Nothing downstream depends on the agent exiting cleanly. Hive's hub releases
+# the task itself when the socket drops -- its disconnect defer nils
+# currentTask, logs 'task released on disconnect' and books a cooldown, and
+# heartbeatLoop closes a half-open socket on a stale pong. A polite window for
+# the agent's own exit trap is worth two seconds; it is not load-bearing, and
+# must not grow into a shutdown protocol this repository does not owe anyone.
+shutdown_grace_deciseconds=20
+
+wait_for_exit() {
+	# Poll rather than 'wait' so this is reusable from inside a trap handler,
+	# where the child has usually already been reaped.
+	local pid="$1" limit="$2" waited=0
+	while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$limit" ]; do
+		sleep 0.1
+		waited=$((waited + 1))
+	done
+}
+
 cleanup() {
 	status=$?
+	# A second signal during teardown would re-enter this handler and restart
+	# the escalation, stretching a bounded teardown past podman's deadline.
+	trap '' HUP INT TERM
+	if [ -n "$attach_pid" ] && kill -0 "$attach_pid" 2>/dev/null; then
+		kill "$attach_pid" 2>/dev/null || true
+	fi
 	if [ -n "$agent_pid" ] && kill -0 "$agent_pid" 2>/dev/null; then
-		kill "$agent_pid" 2>/dev/null || true
+		kill -TERM "$agent_pid" 2>/dev/null || true
+		wait_for_exit "$agent_pid" "$shutdown_grace_deciseconds"
+		# Hive's agent script blocks on its own tmux session, so dropping the
+		# session is what lets a stuck shutdown finish.
+		tmux kill-session -t contributor 2>/dev/null || true
+		wait_for_exit "$agent_pid" 10
+		kill -KILL "$agent_pid" 2>/dev/null || true
 		wait "$agent_pid" 2>/dev/null || true
 	fi
 	tmux kill-session -t contributor 2>/dev/null || true
@@ -144,8 +181,30 @@ done
 
 # Attach only when there is a terminal. Without this an unattended run would
 # fail on `tmux attach`, which refuses to run without a tty.
+#
+# The attach runs as a background job and is waited on rather than run in the
+# foreground. Bash defers a trap handler until the foreground child returns, so
+# a foreground `tmux attach-session` swallows SIGTERM/SIGINT for as long as the
+# session is attached -- which is the entire run. Podman then hits its ten
+# second deadline and SIGKILLs the container: Ctrl-C and `podman stop` both
+# stall for ten seconds and the run ends by force, which is exactly the
+# foreground guarantee in AGENTS.md failing where a user can see it. `wait` is
+# interruptible, so this keeps PID 1 responsive to signals for the whole
+# session. Job control is off here, so the background attach shares this
+# shell's process group and still owns the terminal normally -- no
+# SIGTTIN/SIGTTOU, no visible behaviour change.
+#
+# The explicit `<&3` matters: with job control off, bash redirects an
+# asynchronous command's stdin from /dev/null unless the command carries a
+# redirection of its own, and `tmux attach` dies with "open terminal failed:
+# not a terminal" the moment it loses the tty.
 if [ -t 0 ] && [ -t 1 ]; then
-	tmux attach-session -t contributor
+	exec 3<&0
+	tmux attach-session -t contributor <&3 &
+	attach_pid=$!
+	wait "$attach_pid" || true
+	attach_pid=
+	exec 3<&-
 	note 'tmux detached; the agent remains foreground in this terminal. Press Ctrl-C or close this terminal to stop it.'
 	wait "$agent_pid"
 else

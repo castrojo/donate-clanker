@@ -1,7 +1,7 @@
 ---
 name: hive-runtime
-version: "1.5"
-last_updated: 2026-08-02
+version: "1.7"
+last_updated: 2026-08-04
 id: hive-runtime
 one_line_purpose: Operate inside Hive's tmux, token, and cooldown constraints.
 entry_point: docs/skills/hive-runtime.md
@@ -10,8 +10,8 @@ mcp_compliance_level: partial
 optimization_status: draft
 status: active
 dependencies: []
-tags: [hive, tmux, runtime, tokens, cooldown]
-description: "Explains Hive's tmux session, prompt and output contract, contributor credentials, token lifetime, cooldown, and exclusive task selection. Use when operating or debugging a session."
+tags: [hive, tmux, runtime, tokens, cooldown, workspace]
+description: "Explains Hive's tmux session, workspace directory, prompt and output contract, contributor credentials, token lifetime, cooldown, and exclusive task selection. Use when operating or debugging a session."
 metadata:
   type: reference
 ---
@@ -36,13 +36,26 @@ assigned contributor session behaves unexpectedly.
 
    Detaching tmux changes the display, not the foreground run. Ctrl-C or
    closing the original terminal ends the contributor.
-3. Put the final result in the final 15 pane lines. Hive captures only those
+3. Expect the agent to start in Hive's prepared workspace. `contributor-agent.sh`
+   exports `HIVE_WORKSPACE_DIR` (default `$HOME/workspace`), creates it, and
+   starts the tmux session rooted there with `tmux new-session -c`. Clone
+   assigned work into that directory; no `cd` step is required, and the
+   launcher must not create or mount a workspace of its own.
+4. Put the final result in the final 15 pane lines. Hive captures only those
    lines for its report.
-4. Plan around the scoped assignment token's 55-minute lifetime. It is not
+5. Plan around the scoped assignment token's 55-minute lifetime. It is not
    refreshed. Report completion only after its verifiable artifact exists;
    completion applies the 168-hour issue cooldown, while failure does not.
-5. Do not filter, decline, rank, or retry assignments in this repository.
-   Hive selection is the sole authority.
+6. Do not filter, decline, rank, or retry assignments in this repository.
+   Hive selection is the sole authority. The relay's own negative-ack handling
+   is Hive's, not ours: when the hub declines to assign work it sends
+   `task_unavailable` with a reason (`no_work`, `token_mint_failed`,
+   `tier_disabled`, `concurrency_limit`), which the relay logs before re-asking
+   after a fixed delay. A relay revision predating that case logs the message
+   as an unknown type and then has no path back to asking, because every
+   `ready` it sends is event-driven and none is timed; it wedges idle. No task
+   was assigned in that state, so nothing is held. Move the pin rather than
+   adding a downstream retry.
 
 ### GitHub identity
 
@@ -69,7 +82,15 @@ Hive's session creation to accomplish either behavior.
   in the launcher or image.
 - Adding assignment selectors or client-side retry loops.
 - Treating a tmux detach as background execution.
+- Preparing, mounting, or renaming a contributor workspace in the launcher or
+  image instead of using Hive's `HIVE_WORKSPACE_DIR`.
+- Adding a local retry, poll, or timeout to compensate for a relay revision
+  that ignores `task_unavailable`.
 - Reporting completion before the required artifact is independently visible.
+- Assuming an abruptly killed contributor strands its assigned task. The hub
+  releases `currentTask` in its disconnect handler and books a cooldown, and
+  its heartbeat loop closes a half-open socket, so no downstream release,
+  timeout, or slot-reclaim step belongs here.
 - Mounting `~/.config/gh` or printing a token to provide agent identity.
 
 ## Verification
@@ -85,4 +106,12 @@ and no launcher change duplicates Hive lifecycle behavior.
 
 ## Sources
 
+Cite upstream by pinned permalink, never a branch path.
+
+- Relay message cases, including `task_unavailable`:
+  [`bin/contributor-relay.sh` @ 4d61ad7c](https://github.com/kubestellar/hive/blob/4d61ad7ce8b646a4e380865c521d5b12677240c9/bin/contributor-relay.sh)
+- Workspace preparation and tmux rooting:
+  [`bin/contributor-agent.sh` @ 4d61ad7c](https://github.com/kubestellar/hive/blob/4d61ad7ce8b646a4e380865c521d5b12677240c9/bin/contributor-agent.sh)
+- Task release on disconnect:
+  [`v2/pkg/dashboard/contribute_ws.go#L1057-L1090` @ 4d61ad7c](https://github.com/kubestellar/hive/blob/4d61ad7ce8b646a4e380865c521d5b12677240c9/v2/pkg/dashboard/contribute_ws.go#L1057-L1090)
 - tmux terminal and mouse configuration: Context7 `/tmux/tmux`

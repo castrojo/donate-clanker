@@ -76,8 +76,8 @@ tool_order := "goose"
 tool_env := env("TOOL", "")
 hive_repo_url := "https://github.com/kubestellar/hive"
 # origin/v2 via `git ls-remote --heads https://github.com/kubestellar/hive v2`
-# on 2026-07-29.
-hive_commit := "835448c3cbef9f06d34dd3802548e1d1e16dbd2f"
+# on 2026-08-04.
+hive_commit := "4d61ad7ce8b646a4e380865c521d5b12677240c9"
 copilot_default_model := "gpt-5.6-luna"
 vm_runner_image := env("REVIEW_VM_RUNNER_IMAGE", "")
 vm_raw_image := env("REVIEW_VM_RAW", "")
@@ -195,16 +195,70 @@ contributor_image_available() {
   podman image exists "$ref" && return 0
   podman manifest inspect "$ref" &>/dev/null
 }
-container_has_owner() {
-  # Every launch here is a foreground 'podman run', so a run that is still
-  # owned has a live client process holding that terminal. When the terminal
-  # dies hard the container keeps running but the client is gone -- that is
-  # an orphan, and nobody is watching it.
-  # Anchored at the start of the command line so a wrapper shell that merely
-  # mentions the container name -- a script, an editor, this check quoted in
-  # someone's terminal -- is never mistaken for the owning client.
+launcher_boot_id() {
+  # PIDs are only meaningful within a boot. Recording the boot alongside the
+  # owner PID keeps a recycled number from ever reading as a live owner.
+  cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown
+}
+container_owner_label() {
+  # The raw marker this launcher wrote at 'podman run' time, or nothing at all
+  # for a container that predates ownership marking.
   local name="$1"
+  podman inspect --format '{{index .Config.Labels "review.owner"}}' "$name" 2>/dev/null || true
+}
+container_owner_pid() {
+  # The owning client PID, printed only when that process is genuinely still
+  # the launcher run that started this container. Nothing otherwise.
+  #
+  # This has to be authoritative, because '--rm --interactive --tty' does NOT
+  # bind the container's lifetime to the client: conmon supervises the
+  # container, survives the client, and reparents to the user manager. A
+  # terminal that died hard -- or a 'podman start'/'podman restart' typed by
+  # hand -- therefore leaves a container that is fully RUNNING with no client
+  # and no terminal behind it. Inferring ownership from 'pgrep' for a 'podman
+  # run' command line cannot tell that apart from a live session, so the
+  # launcher records the answer itself instead of guessing.
+  local name="$1" marker owner_boot owner_pid
+  marker="$(container_owner_label "$name")"
+  [[ "$marker" == *:* ]] || return 0
+  owner_boot="${marker%%:*}"
+  owner_pid="${marker##*:}"
+  # A marker from a previous boot can only describe a process that no longer
+  # exists, whatever occupies that PID now.
+  [[ "$owner_boot" == "$(launcher_boot_id)" ]] || return 0
+  [[ "$owner_pid" =~ ^[0-9]+$ ]] || return 0
+  kill -0 "$owner_pid" 2>/dev/null || return 0
+  # PID reuse within one boot is rare but not impossible, and reclaiming a
+  # stranger's container would be unforgivable. Confirm the process still
+  # names this container.
+  tr '\0' ' ' <"/proc/${owner_pid}/cmdline" 2>/dev/null | grep -Fq -- "--name ${name}" || return 0
+  printf '%s\n' "$owner_pid"
+}
+container_owner_tty() {
+  # 'ps' prints '?' when a process has no controlling terminal -- which is
+  # exactly the case where telling somebody to press Ctrl-C is nonsense.
+  local pid="$1" tty
+  tty="$(ps -o tty= -p "$pid" 2>/dev/null | tr -d '[:space:]')"
+  [[ -n "$tty" && "$tty" != "?" ]] || return 1
+  printf '%s\n' "$tty"
+}
+container_has_owner() {
+  # A launcher-written marker is authoritative. Only a container from before
+  # ownership marking falls back to the old command-line heuristic, which
+  # cannot distinguish 'the owner exists' from 'conmon outlived it'.
+  local name="$1"
+  if [[ -n "$(container_owner_label "$name")" ]]; then
+    [[ -n "$(container_owner_pid "$name")" ]]
+    return
+  fi
   pgrep -f "^podman run .*--name ${name}( |\$)" >/dev/null 2>&1
+}
+owner_run_label() {
+  # Stamped onto every launch so the NEXT launch can answer 'is anyone
+  # actually holding this?' without guessing. '--rm' clears it with the
+  # container, and a hand-typed 'podman start' cannot forge a live one: it
+  # reuses the original creation label, whose PID is long dead.
+  printf 'review.owner=%s:%s\n' "$(launcher_boot_id)" "$$"
 }
 require_no_running_instance() {
   # 'Running' alone does not mean 'in use'. Distinguish the two cases,
@@ -218,15 +272,23 @@ require_no_running_instance() {
   # Telling a user to run 'podman rm -f' for the orphan case would smuggle
   # the stop command back in through the door it was thrown out of. The
   # launcher cleans up after itself instead.
-  local name="$1"
+  local name="$1" owner_pid owner_tty
   [[ "$(podman inspect --format '{{.State.Running}}' "$name" 2>/dev/null || echo false)" == "true" ]] || return 0
-  if ! container_has_owner "$name"; then
+  owner_pid="$(container_owner_pid "$name")"
+  if [[ -z "$owner_pid" ]] && ! container_has_owner "$name"; then
     echo "✓ reclaiming ${name} from a run whose terminal is gone."
     return 0
   fi
   echo "ERROR: ${name} is already running in another terminal." >&2
   echo "  Attach to the live session: podman exec -it ${name} tmux attach -t contributor" >&2
-  echo "  Or press Ctrl-C in the terminal that owns it." >&2
+  if [[ -n "$owner_pid" ]] && owner_tty="$(container_owner_tty "$owner_pid")"; then
+    # Only ever name Ctrl-C when a terminal to press it in demonstrably
+    # exists. The old message advised it unconditionally, so an ownerless
+    # container told the user to act in a terminal that was already gone.
+    echo "  Or press Ctrl-C in the terminal that owns it (pid ${owner_pid} on ${owner_tty})." >&2
+  elif [[ -n "$owner_pid" ]]; then
+    echo "  Its launcher (pid ${owner_pid}) has no terminal; end that process to stop it." >&2
+  fi
   return 1
 }
 image_ref_is_moving() {
@@ -849,6 +911,7 @@ review:
     start_bootstrap_server
     CONTAINER_ARGS=(
       podman run --rm --interactive --tty --replace --name review-vm
+      --label "$(owner_run_label)"
       --device /dev/kvm
       --mount "type=bind,src=${RUN_DIR},dst=/run/review,rw"
       --env "REVIEW_BOOTSTRAP_SOCKET=/run/review/${BOOTSTRAP_SOCKET_NAME}"
@@ -904,6 +967,7 @@ review-container:
 
     CONTAINER_ARGS=(
       podman run --rm --interactive --tty --replace --name "$CONTAINER_NAME"
+      --label "$(owner_run_label)"
       --volume "${HOME}/.config/hive:/home/dev/.config/hive:ro"
       --env "AGENT_BACKEND=goose"
     )

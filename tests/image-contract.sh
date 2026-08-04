@@ -37,12 +37,18 @@ forbid() {
   return 0
 }
 
-# Digest-pinned, not tagged: the FSDK shell-enabled base is an external image,
-# so assert the pinned prefix only and let explicit bumps stay green.
+# Digest-pinned, tag optional: the FSDK shell-enabled base is an external
+# image, so assert only that it resolves to a digest and let explicit bumps
+# stay green. A tag may accompany the digest — Renovate's dockerfile manager
+# only tracks references that carry one — but the digest is what must build.
+grep -qE '^ARG FSDK_RUNNER_IMAGE=ghcr\.io/projectbluefin/lab-runner(:[^@[:space:]]+)?@sha256:[0-9a-f]{64}$' image/Containerfile || {
+  echo "::error file=image/Containerfile::FSDK_RUNNER_IMAGE must be digest-pinned to ghcr.io/projectbluefin/lab-runner"
+  fail=1
+}
+
 # SC2016: every argument here is a literal to grep for, never an expansion.
 # shellcheck disable=SC2016
 require image/Containerfile \
-  'ARG FSDK_RUNNER_IMAGE=ghcr.io/projectbluefin/lab-runner@sha256:' \
   'ARG GOOSE_CHANNEL=canary' \
   'FROM ${FSDK_RUNNER_IMAGE}' \
   'ARG GOOSE_REFRESH=0' \
@@ -87,6 +93,114 @@ image_hive_pin="$(sed -n 's/^ARG HIVE_COMMIT=\([0-9a-f]\{40\}\)$/\1/p' image/Con
 if [[ -z "$launcher_hive_pin" || "$launcher_hive_pin" != "$image_hive_pin" ]]; then
   echo "::error::launcher and image Hive pins must match"
   fail=1
+fi
+
+# Upstream drift visibility.
+#
+# The equality check above is internal consistency only: two identical but
+# equally ancient pins pass it. That is exactly how the pin sat 69 commits
+# behind kubestellar/hive `v2` for days while upstream added the
+# `task_unavailable` message case (hive#2436) that our pinned
+# contributor-relay.sh has no `case` for — so a declined assignment was logged
+# as an unknown message type and the relay, whose every `ready` is
+# event-driven and none timed, had no path back to asking and wedged idle.
+# Nothing reported it.
+#
+# Warning, not failure, and deliberately so:
+#   * Pin equality stays a hard error: it is fully determined by files in this
+#     repository, so a red result is always actionable here.
+#   * Upstream distance is a fact about someone else's commit cadence. Failing
+#     on it would turn every unrelated pull request red the moment Hive merges
+#     anything, which trains people to ignore this suite — the same blindness
+#     that caused the incident. It is surfaced as a GitHub Actions annotation
+#     so it is visible on every run without gating merges.
+#   * Merge-gating a proposed pin bump is a different job with a different
+#     trigger and lives in its own workflow.
+#
+# The whole block is best-effort: this file is a contract test that must hold
+# offline and without credentials, so every network path degrades to a notice.
+hive_api() {
+  local endpoint="$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 30 gh api "$endpoint" "$@" 2>/dev/null
+  else
+    gh api "$endpoint" "$@" 2>/dev/null
+  fi
+}
+
+# Blob SHAs rather than the compare endpoint's file list: compare truncates at
+# 300 files, and we only care about the handful of paths we actually consume.
+hive_blob_sha() {
+  hive_api "repos/kubestellar/hive/contents/$1?ref=$2" --jq '.sha'
+}
+
+report_hive_drift() {
+  local pin="$1" head_sha behind ahead path pin_blob head_blob
+  local consumed=() changed=()
+
+  # Consumed paths come from the Containerfile itself, so adding or dropping a
+  # fetched Hive file cannot silently fall out of this check.
+  # shellcheck disable=SC2016 # Literal Containerfile text, not an expansion.
+  mapfile -t consumed < <(
+    grep -oE 'raw\.githubusercontent\.com/kubestellar/hive/\$\{HIVE_COMMIT\}/[^"[:space:]]+' image/Containerfile |
+      sed 's#.*${HIVE_COMMIT}/##' | sort -u
+  )
+  if [[ "${#consumed[@]}" -eq 0 ]]; then
+    echo "::warning file=image/Containerfile::no pinned kubestellar/hive files found to drift-check"
+    return 0
+  fi
+
+  command -v gh >/dev/null 2>&1 || {
+    echo "::notice::hive drift check skipped: gh not installed"
+    return 0
+  }
+  if [[ -z "${GH_TOKEN:-}" && -z "${GITHUB_TOKEN:-}" ]] && ! gh auth status >/dev/null 2>&1; then
+    echo "::notice::hive drift check skipped: no gh credentials"
+    return 0
+  fi
+
+  # kubestellar/hive's default branch is v2, not main.
+  head_sha="$(hive_api repos/kubestellar/hive/commits/v2 --jq '.sha')" || head_sha=""
+  if [[ ! "$head_sha" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "::notice::hive drift check skipped: kubestellar/hive v2 unreachable"
+    return 0
+  fi
+
+  if [[ "$head_sha" == "$pin" ]]; then
+    echo "hive pin ${pin:0:12} is at kubestellar/hive v2 HEAD."
+    return 0
+  fi
+
+  behind="$(hive_api "repos/kubestellar/hive/compare/${pin}...v2" --jq '.behind_by')" || behind=""
+  ahead="$(hive_api "repos/kubestellar/hive/compare/${pin}...v2" --jq '.ahead_by')" || ahead=""
+  [[ -n "$behind" ]] || behind="unknown"
+  [[ -n "$ahead" ]] || ahead="unknown"
+
+  # Commit distance alone overstates risk — most upstream commits touch nothing
+  # we fetch — so say which consumed files actually differ.
+  for path in "${consumed[@]}"; do
+    pin_blob="$(hive_blob_sha "$path" "$pin")" || pin_blob=""
+    head_blob="$(hive_blob_sha "$path" "$head_sha")" || head_blob=""
+    if [[ -z "$pin_blob" || -z "$head_blob" ]]; then
+      echo "::notice::hive drift: could not compare ${path}"
+      continue
+    fi
+    [[ "$pin_blob" != "$head_blob" ]] && changed+=("$path")
+  done
+
+  if [[ "${#changed[@]}" -gt 0 ]]; then
+    echo "::warning file=justfile::hive pin ${pin:0:12} is ${ahead} commits behind v2 (${head_sha:0:12}); consumed files changed: ${changed[*]}"
+  else
+    echo "::warning file=justfile::hive pin ${pin:0:12} is ${ahead} commits behind v2 (${head_sha:0:12}); no consumed file changed (${consumed[*]})"
+  fi
+  [[ "$behind" != "0" && "$behind" != "unknown" ]] &&
+    echo "::warning file=justfile::hive pin ${pin:0:12} has ${behind} commits not on v2; it may not be an ancestor of the default branch"
+  return 0
+}
+
+if [[ -n "$launcher_hive_pin" ]]; then
+  report_hive_drift "$launcher_hive_pin"
 fi
 
 # No host engine sockets or unrelated runtime glue may enter the image.
@@ -176,6 +290,10 @@ require image/entrypoint.sh \
   'tmux readiness diagnostics' \
   'tmux attach-session -t contributor' \
   'trap cleanup EXIT HUP INT TERM' \
+  'tmux attach-session -t contributor <&3 &' \
+  'wait "$attach_pid"' \
+  'shutdown_grace_deciseconds=20' \
+  'kill -TERM "$agent_pid"' \
   "note 'tmux detached; the agent remains foreground in this terminal. Press Ctrl-C or close this terminal to stop it.'" \
   'wait "$agent_pid"' \
   'tmux kill-session -t contributor'
@@ -188,10 +306,13 @@ require README.md \
   'not byte-reproducible' \
   "--build-arg GOOSE_REFRESH=\"\$(date +%s)\""
 
+# shellcheck disable=SC2016 # Literal workflow text, not shell expansion.
 require .github/workflows/validate.yml \
   'attestations: read' \
   'just --justfile justfile --list' \
   "' justfile > recipe_bodies.sh" \
+  'bash tests/image-contract.sh' \
+  'GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}' \
   'docker build --secret id=github_token,env=GITHUB_TOKEN' \
   '-f image/Containerfile -t review:test .' \
   '["/usr/local/bin/review-entrypoint"]'

@@ -293,9 +293,18 @@ case "${1:-}" in
     exit 0
     ;;
   inspect)
-    # Only the liveness probe uses 'podman inspect'; nothing is running
-    # unless a scenario asks for it.
+    # Only the liveness and ownership probes use 'podman inspect'; nothing is
+    # running unless a scenario asks for it.
     printf '%s\n' "$*" >>"${IMAGE_LOG:?}"
+    case "$*" in
+      *review.owner*)
+        # FAKE_PODMAN_OWNER_LABEL is the raw marker the launcher would have
+        # written: '<boot-id>:<pid>'. Empty means a container that predates
+        # ownership marking, which falls back to the pgrep heuristic.
+        printf '%s\n' "${FAKE_PODMAN_OWNER_LABEL:-}"
+        exit 0
+        ;;
+    esac
     [[ "${FAKE_PODMAN_RUNNING:-0}" == 1 ]] || { echo false; exit 1; }
     echo true
     exit 0
@@ -882,6 +891,71 @@ assert_contains "reclaiming" "$OUT"
 assert_not_contains "ERROR:" "$OUT"
 assert_not_contains "podman rm -f" "$OUT"
 assert_file_contains "--replace --name review-container" "$runner_log"
+
+# ── ownership marking ─────────────────────────────────────────────────────
+# '--rm --interactive --tty' does not bind the container's lifetime to the
+# client: conmon supervises the container and outlives it, so a hard-killed
+# terminal (or a hand-typed 'podman start'/'podman restart') leaves a fully
+# RUNNING container with no client and no terminal. These scenarios pin the
+# classification that tells that apart from a live session.
+boot_id="$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown)"
+
+begin "review-container: every launch records an ownership marker"
+reset_logs
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 GOOSE_MODEL=gpt-test
+assert_file_contains "--label review.owner=${boot_id}:" "$runner_log"
+
+begin "review-container: a marked run with a live owner is never replaced"
+# A process whose command line names the container stands in for the owning
+# foreground 'podman run' client.
+reset_logs
+# The trap stops bash from exec-replacing itself with 'sleep', which would
+# drop the '--name review-container' argv this scenario depends on.
+bash -c 'trap "exit 0" TERM; sleep 30' --name review-container &
+owner_pid=$!
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GOOSE_MODEL=gpt-test \
+  FAKE_PODMAN_RUNNING=1 FAKE_PODMAN_OWNED=0 \
+  "FAKE_PODMAN_OWNER_LABEL=${boot_id}:${owner_pid}"
+kill "$owner_pid" 2>/dev/null || true
+wait "$owner_pid" 2>/dev/null || true
+assert_nonzero_status "$STATUS" "a marked, live owner must stop the relaunch"
+assert_contains "is already running in another terminal" "$OUT"
+assert_contains "pid ${owner_pid}" "$OUT"
+assert_eq "$(wc -c <"$runner_log")" 0 "a live session must never be replaced"
+
+begin "review-container: a marked run whose owner is gone is reclaimed"
+# The reproduced incident: RestartPolicy=no, AutoRemove=true, container Up,
+# and no owning client process anywhere. 'podman restart' lands here too --
+# it resurrects the container with the original creation label, whose PID is
+# long dead -- so the launcher reclaims instead of refusing.
+reset_logs
+dead_owner="$(bash -c 'echo $$')"
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GOOSE_MODEL=gpt-test \
+  FAKE_PODMAN_RUNNING=1 FAKE_PODMAN_OWNED=1 \
+  "FAKE_PODMAN_OWNER_LABEL=${boot_id}:${dead_owner}"
+assert_contains "reclaiming" "$OUT"
+assert_not_contains "ERROR:" "$OUT"
+assert_file_contains "--replace --name review-container" "$runner_log"
+
+begin "review-container: a marker from a previous boot is never trusted"
+reset_logs
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GOOSE_MODEL=gpt-test \
+  FAKE_PODMAN_RUNNING=1 FAKE_PODMAN_OWNED=1 \
+  "FAKE_PODMAN_OWNER_LABEL=00000000-0000-0000-0000-000000000000:1"
+assert_contains "reclaiming" "$OUT"
+assert_not_contains "ERROR:" "$OUT"
+
+begin "review-container: never advises Ctrl-C in a terminal that does not exist"
+# The user-facing half of the incident: an ownerless container answered with
+# 'press Ctrl-C in the terminal that owns it' when no such terminal existed.
+reset_logs
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GOOSE_MODEL=gpt-test \
+  FAKE_PODMAN_RUNNING=1 FAKE_PODMAN_OWNED=1
+assert_not_contains "press Ctrl-C in the terminal that owns it." "$OUT"
 
 # ══ Doctor is read-only ═══════════════════════════════════════════════════
 begin "review-doctor: read-only, Goose-only diagnostics"

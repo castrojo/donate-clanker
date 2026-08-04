@@ -5,12 +5,17 @@
 # contributor mode. We still reuse Hive's contributor runtime scripts, but we do
 # not inherit the whole Debian-based contributor container any more.
 #
-# Digest below is ghcr.io/projectbluefin/lab-runner:25.08 as resolved on
-# 2026-08-01.
-ARG FSDK_RUNNER_IMAGE=ghcr.io/projectbluefin/lab-runner@sha256:fe097bb3b85a126b9a16093fbc498b4b6fb7b24e0f74162ad3d91a402dcfa940
+# The base is pinned as tag *and* digest, and needs both. The digest is what
+# builds and what tests/image-contract.sh asserts, so the base is immutable.
+# The tag is what makes the pin trackable: Renovate's dockerfile manager has
+# nothing to compare a bare digest against, so the tagless form this replaced
+# was never once offered an update and silently froze. A pin no tool can track
+# is not a stricter pin, it is a stale one. The reference below is the only
+# source of truth for which base this is; do not restate its value here.
+ARG FSDK_RUNNER_IMAGE=ghcr.io/projectbluefin/lab-runner:25.08@sha256:088c44cd1d5c09d8fb4a511253da1b560aa7ca89b3259ea987b82691053d5d39
 # Kept equal to justfile's hive_commit: host setup and the
 # image runtime use the same contributor relay protocol revision.
-ARG HIVE_COMMIT=835448c3cbef9f06d34dd3802548e1d1e16dbd2f
+ARG HIVE_COMMIT=4d61ad7ce8b646a4e380865c521d5b12677240c9
 ARG NODE_VERSION=24.18.1
 ARG GH_VERSION=2.97.0
 ARG TMUX_VERSION=3.7b
