@@ -28,10 +28,9 @@ note 'Bluefin Operations | contributor runtime starting'
 
 # --- Goose configuration -----------------------------------------------------
 #
-# Hive's contributor-agent.sh unconditionally overwrites
-# ~/.config/goose/config.yaml at every startup, so our configuration cannot live
-# there. GOOSE_PATH_ROOT relocates Goose's config/data/state roots, which lets
-# the controlled config survive untouched.
+# GOOSE_PATH_ROOT is the image-owned policy, data, and state seam. The pinned
+# Hive runtime preserves an existing ~/.config/goose/config.yaml, but its
+# runtime-owned file and the image's controlled policy must remain separate.
 export GOOSE_PATH_ROOT="${REVIEW_GOOSE_ROOT:-/opt/bluefin/goose}"
 
 # Goose resolves environment before file, so the launcher's passthrough wins
@@ -57,12 +56,6 @@ export GOOSE_DISABLE_KEYRING=1
 # Goose asks an interactive telemetry question on first run. Hive drives the
 # CLI with simulated keystrokes, so an unanswered prompt hangs the agent.
 export GOOSE_TELEMETRY_ENABLED="${GOOSE_TELEMETRY_ENABLED:-false}"
-
-# Hive refreshes an org knowledge export every ten minutes and symlinks it to
-# ~/CLAUDE.md and ~/.goose-instructions.md. Goose reads neither by default -- its
-# context filenames are AGENTS.md and .goosehints -- so the export never reaches
-# the model. Naming CLAUDE.md here makes that existing mechanism work.
-export CONTEXT_FILE_NAMES="${CONTEXT_FILE_NAMES:-[\"AGENTS.md\",\".goosehints\",\"CLAUDE.md\"]}"
 
 # Native skills advertise their descriptions at session start, but their bodies
 # load on demand. Keep this small policy in every turn so the agent routes into

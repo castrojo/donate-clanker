@@ -5,7 +5,7 @@
     {
       "id": "goose-context",
       "name": "goose-context",
-      "one_line_purpose": "Keep Goose config, Context7, and skills available in the guest.",
+      "one_line_purpose": "Keep Goose config and skill routing working in the guest.",
       "entry_point": "docs/skills/goose-context.md",
       "category": "meta",
       "status": "active",
@@ -16,8 +16,8 @@
         "mcp",
         "config"
       ],
-      "description": "Keeps Goose configuration, Context7, and global and repository skill routing available in the guest. Use when Goose loses its config, misses a skill, or lacks Context7.",
-      "version": "1.7",
+      "description": "Keeps Goose configuration and global and repository skill routing available in the guest, and records that Context7 is Hive's hub-side capability the image must never configure. Use when Goose loses its config or misses a skill.",
+      "version": "1.9",
       "last_updated": "2026-08-04",
       "doc_type": "reference"
     },
@@ -37,7 +37,7 @@
         "workspace"
       ],
       "description": "Explains Hive's tmux session, workspace directory, prompt and output contract, contributor credentials, token lifetime, cooldown, and exclusive task selection. Use when operating or debugging a session.",
-      "version": "1.7",
+      "version": "1.9",
       "last_updated": "2026-08-04",
       "doc_type": "reference"
     },
@@ -111,10 +111,10 @@
         "digest",
         "pinning",
         "build",
-        "renovate"
+        "audit"
       ],
-      "description": "Maintains the pinned FSDK-derived contributor image, Hive runtime, Goose configuration, generated skills, and the pin update path. Use when editing image layers, pins, or image publication behavior.",
-      "version": "2.4",
+      "description": "Use when maintaining the pinned FSDK-derived contributor image, audit, Goose canary assets, Hive runtime, or publishing path.",
+      "version": "2.11",
       "last_updated": "2026-08-04",
       "doc_type": "procedure"
     },
@@ -152,7 +152,7 @@
         "pullrequest"
       ],
       "description": "Publishes the public static PR queue without creating queue authority. Use when changing queue generation, ranking, artifacts, or refresh automation.",
-      "version": "1.3",
+      "version": "1.4",
       "last_updated": "2026-08-04",
       "doc_type": "procedure"
     },

@@ -4,6 +4,8 @@
 *
 !image/
 !image/**
+!package.json
+!package-lock.json
 # The skills generator runs at build time to project the org's docs/skills
 # manifest into Goose's native Agent Skills layout.
 !scripts/generate-skills.py

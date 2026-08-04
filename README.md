@@ -203,6 +203,9 @@ All configuration is read at launch.
 | `GITHUB_COPILOT_TOKEN` | Optional Copilot credential override. |
 | `TOOL` | Agent backend selector; only `goose` is accepted. |
 
+`~/.config/review/last-selections.env` stores launcher configuration
+state such as the last Goose/provider selection between runs.
+
 `~/.local/state/review/` stores the pinned Hive checkout and verified
 VM artifact cache. It is the only state this launcher owns. Goose and provider
 selection is recomputed from the environment at every launch and never written
@@ -238,20 +241,42 @@ organization skills. Goose publishes that snapshot from its active `main`
 branch; each archive is verified against GitHub's signed build provenance
 before installation.
 
+The relay uses the root `package-lock.json` to install only the exact `ws`
+dependency with `npm ci --omit=dev --ignore-scripts`. The official,
+checksum-verified Node archive remains intact as a JavaScript runtime: `node`,
+`npm`, and `corepack` stay available. Only its headers, documentation, and the
+now-unused npm download cache are removed. Those fixed Node, CLI, tmux, and
+relay inputs are built before the mutable Goose refresh layer, so a Goose-only
+refresh reuses them.
+
 That Hive SHA is load-bearing, not decorative. It is the third of three copies
 of the same pin: `hive_commit` in the `justfile`, `ARG HIVE_COMMIT` in
 `image/Containerfile`, and the one above. All three must move together, and CI
 fails if they disagree. Renovate proposes them as a single change, so take its
 pull request whole rather than editing any copy by hand.
 
-The Goose canary snapshot is intentionally not byte-reproducible: rebuilding
-the same contributor-image source later can use a newer Goose binary. Use an
-immutable contributor image digest or `sha-<commit>` image tag when a fixed
-artifact is required.
+Goose's `canary` name is mutable, so it is not an artifact identity. CI
+resolves the official `unknown-linux-musl` archive digest for each architecture
+immediately before building; the image checks that digest and Goose's signed
+attestation, then records both digests in its configuration and build
+provenance. A moved canary archive therefore fails the build rather than
+silently changing an image. Use an immutable contributor image digest or
+`sha-<commit>` image tag when a fixed artifact is required.
 
-Hive overwrites `~/.config/goose/config.yaml` at startup. The image therefore
-uses `GOOSE_PATH_ROOT=/opt/bluefin/goose` for its controlled Goose
-configuration, including Context7.
+Every published contributor digest carries review-specific OCI title,
+description, project URL/source, revision, version, creation time, license,
+and exact FSDK base name/digest metadata in both platform labels and manifest
+annotations. Publishing produces maximal BuildKit provenance and an SBOM, then
+adds a GitHub artifact attestation for that exact digest. CI verifies the FSDK
+input's GitHub attestation and its linux/amd64+linux/arm64 manifest before a
+build; after publication it verifies both review attestations, labels,
+annotations, subject digest, and exactly those two platforms.
+
+The pinned Hive runtime preserves an existing `~/.config/goose/config.yaml`.
+The image still uses `GOOSE_PATH_ROOT=/opt/bluefin/goose` to keep controlled
+Goose policy, data, and state separate from Hive's runtime-owned config. Hive
+now links its refreshed knowledge export to Goose-native `AGENTS.md` and
+`.goosehints`, so no filename compatibility override is needed.
 
 Organization skills are generated at image build time from
 `projectbluefin/common`'s `docs/skills/index.json` into Goose's global skill
@@ -261,6 +286,17 @@ per-repository skills are not automatically discovered at session startup.
 The image supplies `xterm-256color` and `tmux-256color` terminfo definitions.
 It preserves a recognized terminal type when attaching tmux and falls back to
 `xterm-256color` only when that type is unavailable in the image.
+
+The FSDK base ships no findutils or diffutils, so the image supplies its own
+`find` and `cmp -s`. They cover what Hive's relay and ordinary repository
+exploration need — `find` implements `-maxdepth`, `-type`, `-name`, `-path`,
+`-user`, `-mmin`, `-newer`, `-not`, GNU `-a`/`-o` precedence and `-exec ... +`
+— and exit non-zero on anything else rather than returning a wrong answer.
+`tests/find-semantics.sh` pins that behavior. There is no `diff`.
+
+Context7 is Hive's, not this image's. The hub queries Context7 server-side and
+delivers the result through its knowledge export, so the image never
+configures a Context7 extension and CI forbids one.
 
 Git hooks at `/opt/bluefin/git-hooks` are ergonomics only; GitHub rulesets and
 required checks enforce repository policy.
@@ -290,7 +326,10 @@ present local image when no registry copy is available. After the change is
 ready, commit it and use the normal publish workflow; CI publishes immutable
 `sha-<commit>` and version tags and advances `:stable` from `main`.
 The build secret exists only while GitHub CLI verifies Goose's signed
-provenance and is never included in an image layer.
+provenance and is never included in an image layer. The checked-in checksums
+make this local command use the known canary snapshot; to refresh it, resolve
+the two official release-asset digests and pass
+`GOOSE_X86_64_SHA256` and `GOOSE_AARCH64_SHA256` as build arguments.
 
 ### Validation
 
@@ -298,11 +337,26 @@ provenance and is never included in an image layer.
 bash scripts/check-skill-frontmatter.sh
 bash tests/generate-skills.sh
 bash tests/image-contract.sh
+bash tests/hive-compatibility.sh
+bash tests/find-semantics.sh
+bash tests/bluefin-review.sh
 bash tests/just-onboarding.sh
 git diff --check
 just --list
 pre-commit run --all-files
 ```
+
+`tests/image-audit.sh` inspects a real image, so it needs a container engine
+and network access. It defaults to `docker`; on a podman host set
+`CONTAINER_ENGINE=podman`. Use `--verify-base-evidence` to check the pinned
+FSDK input alone, or `--derived <image>` to audit a build:
+
+```bash
+CONTAINER_ENGINE=podman bash tests/image-audit.sh --derived localhost/review:dev
+```
+
+The `pre-commit` shellcheck hook runs in a container and needs a container
+socket. Without one, use `SKIP=shellcheck pre-commit run --all-files`.
 
 See [`AGENTS.md`](AGENTS.md) for contributor boundaries and
 [`docs/SKILL.md`](docs/SKILL.md) for task-specific documentation.

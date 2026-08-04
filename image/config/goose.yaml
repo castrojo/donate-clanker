@@ -1,16 +1,9 @@
 # Controlled Goose configuration for review.
 #
-# This file is NOT ~/.config/goose/config.yaml. Hive's contributor entrypoint
-# unconditionally overwrites that path at every startup:
-#
-#     cat > "${HOME}/.config/goose/config.yaml" <<GOOSECFG
-#     GOOSE_PROVIDER: ...
-#     GOOSE_MODEL: ...
-#     GOOSECFG
-#
-# so anything written there is lost. The entrypoint instead exports
-# GOOSE_PATH_ROOT=/opt/bluefin/goose and installs this file at
-# /opt/bluefin/goose/config/config.yaml, which Goose reads instead.
+# This file is NOT ~/.config/goose/config.yaml. The pinned Hive contributor
+# runtime preserves that runtime-owned file when it exists, but the entrypoint
+# uses GOOSE_PATH_ROOT=/opt/bluefin/goose so controlled policy, data, and state
+# stay separate at /opt/bluefin/goose/config/config.yaml.
 #
 # Provider, model, and reasoning effort are deliberately absent: Goose
 # resolves environment before file, and the launcher passes

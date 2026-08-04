@@ -1,6 +1,6 @@
 ---
 name: hive-runtime
-version: "1.7"
+version: "1.9"
 last_updated: 2026-08-04
 id: hive-runtime
 one_line_purpose: Operate inside Hive's tmux, token, and cooldown constraints.
@@ -26,8 +26,12 @@ assigned contributor session behaves unexpectedly.
 ## Core Process
 
 1. Let Hive own the WebSocket protocol, assignment selection, `contributor`
-   tmux session, prompt injection, and result capture. review starts
-   the runtime and attaches to it; it does not reproduce any of those jobs.
+   tmux session, prompt injection, result capture, and external documentation
+   lookup. Context7 is Hive's: the hub queries it server-side
+   (`v2/pkg/knowledge/context7.go`) and delivers the result through its
+   knowledge export, so the image must never configure a second path to it.
+   review starts the runtime and attaches to it; it does not reproduce any of
+   those jobs.
 2. Attach only to inspect or deliberately steer a live session:
 
    ```bash
@@ -43,9 +47,13 @@ assigned contributor session behaves unexpectedly.
    launcher must not create or mount a workspace of its own.
 4. Put the final result in the final 15 pane lines. Hive captures only those
    lines for its report.
-5. Plan around the scoped assignment token's 55-minute lifetime. It is not
-   refreshed. Report completion only after its verifiable artifact exists;
-   completion applies the 168-hour issue cooldown, while failure does not.
+5. Plan around the scoped assignment token's 55-minute lifetime. The hub
+   proactively re-mints and pushes a fresh token to an active task after 50
+   minutes, so a long task survives expiry only while its socket stays up.
+   Report completion only after its verifiable artifact exists: a completion
+   carrying a PR link applies the 168-hour issue cooldown, a completion with
+   no PR link only 4 hours, and a failure or disconnect books the short
+   10-minute failure cooldown — 6 hours once an issue is quarantined.
 6. Do not filter, decline, rank, or retry assignments in this repository.
    Hive selection is the sole authority. The relay's own negative-ack handling
    is Hive's, not ours: when the hub declines to assign work it sends
@@ -56,6 +64,19 @@ assigned contributor session behaves unexpectedly.
    `ready` it sends is event-driven and none is timed; it wedges idle. No task
    was assigned in that state, so nothing is held. Move the pin rather than
    adding a downstream retry.
+
+### Periodic Goose restart loop
+
+If the relay repeatedly logs `CLI ready — accepting tasks`, `CLI restarted:
+goose`, and `Restarting goose CLI for memory cleanup (task 3)`, leave the
+running contributor alone and report it upstream. In the pinned relay,
+`tmuxSendKeys()` starts the periodic restart while `tasksCompletedCount` is
+three; when `relaunchCLI()` becomes ready, `flushPendingTask()` re-enters
+`tmuxSendKeys()` before that count changes, so it starts the same restart
+again instead of delivering the pending assignment. This is upstream relay
+behavior, not a launcher, image, or tmux lifecycle concern. Include the relay
+SHA and the alternating log lines in an upstream report; do not add a client
+retry, a session recreation, or a local relay patch.
 
 ### GitHub identity
 
