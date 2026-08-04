@@ -29,6 +29,12 @@ leave a container name behind; the next launch reclaims it with `--replace`.
 Do not filter, skip, reorder, prioritize, or decline Hive assignments. Hive is
 the sole authority for task selection.
 
+Reporting downstream evidence upstream to `kubestellar/hive` is expected work,
+and filed issues are followed up rather than abandoned. Report observations,
+reproductions, and options; upstream owns the design decision and the triage
+labels. Never add a local workaround for an accepted upstream gap. See
+[`docs/skills/upstream-hive.md`](docs/skills/upstream-hive.md).
+
 ## Repository layout
 
 - `justfile` is the only shipped launcher artifact. Its
@@ -61,6 +67,8 @@ behavior.
 ## Validation
 
 ```bash
+bash scripts/check-skill-frontmatter.sh
+bash tests/generate-skills.sh
 bash tests/image-contract.sh
 bash tests/just-onboarding.sh
 git diff --check
@@ -70,6 +78,8 @@ pre-commit run --all-files
 
 ## References
 
-- Hive protocol and contributor runtime: `kubestellar/hive`.
+- Hive protocol, contributor runtime, and upstream issue reporting:
+  `kubestellar/hive` (default branch `v2`; no contributing guide or issue
+  templates, DCO sign-off required on pull requests).
 - Organization skills and factory rules: `projectbluefin/common`.
 - External API details: Context7 documentation.

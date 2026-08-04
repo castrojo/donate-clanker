@@ -15,6 +15,17 @@ It owns only VM boot, credential handoff, and review context. Hive owns the
 contributor protocol, task selection, the `contributor` tmux session, prompt
 injection, and output capture.
 
+## Reporting upstream
+
+Running a downstream consumer of Hive's contributor protocol means we find
+things upstream cannot see from inside. Reporting that evidence to
+[`kubestellar/hive`](https://github.com/kubestellar/hive), and following up on
+what we file, is part of the job. We report observations, reproductions, and
+options with tradeoffs; upstream owns the design decision and its own triage.
+We do not add a local workaround for an accepted upstream gap, because a
+downstream workaround becomes upstream's compatibility burden later. See
+[`docs/skills/upstream-hive.md`](docs/skills/upstream-hive.md).
+
 ## Scope
 
 The root `justfile` is the public launcher surface for this repository.
@@ -221,6 +232,8 @@ provenance and is never included in an image layer.
 ### Validation
 
 ```bash
+bash scripts/check-skill-frontmatter.sh
+bash tests/generate-skills.sh
 bash tests/image-contract.sh
 bash tests/just-onboarding.sh
 git diff --check

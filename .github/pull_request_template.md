@@ -23,12 +23,14 @@ opened ──▶ review ──▶ approved ──▶ merged
 ## Checklist
 
 - [ ] PR title follows Conventional Commits (`fix:`, `feat:`, `docs:`, `ci:`, `refactor:`, etc.)
+- [ ] `bash scripts/check-skill-frontmatter.sh` passes
+- [ ] `bash tests/generate-skills.sh` passes
 - [ ] `bash tests/image-contract.sh` passes
 - [ ] `bash tests/just-onboarding.sh` passes
 - [ ] `git diff --check` is clean
 - [ ] `just --list` parses
 - [ ] `pre-commit run --all-files` passes
-- [ ] Skill doc updated if the change affects agent-facing conventions or behavior (see `docs/skills/skill-improvement.md`)
+- [ ] Skill doc updated if the change affects agent-facing conventions or behavior (see [`docs/SKILL.md`](../docs/SKILL.md))
 - [ ] `AGENTS.md` / `docs/SKILL.md` / `docs/skills/` links remain valid
 - [ ] CI is green after push: `gh run list --repo projectbluefin/review --limit 5`
 
