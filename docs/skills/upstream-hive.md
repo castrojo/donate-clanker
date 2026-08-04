@@ -1,6 +1,6 @@
 ---
 name: upstream-hive
-version: "1.0"
+version: "1.1"
 last_updated: 2026-08-04
 id: upstream-hive
 one_line_purpose: File and follow up on kubestellar/hive issues as an exemplary downstream.
@@ -74,6 +74,9 @@ Verified 2026-08-04 against `kubestellar/hive`:
    burden, so waiting for the real field is the cooperative choice.
 9. **Sign contributions if we send code.** Any pull request to Hive needs a
    `Signed-off-by:` trailer for their DCO check and a scope-matched title.
+   Keep it small and single-purpose, and disclose agent authorship in line
+   with their `ai-generated` label practice. Upstream maintainer attention is
+   the cost we are trying to lower, not spend.
 
 ## Red Flags
 

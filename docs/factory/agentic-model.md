@@ -16,6 +16,7 @@ session logs, or design scratchpads as competing explanations.
 | Term | Meaning | Authority |
 |---|---|---|
 | **Bluefin Agentic Factory Feedback Loop** | The lifecycle that turns agent work and test feedback into reviewed Bluefin changes. | The model for this repository. |
+| **Toil** | Repetitive, low-novelty maintenance work an under-maintained project needs: broken CI, stale pins, drifted documentation, unreproduced reports, untriaged issues, stalled branches. | Toil is the work this factory exists to absorb. |
 | **Factory Worker** | A contributor using the worker configuration to receive and complete Hive-assigned work. | Hive assigns work; the worker implements only its assigned scope. |
 | **Maintainer Reviewer** | A maintainer assessing an incoming pull request. | The human decides review, approval, and merge. |
 | **Review Evidence** | Read-only pull-request, issue, verification, and merge-state context shown before a review. | Evidence informs a human; it never makes a decision. |
@@ -27,6 +28,24 @@ session logs, or design scratchpads as competing explanations.
 Avoid calling Factory Workers "reviewers" or "maintainers"; avoid calling
 Review Evidence a decision or approval; and avoid calling the PR Queue an
 assignment queue or merge authority.
+
+## Scope of work
+
+This is a toil-reduction factory for under-maintained open-source projects,
+not a feature factory. Factory Workers repair what is already broken and
+finish what a project already decided to do; they do not add features,
+dependencies, configuration surfaces, or architecture.
+
+Well-staffed projects restrict large agent-authored pull requests because
+those consume more maintainer attention than they return. That reasoning is
+the model here too: the reviewer's attention is the scarce resource, so a
+change is sized to be reviewable rather than to be complete in one pass. When
+an assigned task can only be finished by out-of-scope work, the deliverable is
+an evidenced written finding. That is completed work, not a declined
+assignment; Hive's authority over what gets worked on is unchanged.
+
+[`docs/skills/contribution-culture.md`](../skills/contribution-culture.md)
+carries the operational form of this section.
 
 ## Repository boundary
 

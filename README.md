@@ -15,6 +15,21 @@ It owns only VM boot, credential handoff, and review context. Hive owns the
 contributor protocol, task selection, the `contributor` tmux session, prompt
 injection, and output capture.
 
+## What this is for
+
+This is toil reduction for open-source maintainers. The projects we care about
+are the under-maintained ones: a widely used library, one tired maintainer, a
+two-year backlog, and CI that has been red since a dependency moved. Those
+projects need basic work done reliably — broken builds, stale pins, drifted
+docs, unreproduced bug reports, untriaged issues.
+
+We are not building features with this. Big projects restrict large
+AI-authored pull requests because they cost maintainers more attention than
+they return, and they are right to. This is designed as the opposite of that
+firehose: small, scoped, evidenced changes that repair what is already broken.
+Unglamorous work is the product here, not the consolation prize. See
+[`docs/skills/contribution-culture.md`](docs/skills/contribution-culture.md).
+
 ## Operating model
 
 `review` participates in the **Bluefin Agentic Factory Feedback Loop**. Its
