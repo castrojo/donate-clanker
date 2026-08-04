@@ -1,7 +1,7 @@
 ---
 name: launcher
-version: "1.7"
-last_updated: 2026-08-03
+version: "1.8"
+last_updated: 2026-08-04
 id: launcher
 one_line_purpose: Change review just recipes without breaking foreground.
 entry_point: docs/skills/launcher.md
@@ -41,18 +41,21 @@ Goose, or image build skill documents.
    | `review-doctor` | Perform read-only preflight checks. |
 
 2. Keep both launch paths foreground. No detached Podman, background service,
-   lifecycle command, or persistent launcher state beyond launcher
-   configuration and verified caches is allowed. Ctrl-C is the stop mechanism;
-   `--replace` only reclaims a container name when a new launch starts.
+   lifecycle command, or persistent launcher state is allowed beyond the
+   verified caches and pinned Hive checkout under `~/.local/state/review/`.
+   Ctrl-C is the stop mechanism; `--replace` only reclaims a container name
+   when a new launch starts.
 3. Keep VM isolation narrow. The guest receives per-run control data and
    clones assigned work itself; it does not receive a host workspace or home.
    VM disks are verified and use a disposable overlay.
 4. Keep the container path narrow too. It mounts only the read-only Hive
    contributor configuration and runs the image entrypoint, which attaches to
    Hive's `contributor` session.
-5. Keep Goose Copilot-only. The launcher resolves a Copilot credential for
-   the provider secret and remembers only the selected model, never a secret
-   or provider choice.
+5. Keep Goose Copilot-only. The launcher resolves a Copilot credential for the
+   provider secret and recomputes the provider and model from the environment
+   at every launch. Nothing is persisted: not a secret, not a provider, not a
+   model. There is no last-selection file, and `tests/just-onboarding.sh`
+   asserts one is never written.
 6. For container-only mode, pass Copilot and GitHub credentials by inherited
    environment (`--env NAME`), not command-line values or host configuration
    mounts. Resolve the GitHub token from `REVIEW_GH_TOKEN`, existing
@@ -63,11 +66,44 @@ Goose, or image build skill documents.
    live `review` / `REVIEW_*` surface; do not leave compatibility aliases
    behind.
 
+## Mode Capabilities Are Not Symmetric
+
+The two run modes are separate products, and the difference is user-visible:
+
+| | `review` (VM) | `review-container` |
+|---|---|---|
+| Credential channel | one-shot `0600` AF_UNIX JSON bootstrap | inherited `--env NAME` |
+| Copilot `provider_secret` | yes | yes |
+| `GH_TOKEN` identity | no | yes |
+| Fork, push, open a pull request | no | yes |
+| Host mounts | none | `~/.config/hive`, read-only |
+| Host requirements | qemu, qemu-img, UEFI firmware, python3, curl, zstd, `/dev/kvm` | podman |
+
 The VM can carry the Copilot provider secret, but the current guest has no
-compatible bootstrap mapping for a host `GH_TOKEN`. Use
-`review-container` when the task needs GitHub fork, push, or
-pull-request access. Do not attempt to fix this by mounting GitHub
-configuration or adding an unconsumed bootstrap field.
+compatible bootstrap mapping for a host `GH_TOKEN`; the launcher reports that
+block unconditionally on both VM branches. Hive's task prompt is unconditional
+and tells the agent to fork, push, and open a pull request with `GH_TOKEN`, so
+VM mode can be assigned work it cannot complete. Document that honestly; do not
+filter assignments to route around it. Use `review-container` when the task
+needs GitHub fork, push, or pull-request access. Do not attempt to fix this by
+mounting GitHub configuration or adding an unconsumed bootstrap field.
+
+## Container Ownership
+
+`podman run --rm -it` does **not** bind a container's lifetime to its client.
+`conmon` supervises the container, survives the client, and reparents to
+`systemd --user`, so a hard-killed terminal leaves a fully running, ownerless,
+unreachable container — not merely an exited name. Inferring ownership from a
+`pgrep` for the `podman run` command line cannot tell that apart from a live
+session.
+
+Ownership must therefore be proven, not guessed: stamp
+`--label review.owner=<boot-id>:<client-pid>` at launch, and treat a container
+as owned only when all three hold — the PID is alive, the boot id matches, and
+that process still names the container in `/proc/<pid>/cmdline`. Anything else
+is an orphan and is reclaimed silently at the next launch. Never answer an
+ownerless container by telling a user to press Ctrl-C in a terminal that no
+longer exists, and never reintroduce a user-facing stop or clean verb.
 
 Hive selects every task. The launcher must not filter, skip, rank, or decline
 assignments by repository, label, title, author, or issue.
@@ -86,10 +122,16 @@ assignments by repository, label, title, author, or issue.
 
 - A fourth public recipe or any start, stop, restart, kill, clean, or daemon
   command.
-- `&`, `nohup`, `setsid`, `podman run -d`, `--detach`, or a service unit.
+- A launch path whose final process is neither `exec`'d nor the last foreground
+  command whose status propagates: `nohup`, `setsid`, `podman run -d`,
+  `--detach`, a service unit, or a background job that outlives the run.
+  A background job the shell `wait`s on and reaps by trap is not this, and
+  removing one can break signal handling.
 - A host directory mount beyond the per-run VM control path or read-only Hive
   configuration for container-only mode.
-- A token in output, files, Podman arguments, or persistent launcher state.
+- A token in output, files, Podman arguments, or any persisted launcher file.
+- Ownership inferred from `pgrep` rather than a label plus a live, same-boot,
+  still-naming PID.
 - A second implementation of launcher behavior in another language.
 - Task-selection policy outside Hive.
 

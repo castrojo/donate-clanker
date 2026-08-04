@@ -1,7 +1,7 @@
 ---
 name: goose-context
-version: "1.6"
-last_updated: 2026-08-03
+version: "1.7"
+last_updated: 2026-08-04
 id: goose-context
 one_line_purpose: Keep Goose config, Context7, and skills available in the guest.
 entry_point: docs/skills/goose-context.md
@@ -47,9 +47,21 @@ task delivery; use the Hive runtime documentation instead.
    generates global skills at build time from the pinned
    `projectbluefin/common` catalog. After cloning a repository, read its
    `docs/skills/index.json` and load the matching entry point.
-6. Keep the image policy short. It is supplied to every Goose turn through
+6. Keep `GOOSE_MODE: auto` in the controlled configuration. The agent runs its
+   tools with no per-tool confirmation prompt, and that is required rather than
+   convenient: Hive drives the CLI by simulated keystrokes, so a confirmation
+   prompt blocks both the agent and the human at the terminal indefinitely.
+   Goose also hard-errors in non-interactive mode when a tool confirmation is
+   requested under `approve` or `smart_approve`, so `auto` is the only mode
+   that works here. The compensating control is credential scope, not
+   prompting: the agent holds a contributor GitHub token and runs unprivileged
+   inside a disposable container, so its blast radius is that container plus
+   whatever that token can reach. Prefer a `REVIEW_GH_TOKEN` limited to
+   `public_repo` or `repo`, and state that tradeoff wherever the mode is
+   documented.
+7. Keep the image policy short. It is supplied to every Goose turn through
    `GOOSE_MOIM_MESSAGE_FILE`.
-7. Treat the policy strings asserted by `tests/image-contract.sh` as contract
+8. Treat the policy strings asserted by `tests/image-contract.sh` as contract
    anchors. Preserve them when changing policy wording, or intentionally update
    their test assertions in the same change.
 
@@ -84,6 +96,8 @@ without increasing the bounded tool response size.
 - Growing `AGENTS.md` with content only some tasks need.
 - Expanding the persistent policy with task-specific instructions.
 - Changing policy wording without checking `tests/image-contract.sh`.
+- Setting `GOOSE_MODE` to `approve` or `smart_approve`, or presenting a
+  confirmation prompt as the safety control for this image.
 - Treating an unavailable Context7 extension as evidence for an unverified
   external claim.
 

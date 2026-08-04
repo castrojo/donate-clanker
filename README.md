@@ -69,6 +69,33 @@ terminal stops it; the launcher provides no lifecycle commands or daemon.
 Detaching tmux (`prefix`, then `d`) detaches the view only—the originating
 terminal remains responsible for the foreground run.
 
+### The two launch modes are not interchangeable
+
+`just review` and `just review-container` are two different products with
+different capabilities. Read this before choosing one:
+
+| | `just review` (VM) | `just review-container` |
+|---|---|---|
+| Credential channel | one-shot `0600` AF_UNIX JSON bootstrap | inherited `--env NAME` |
+| Copilot `provider_secret` | yes | yes |
+| GitHub identity (`GH_TOKEN`) | **no — structurally impossible** | yes |
+| Fork, push, open a pull request | **no** | yes |
+| Host mounts | none | `~/.config/hive`, read-only |
+| Host requirements | qemu, qemu-img, UEFI firmware, python3, curl, zstd, `/dev/kvm`, podman | podman |
+| First-run download | ~1.4 GB VM raw image | contributor image |
+
+**VM mode cannot fork, push, or open a pull request.** The current guest has no
+mapping from the bootstrap channel to a GitHub identity, so the launcher
+reports that block unconditionally on both VM branches. Hive's task prompt is
+unconditional and instructs the agent to fork, push, and open a pull request
+with `GH_TOKEN`, so VM mode can be assigned work it cannot structurally
+complete; Hive then books a failure cooldown on that issue. Use
+`review-container` for any contributor work that must produce a pull request.
+This is tracked by issue #50 and blocked on a republished VM guest artifact
+this repository does not own. Do not attempt to fix it by mounting GitHub
+configuration or adding an unconsumed bootstrap field, and do not filter or
+decline assignments — Hive is the sole authority for task selection.
+
 ## Bluefin Ops Control Panel
 
 `mcp-app/` is an optional, read-only Goose Desktop MCP App. It observes Hive
@@ -136,9 +163,8 @@ At startup, the contributor image reports any unavailable common validation
 commands (`bats`, `shellcheck`, `systemd-analyze`, `pre-commit`, `just`, and
 `podman`) without blocking the assigned task.
 
-The VM guest has no GitHub identity mapping. Use
-`review-container` when fork, push, or pull-request access is needed;
-a host `gh` login or PAT cannot add that identity to the VM.
+The VM guest has no GitHub identity mapping; see
+[The two launch modes are not interchangeable](#the-two-launch-modes-are-not-interchangeable).
 
 Run `just review-doctor` to check the selected VM path, including
 local tools, firmware, raw-artifact availability, contributor image, Hive
@@ -148,8 +174,13 @@ absent; doctor only reports that condition.
 
 ## Reviewing
 
-For a Bluefin review, load `/bluefin-review` after the assigned repository is
-available. To inspect earlier output, enter tmux copy-mode with `Ctrl-b [`;
+For a Bluefin review, run `bluefin-review [range]` from a shell inside the
+assigned repository. It is an executable on `PATH`, not a Goose slash command:
+the image installs `image/bin/bluefin-review` at
+`/usr/local/bin/bluefin-review`, and it prints a short
+`HUMAN DECISION REQUIRED` banner before handing its arguments to Goose's
+native `goose review`. To inspect earlier output, enter tmux copy-mode with
+`Ctrl-b [`;
 PageUp scrolls, tmux search finds text, and `q` returns to the live pane.
 The mouse wheel also enters copy-mode and scrolls long output. Copy-mode only
 changes your view; Hive still owns task and output handling.
@@ -172,11 +203,21 @@ All configuration is read at launch.
 | `GITHUB_COPILOT_TOKEN` | Optional Copilot credential override. |
 | `TOOL` | Agent backend selector; only `goose` is accepted. |
 
-`~/.config/review/last-selections.env` stores launcher configuration
-state such as the last Goose/provider selection between runs.
-
 `~/.local/state/review/` stores the pinned Hive checkout and verified
-VM artifact cache. No other launcher state persists.
+VM artifact cache. It is the only state this launcher owns. Goose and provider
+selection is recomputed from the environment at every launch and never written
+to disk. `~/.config/hive/contributor.env` is host state that `review` reads but
+does not own; Hive's upstream setup creates it and owns its format. No other
+launcher state persists.
+
+The image's controlled Goose configuration sets `GOOSE_MODE: auto`, so the
+agent runs its tools without a per-tool confirmation prompt. This is required,
+not a convenience: Hive drives the CLI by simulated keystrokes, so a
+confirmation prompt blocks the agent and the human at the terminal
+indefinitely. The compensating control is credential scope — the agent holds a
+contributor GitHub token and runs unprivileged inside a disposable container,
+so its blast radius is that container plus whatever that token can reach.
+Prefer a `REVIEW_GH_TOKEN` limited to `public_repo` or `repo`.
 
 VM selection prefers an explicit raw disk, then a configured runner image,
 then an exact version-and-architecture raw release. Raw images are checksum

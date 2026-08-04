@@ -1,6 +1,6 @@
 ---
 name: upstream-hive
-version: "1.0"
+version: "1.1"
 last_updated: 2026-08-04
 id: upstream-hive
 one_line_purpose: File and follow up on kubestellar/hive issues as an exemplary downstream.
@@ -42,6 +42,33 @@ Verified 2026-08-04 against `kubestellar/hive`:
   parent issue.
 - Maintainers reply to design issues with a comment opening `DESIGN-RESPONSE`.
 
+## What "Accepted Upstream Gap" Means
+
+Both halves of the phrase are load-bearing, and the rule that follows from it
+depends on reading both correctly.
+
+An **upstream gap** is a missing capability in Hive's contributor protocol,
+assignment flow, or contributor runtime — the surface Hive owns and we consume.
+A missing capability in the pinned base image is **not** an upstream gap. It is
+a base-image capability gap, it belongs to `image-build.md`, and it is governed
+by that document's rules: prefer a real FSDK-owned package, record the base gap,
+and where a shim is sanctioned it stays inside the narrow set already named
+there, such as the `find` and `cmp` replacements for the lean base's missing
+findutils and diffutils. Do not read that sanction as permission to shim a
+protocol gap.
+
+A gap is **accepted** once an upstream maintainer has responded with a
+decision — typically a `DESIGN-RESPONSE` comment, but any explicit maintainer
+answer counts. Before that response the gap is an open report, not an accepted
+one, and the correct behavior is the same either way: we wait. An unanswered
+report is not a licence to work around the gap while we wait, and an accepted
+one is not a licence to work around a decision already made.
+
+So for a Hive protocol gap there is no state in which a downstream retry, poll,
+timeout, negotiation, fallback, or shim is correct. Moving the pin is the fix
+once upstream ships one, and until then we run with the gap and say so in the
+issue.
+
 ## Core Process
 
 1. **Report evidence, not prescriptions.** Give observations, reproductions,
@@ -82,7 +109,9 @@ Verified 2026-08-04 against `kubestellar/hive`:
 - Labeling, assigning, prioritizing, or milestoning an upstream issue.
 - Filing a report we cannot reproduce, or omitting the timestamp of a probe.
 - Presenting a downstream design consequence as an upstream defect.
-- Building a local workaround for an accepted upstream gap.
+- Building a local workaround for an upstream protocol gap, accepted or still
+  awaiting a response.
+- Citing a sanctioned base-image shim as precedent for a protocol workaround.
 - Reopening a direction a maintainer already decided in a `DESIGN-RESPONSE`.
 - Filing a new issue for evidence that belongs on an existing one.
 

@@ -17,8 +17,8 @@
         "config"
       ],
       "description": "Keeps Goose configuration, Context7, and global and repository skill routing available in the guest. Use when Goose loses its config, misses a skill, or lacks Context7.",
-      "version": "1.6",
-      "last_updated": "2026-08-03",
+      "version": "1.7",
+      "last_updated": "2026-08-04",
       "doc_type": "reference"
     },
     {
@@ -75,7 +75,7 @@
         "contribution"
       ],
       "description": "Defines how this repository reports evidence to kubestellar/hive and follows up on filed issues. Use before opening, commenting on, or responding to an upstream Hive issue or pull request.",
-      "version": "1.0",
+      "version": "1.1",
       "last_updated": "2026-08-04",
       "doc_type": "policy"
     },
@@ -133,8 +133,8 @@
         "foreground"
       ],
       "description": "Maintains the three foreground review recipes, VM and container-only launch paths, and credential boundaries. Use when editing justfile.",
-      "version": "1.7",
-      "last_updated": "2026-08-03",
+      "version": "1.8",
+      "last_updated": "2026-08-04",
       "doc_type": "runbook"
     },
     {
@@ -171,7 +171,7 @@
         "branches"
       ],
       "description": "Defines protected-branch pull request, branch, title, trailer, and validation requirements, and how to reconcile a long-lived branch with a squash-merged main. Use before branching, committing, opening a review pull request, or resolving merge conflicts.",
-      "version": "1.4",
+      "version": "1.5",
       "last_updated": "2026-08-04",
       "doc_type": "policy"
     },
