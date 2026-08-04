@@ -77,6 +77,10 @@ jobs:
           rm -f recipe_bodies.sh
 
       - name: Image contract — Containerfile, goose.yaml, entrypoint, hooks
+        env:
+          # Lets the contract's upstream Hive drift check reach the API. It
+          # degrades to a notice without this, so the step never depends on it.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           bash tests/image-contract.sh
