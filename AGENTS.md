@@ -8,8 +8,9 @@ context. Hive owns the WebSocket contributor protocol, task selection, the
 ## Read order
 
 1. This file.
-2. [`docs/SKILL.md`](docs/SKILL.md).
-3. The one matching file in `docs/skills/`.
+2. [`docs/factory/agentic-model.md`](docs/factory/agentic-model.md).
+3. [`docs/SKILL.md`](docs/SKILL.md).
+4. The one matching file in `docs/skills/`.
 
 ## Boundaries
 
@@ -28,6 +29,12 @@ leave a container name behind; the next launch reclaims it with `--replace`.
 
 Do not filter, skip, reorder, prioritize, or decline Hive assignments. Hive is
 the sole authority for task selection.
+
+Reporting downstream evidence upstream to `kubestellar/hive` is expected work,
+and filed issues are followed up rather than abandoned. Report observations,
+reproductions, and options; upstream owns the design decision and the triage
+labels. Never add a local workaround for an accepted upstream gap. See
+[`docs/skills/upstream-hive.md`](docs/skills/upstream-hive.md).
 
 ## Repository layout
 
@@ -58,9 +65,29 @@ When behavior changes, update the matching user documentation. Treat the
 launcher, image, and tests as the sources of truth for this repository's
 behavior.
 
+## Documentation Is the Model
+
+[`docs/factory/agentic-model.md`](docs/factory/agentic-model.md) is the
+canonical local model for the Bluefin Agentic Factory Feedback Loop. It defines
+the roles, authority boundaries, and vocabulary that explain this repository.
+Code, tests, user documentation, and skills must agree with it.
+
+Every session ships the requested work and records any durable, source-backed
+learning in the closest matching document under `docs/skills/`. Update
+`docs/skills/index.json` in the same change. Do not commit changelogs, session
+notes, implementation plans, design scratchpads, or "append here" documents.
+Remove stale records of that kind and route durable guidance to the matching
+skill instead.
+
+Local repository contracts take precedence; use `projectbluefin/common` as the
+pinned shared factory sidecar, never as a reason to override this repository's
+boundaries.
+
 ## Validation
 
 ```bash
+bash scripts/check-skill-frontmatter.sh
+bash tests/generate-skills.sh
 bash tests/image-contract.sh
 bash tests/just-onboarding.sh
 git diff --check
@@ -70,6 +97,8 @@ pre-commit run --all-files
 
 ## References
 
-- Hive protocol and contributor runtime: `kubestellar/hive`.
+- Hive protocol, contributor runtime, and upstream issue reporting:
+  `kubestellar/hive` (default branch `v2`; no contributing guide or issue
+  templates, DCO sign-off required on pull requests).
 - Organization skills and factory rules: `projectbluefin/common`.
 - External API details: Context7 documentation.
