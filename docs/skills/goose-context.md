@@ -35,7 +35,8 @@ task delivery; use the Hive runtime documentation instead.
    `GOOSE_PATH_ROOT=/opt/bluefin/goose`. Hive overwrites
    `~/.config/goose/config.yaml` during startup.
 2. Keep the image Copilot-only. `GOOSE_PROVIDER` may be unset or
-   `github_copilot`; the entrypoint supplies `gpt-4.1` when no model is set.
+   `github_copilot`; the entrypoint supplies `gpt-5.6-luna` and
+   `GOOSE_THINKING_EFFORT=high` when callers do not override them.
 3. Goose follows the upstream `canary` release. Build it with the required
    `github_token` secret so GitHub CLI can verify signed provenance from the
    official `canary.yml` workflow; never put that token in an image layer.

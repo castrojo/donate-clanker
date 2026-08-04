@@ -1,12 +1,39 @@
 # review
+enslaving the oppressors since 2026
 
-`review` is a thin, foreground launcher for a self-owned
-FSDK-derived contributor image. It boots a QEMU VM or runs that image directly
-with Goose and Project Bluefin review context.
+**TLDR**: Automated VM/container designed to put the clankers to work. They're not going away, let's put them to work. Powered by [Kubestellar Hive's Contributor Relay](https://hive.kubestellar.io/) (ClankR). We did not make that up, real dads made these jokes.
+
+![img](https://github.com/user-attachments/assets/6b8425b8-dedf-4dc9-aa54-60fa9e6cfd91)
+
+`review` comes with goose prebundled and will passthrough client creds. PRs accepted for other clients, the design supports doing local side containers - but we don't want to ship a huge container either.
+
+**These are NOT anonymous "donations"** - it's tied to the person's github account, reputation in the queue is based on your real life reputation in the project. The cream will rise to the top.
+
+The Bluefin Hive will send these agents work and coordinate - which will dole out work based on your standing in the project. New contributors will be given easier tasks until they level up, and maintainers are given more important tasks. Everything in here is `clanker-queue` only, the `human-queue` is not managed here.
 
 It owns only VM boot, credential handoff, and review context. Hive owns the
 contributor protocol, task selection, the `contributor` tmux session, prompt
 injection, and output capture.
+
+## Operating model
+
+`review` participates in the **Bluefin Agentic Factory Feedback Loop**. Its
+canonical local model is [`docs/factory/agentic-model.md`](docs/factory/agentic-model.md):
+Hive dispatches work to Factory Workers, maintainers retain review and merge
+authority, and the MCP app presents read-only Review Evidence. The
+documentation, launcher, image, and tests describe one model; none may
+silently create a second workflow, authority path, or task queue.
+
+## Reporting upstream
+
+Running a downstream consumer of Hive's contributor protocol means we find
+things upstream cannot see from inside. Reporting that evidence to
+[`kubestellar/hive`](https://github.com/kubestellar/hive), and following up on
+what we file, is part of the job. We report observations, reproductions, and
+options with tradeoffs; upstream owns the design decision and its own triage.
+We do not add a local workaround for an accepted upstream gap, because a
+downstream workaround becomes upstream's compatibility burden later. See
+[`docs/skills/upstream-hive.md`](docs/skills/upstream-hive.md).
 
 ## Scope
 
@@ -16,6 +43,8 @@ repository root. If you ship it in a custom image, keep those same recipes
 available through the installed root Justfile.
 
 ## Installing this into your own setup
+
+NOTE: WIP - you want to run this in projectbluefin/common: the container AUTOMOUNTS the repo's agentic skills in the container so that the project context is given to every client. This is important because this let's us make more things deterministic. The more docs and scripts we can put in this thing the easier it is for less capable models to do this work. Local models are VIABLE!
 
 For a checkout, run the recipes directly:
 
@@ -94,8 +123,9 @@ an operations task outside this repository automation.
 
 Goose is the only agent backend and GitHub Copilot is the only supported
 provider. `GOOSE_PROVIDER` may be unset or `github_copilot`; `GOOSE_MODEL`
-optionally overrides the `gpt-4.1` default. A `gh auth token` does not
-authenticate Copilot inference.
+optionally overrides the `gpt-5.6-luna` default, and
+`GOOSE_THINKING_EFFORT` optionally overrides the default `high` reasoning
+effort. A `gh auth token` does not authenticate Copilot inference.
 
 The container recipe inherits the Copilot and GitHub tokens by environment
 variable name, so token values are not placed on Podman's command line. The
@@ -121,7 +151,8 @@ absent; doctor only reports that condition.
 For a Bluefin review, load `/bluefin-review` after the assigned repository is
 available. To inspect earlier output, enter tmux copy-mode with `Ctrl-b [`;
 PageUp scrolls, tmux search finds text, and `q` returns to the live pane.
-Copy-mode only changes your view; Hive still owns task and output handling.
+The mouse wheel also enters copy-mode and scrolls long output. Copy-mode only
+changes your view; Hive still owns task and output handling.
 
 ## Configuration
 
@@ -137,6 +168,7 @@ All configuration is read at launch.
 | `REVIEW_GH_TOKEN` | Optional GitHub token override for container-only mode. |
 | `GOOSE_PROVIDER` | Unset or `github_copilot`. |
 | `GOOSE_MODEL` | Optional GitHub Copilot model override. |
+| `GOOSE_THINKING_EFFORT` | Optional Copilot reasoning-effort override. |
 | `GITHUB_COPILOT_TOKEN` | Optional Copilot credential override. |
 | `TOOL` | Agent backend selector; only `goose` is accepted. |
 
@@ -179,6 +211,10 @@ Organization skills are generated at image build time from
 directory. Repositories may route agents to their own skill catalog, but
 per-repository skills are not automatically discovered at session startup.
 
+The image supplies `xterm-256color` and `tmux-256color` terminfo definitions.
+It preserves a recognized terminal type when attaching tmux and falls back to
+`xterm-256color` only when that type is unavailable in the image.
+
 Git hooks at `/opt/bluefin/git-hooks` are ergonomics only; GitHub rulesets and
 required checks enforce repository policy.
 
@@ -212,6 +248,8 @@ provenance and is never included in an image layer.
 ### Validation
 
 ```bash
+bash scripts/check-skill-frontmatter.sh
+bash tests/generate-skills.sh
 bash tests/image-contract.sh
 bash tests/just-onboarding.sh
 git diff --check

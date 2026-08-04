@@ -54,8 +54,14 @@ fork, push, or pull-request access until the guest supports that mapping.
 Never log or persist either credential.
 
 To inspect earlier review output, enter tmux copy-mode with `Ctrl-b [`.
-PageUp scrolls, tmux search finds text, and `q` returns to the live pane.
-Copy-mode changes only your view; Hive still owns output capture.
+PageUp or the mouse wheel scrolls, tmux search finds text, and `q` returns to
+the live pane. Copy-mode changes only your view; Hive still owns output
+capture.
+
+When configuring a derived contributor image, preserve the attach client's
+recognized `TERM`; tmux's pane terminal is configured separately. Enable tmux
+mouse support so the wheel enters copy-mode for long output. Do not alter
+Hive's session creation to accomplish either behavior.
 
 ## Red Flags
 
@@ -76,3 +82,7 @@ bash tests/just-onboarding.sh
 
 Confirm that `contributor` exists, the final pane lines contain the result,
 and no launcher change duplicates Hive lifecycle behavior.
+
+## Sources
+
+- tmux terminal and mouse configuration: Context7 `/tmux/tmux`

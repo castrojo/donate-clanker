@@ -15,7 +15,7 @@ ARG NODE_VERSION=24.18.1
 ARG GH_VERSION=2.97.0
 ARG TMUX_VERSION=3.7b
 ARG GOOSE_CHANNEL=canary
-ARG SKILLS_COMMIT=56944ddddfe55811428f3287f5e3533f3e1c05e1
+ARG SKILLS_COMMIT=e3d4cbb6b897a7d555b20b515ea560b1c7e9901c
 
 FROM ${FSDK_RUNNER_IMAGE}
 
@@ -110,14 +110,16 @@ RUN set -eu; \
     ! cmp -s /tmp/cmp-left /tmp/cmp-right; \
     rm /tmp/cmp-left /tmp/cmp-right
 
-# FSDK intentionally omits terminfo. Hive starts and attaches tmux from the
-# foreground terminal, so compile the single definition we support instead of
-# layering a general terminal database.
+# FSDK intentionally omits terminfo. Supply the terminal descriptions used by
+# the attach client and tmux panes without layering a general terminal database.
 COPY image/terminfo/xterm-256color.src /tmp/xterm-256color.src
+COPY image/terminfo/tmux-256color.src /tmp/tmux-256color.src
 RUN set -eu; \
     tic -x -o /usr/share/terminfo /tmp/xterm-256color.src; \
-    rm /tmp/xterm-256color.src; \
-    infocmp xterm-256color >/dev/null
+    tic -x -o /usr/share/terminfo /tmp/tmux-256color.src; \
+    rm /tmp/xterm-256color.src /tmp/tmux-256color.src; \
+    infocmp xterm-256color >/dev/null; \
+    infocmp tmux-256color >/dev/null
 
 # Pull the contributor-mode runtime directly from the pinned Hive commit. The
 # launcher still depends on Hive's relay protocol and tmux contract; we just own
@@ -177,6 +179,7 @@ RUN set -eu; \
     chown -R 1000:1000 /home/dev/.agents
 
 COPY --chmod=0755 image/entrypoint.sh /usr/local/bin/review-entrypoint
+COPY image/tmux.conf /etc/tmux.conf
 
 USER dev
 WORKDIR /home/dev

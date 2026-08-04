@@ -66,8 +66,11 @@ require image/Containerfile \
   'COPY --chmod=0755 image/bin/cmp /usr/local/bin/cmp' \
   'COPY --chmod=0755 image/bin/find /usr/local/bin/find' \
   'COPY --chmod=0755 image/bin/bluefin-review /usr/local/bin/bluefin-review' \
+  'COPY image/tmux.conf /etc/tmux.conf' \
   'image/terminfo/xterm-256color.src /tmp/xterm-256color.src' \
   'tic -x -o /usr/share/terminfo /tmp/xterm-256color.src' \
+  'image/terminfo/tmux-256color.src /tmp/tmux-256color.src' \
+  'tic -x -o /usr/share/terminfo /tmp/tmux-256color.src' \
   'https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/docs/skills/index.json' \
   '--raw-base "https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/"' \
   '--out /home/dev/.agents/skills' \
@@ -117,16 +120,14 @@ forbid scripts/generate-skills.py \
   'projectbluefin/common/main/'
 
 # The controlled config exists only because Hive overwrites
-# ~/.config/goose/config.yaml on every start. It must not pin a provider or a
-# model: the launcher passes those through from the contributor's own account.
+# ~/.config/goose/config.yaml on every start. It must not pin a provider,
+# model, or extension that Hive manages: the launcher passes provider and model
+# through from the contributor's own account.
 require image/config/goose.yaml \
-  'type: streamable_http' \
-  'name: context7' \
-  'enabled: true' \
-  'timeout: 30' \
-  'uri: "https://mcp.context7.com/mcp"' \
   'GOOSE_MODE: auto' \
   'GOOSE_MAX_TOOL_RESPONSE_SIZE:'
+forbid image/config/goose.yaml \
+  'context7'
 
 # Comments stripped first, so the prose explaining a setting is never mistaken
 # for the setting.
@@ -140,13 +141,12 @@ for unwanted in GOOSE_PROVIDER GOOSE_MODEL 127.0.0.1:8000 api_key; do
   esac
 done
 
-# Agents must not block on Context7: use it opportunistically, fall back local.
 require image/config/local-agent-policy.md \
   'Use installed global Agent Skills when their descriptions match the task' \
   'docs/skills/index.json' \
-  'inspect local repository evidence first' \
-  'Context7 only when current external documentation is useful' \
-  'continue with local evidence when Context7 is unavailable'
+  'inspect local repository evidence first'
+forbid image/config/local-agent-policy.md \
+  'context7'
 
 # GOOSE_PATH_ROOT is the whole reason our config survives Hive's rewrite, and
 # Hive's knowledge export lands on CLAUDE.md, which Goose ignores by default.
@@ -157,20 +157,20 @@ require image/entrypoint.sh \
   '[ "$GOOSE_PROVIDER" != github_copilot ]' \
   'review supports GitHub Copilot only.' \
   'export GOOSE_PROVIDER=github_copilot' \
-  'GOOSE_MODEL="gpt-4.1"' \
+  'GOOSE_MODEL="gpt-5.6-luna"' \
+  'GOOSE_THINKING_EFFORT="${GOOSE_THINKING_EFFORT:-high}"' \
   'GOOSE_DISABLE_KEYRING=1' \
   'CONTEXT_FILE_NAMES' \
   'CLAUDE.md' \
   'GOOSE_MOIM_MESSAGE_FILE' \
   '/opt/bluefin/local-agent-policy.md' \
   'core.hooksPath /opt/bluefin/git-hooks' \
-  'mcp.context7.com' \
-  '"clientInfo":{"name":"review","version":"1"}' \
   'shopt -s nullglob' \
   'validation_tools=(bats shellcheck systemd-analyze pre-commit just podman)' \
   'validation tools unavailable:' \
-  'tmux_term=xterm-256color' \
-  'export TERM=' \
+  'tmux_fallback_term=xterm-256color' \
+  'infocmp "${TERM:-}"' \
+  'TERM=${TERM:-<unset>} has no terminfo; using ${tmux_fallback_term}' \
   '/usr/local/bin/contributor-agent.sh "$@" &' \
   'tmux has-session -t contributor' \
   'tmux readiness diagnostics' \
@@ -179,6 +179,9 @@ require image/entrypoint.sh \
   "note 'tmux detached; the agent remains foreground in this terminal. Press Ctrl-C or close this terminal to stop it.'" \
   'wait "$agent_pid"' \
   'tmux kill-session -t contributor'
+forbid image/entrypoint.sh \
+  'context7' \
+  'mcp.context7.com'
 
 require README.md \
   'Goose canary snapshot' \
@@ -206,7 +209,12 @@ forbid image/entrypoint.sh \
   '/var/run/docker.sock' \
   '/run/podman/podman.sock' \
   ':-/config}' \
-  ':-/workspace}'
+  ':-/workspace}' \
+  'tmux_term=xterm-256color'
+
+require image/tmux.conf \
+  'set -g default-terminal "tmux-256color"' \
+  'set -g mouse on'
 
 # Hooks run in every repository via a global core.hooksPath, so they must never
 # claim to be enforcement: --no-verify bypasses all of them.

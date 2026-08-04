@@ -78,7 +78,7 @@ hive_repo_url := "https://github.com/kubestellar/hive"
 # origin/v2 via `git ls-remote --heads https://github.com/kubestellar/hive v2`
 # on 2026-07-29.
 hive_commit := "835448c3cbef9f06d34dd3802548e1d1e16dbd2f"
-copilot_default_model := "gpt-4.1"
+copilot_default_model := "gpt-5.6-luna"
 vm_runner_image := env("REVIEW_VM_RUNNER_IMAGE", "")
 vm_raw_image := env("REVIEW_VM_RAW", "")
 vm_version := env("REVIEW_VM_VERSION", "25.08.14")
@@ -371,38 +371,11 @@ report_vm_github_identity_blocked() {
   echo "  Until then, use review-container for work that needs fork, push, or PR access." >&2
   return 0
 }
-gum_can_prompt() {
-  command -v gum &>/dev/null || return 1
-  [[ "${REVIEW_TEST_GUM_TTY:-}" == "1" ]] || [[ -t 0 ]]
-}
-load_last_selections() {
-  # Only the remembered Copilot model survives between runs — Goose is the
-  # only backend and GitHub Copilot is the only supported provider.
-  LAST_GOOSE_MODEL=""
-  [[ -f "${LAST_FILE:-}" ]] && source "$LAST_FILE"
-  return 0
-}
 resolve_goose_selection() {
-  # Goose is fixed to GitHub Copilot. Only the model can vary, and the env can
-  # still override it for automation.
+  # Goose is fixed to GitHub Copilot. The model stays noninteractive and the
+  # environment still overrides it for automation.
   GOOSE_PROVIDER="github_copilot"
-  GOOSE_MODEL="${GOOSE_MODEL:-}"
-  load_last_selections
-  if gum_can_prompt && [[ -z "$GOOSE_MODEL" ]]; then
-    GOOSE_MODEL="$(gum input --value "${LAST_GOOSE_MODEL}" --placeholder "e.g. gpt-4.1 — blank for the default" --header "GitHub Copilot model (default: ${COPILOT_DEFAULT_MODEL}):")"
-  fi
-  if [[ -z "$GOOSE_MODEL" ]]; then
-    GOOSE_MODEL="${LAST_GOOSE_MODEL:-${COPILOT_DEFAULT_MODEL}}"
-    if ! gum_can_prompt; then
-      echo "✓ GitHub Copilot is the default; using ${GOOSE_MODEL} (gum unavailable)."
-    fi
-  fi
-  return 0
-}
-persist_goose_selection() {
-  # Picker memory retains only the selected Copilot model.
-  mkdir -p "$CFG_DIR"
-  printf 'LAST_GOOSE_MODEL=%q\n' "$GOOSE_MODEL" > "$LAST_FILE"
+  GOOSE_MODEL="${GOOSE_MODEL:-${COPILOT_DEFAULT_MODEL}}"
   return 0
 }
 normalize_git_remote() {
@@ -718,18 +691,15 @@ review:
     COPILOT_DEFAULT_MODEL="{{copilot_default_model}}"
 
     STATE_DIR="${HOME}/.local/state/review"
-    CFG_DIR="${HOME}/.config/review"
-    LAST_FILE="${CFG_DIR}/last-selections.env"
     HIVE_SRC_DIR="${STATE_DIR}/hive-src"
     HIVE_REPO_URL="{{hive_repo_url}}"
     HIVE_COMMIT="${REVIEW_HIVE_COMMIT:-{{hive_commit}}}"
     HIVE_COMMIT="${HIVE_COMMIT,,}"
-    mkdir -p "${STATE_DIR}" "${CFG_DIR}"
+    mkdir -p "${STATE_DIR}"
 
     require_goose_backend "$TOOL"
     preflight_agent
     resolve_goose_selection
-    persist_goose_selection
 
     COPILOT_TOKEN=""
     if [[ "${GOOSE_PROVIDER:-}" == "github_copilot" ]]; then
@@ -888,6 +858,7 @@ review:
     )
     [[ -n "$GOOSE_PROVIDER" ]] && CONTAINER_ARGS+=(--env "GOOSE_PROVIDER=${GOOSE_PROVIDER}")
     [[ -n "$GOOSE_MODEL" ]] && CONTAINER_ARGS+=(--env "GOOSE_MODEL=${GOOSE_MODEL}")
+    [[ -n "${GOOSE_THINKING_EFFORT:-}" ]] && CONTAINER_ARGS+=(--env "GOOSE_THINKING_EFFORT=${GOOSE_THINKING_EFFORT}")
     CONTAINER_ARGS+=("{{vm_runner_image}}")
     echo "✓ review is running in the pinned QEMU VM runner."
     echo "  Stop any time with Ctrl-C — that is the only way it ends."
@@ -908,14 +879,12 @@ review-container:
     TOOL="{{tool_env}}"
     COPILOT_DEFAULT_MODEL="{{copilot_default_model}}"
 
-    CFG_DIR="${HOME}/.config/review"
-    LAST_FILE="${CFG_DIR}/last-selections.env"
     STATE_DIR="${HOME}/.local/state/review"
     HIVE_SRC_DIR="${STATE_DIR}/hive-src"
     HIVE_REPO_URL="{{hive_repo_url}}"
     HIVE_COMMIT="${REVIEW_HIVE_COMMIT:-{{hive_commit}}}"
     HIVE_COMMIT="${HIVE_COMMIT,,}"
-    mkdir -p "${CFG_DIR}" "${STATE_DIR}"
+    mkdir -p "${STATE_DIR}"
 
     require_goose_backend "$TOOL"
     preflight_agent
@@ -926,7 +895,6 @@ review-container:
     }
 
     resolve_goose_selection
-    persist_goose_selection
     ensure_hive_contributor_env
 
     CONTAINER_NAME="review-container"
@@ -941,6 +909,7 @@ review-container:
     )
     [[ -n "$GOOSE_PROVIDER" ]] && CONTAINER_ARGS+=(--env "GOOSE_PROVIDER=${GOOSE_PROVIDER}")
     [[ -n "$GOOSE_MODEL" ]] && CONTAINER_ARGS+=(--env "GOOSE_MODEL=${GOOSE_MODEL}")
+    [[ -n "${GOOSE_THINKING_EFFORT:-}" ]] && CONTAINER_ARGS+=(--env "GOOSE_THINKING_EFFORT=${GOOSE_THINKING_EFFORT}")
     if [[ "${GOOSE_PROVIDER:-}" == "github_copilot" ]]; then
       resolve_copilot_token
       if [[ -n "${COPILOT_TOKEN:-}" ]]; then
@@ -994,7 +963,6 @@ review-doctor:
       echo "    (review-container does not need it.)"
       fail=$((fail+1))
     fi
-    check "gum installed (used for the provider/model pickers)" command -v gum
     echo ""
 
     echo "=== VM startup ==="

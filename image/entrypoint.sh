@@ -43,10 +43,12 @@ export GOOSE_PROVIDER=github_copilot
 # Goose refuses to start without a model. Keep the direct-image fallback in
 # sync with the launcher's default for users who invoke this image directly.
 if [ -z "${GOOSE_MODEL:-}" ]; then
-	GOOSE_MODEL="gpt-4.1"
+	GOOSE_MODEL="gpt-5.6-luna"
 	note "GOOSE_MODEL not set; defaulting to ${GOOSE_MODEL} for GitHub Copilot"
 fi
 export GOOSE_MODEL
+
+export GOOSE_THINKING_EFFORT="${GOOSE_THINKING_EFFORT:-high}"
 
 # No desktop keyring exists in a container; without this Goose fails to store or
 # read provider secrets and falls back inconsistently.
@@ -76,29 +78,6 @@ if [ -d /opt/bluefin/git-hooks ]; then
 	git config --global core.hooksPath /opt/bluefin/git-hooks || true
 fi
 
-# --- Context7 preflight ------------------------------------------------------
-#
-# Goose only warns and continues when an extension fails to start, so a session
-# can look healthy while Context7 is unreachable. Probe it here and say so
-# plainly; the local agent policy already tells the agent to proceed on local
-# evidence when Context7 is unavailable.
-if command -v curl >/dev/null 2>&1; then
-	# Probe with a real MCP `initialize` call. A bare GET returns 405 and a
-	# `ping` is rejected before the session exists, so either would report a
-	# healthy server as unreachable. Streamable HTTP also requires the
-	# text/event-stream Accept type.
-	if curl --silent --show-error --fail --max-time 8 --output /dev/null \
-		--request POST \
-		--header 'Content-Type: application/json' \
-		--header 'Accept: application/json, text/event-stream' \
-		--data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"review","version":"1"}}}' \
-		https://mcp.context7.com/mcp 2>/dev/null; then
-		note 'Context7 reachable'
-	else
-		note 'Context7 unreachable; continuing on local repository evidence only'
-	fi
-fi
-
 skills_root="${HOME}/.agents/skills"
 if [ -d "$skills_root" ]; then
 	shopt -s nullglob
@@ -123,8 +102,14 @@ fi
 # relay, and launches Goose by keystroke injection. Attaching to that session is
 # Hive's own documented flow. Running it in the foreground is deliberate: the
 # launcher never backgrounds or detaches the agent.
-tmux_term=xterm-256color
-export TERM="$tmux_term"
+# The attach client must describe the terminal that actually renders tmux.
+# FSDK includes only the narrow terminfo set compiled in the image, so fall
+# back to xterm when the caller's terminal is not available.
+tmux_fallback_term=xterm-256color
+if ! infocmp "${TERM:-}" >/dev/null 2>&1; then
+	note "TERM=${TERM:-<unset>} has no terminfo; using ${tmux_fallback_term}"
+	export TERM="$tmux_fallback_term"
+fi
 agent_pid=
 cleanup() {
 	status=$?
