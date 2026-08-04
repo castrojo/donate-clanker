@@ -168,9 +168,9 @@
         "hooks",
         "branches"
       ],
-      "description": "Defines protected-branch pull request, branch, title, trailer, and validation requirements. Use before branching, committing, or opening a review pull request.",
-      "version": "1.3",
-      "last_updated": "2026-08-02",
+      "description": "Defines protected-branch pull request, branch, title, trailer, and validation requirements, and how to reconcile a long-lived branch with a squash-merged main. Use before branching, committing, opening a review pull request, or resolving merge conflicts.",
+      "version": "1.4",
+      "last_updated": "2026-08-04",
       "doc_type": "policy"
     },
     {

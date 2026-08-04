@@ -1,7 +1,7 @@
 ---
 name: pr-workflow
-version: "1.3"
-last_updated: 2026-08-02
+version: "1.4"
+last_updated: 2026-08-04
 id: pr-workflow
 one_line_purpose: Open review pull requests that merge cleanly.
 entry_point: docs/skills/pr-workflow.md
@@ -11,7 +11,7 @@ optimization_status: draft
 status: active
 dependencies: []
 tags: [git, pullrequest, conventional, hooks, branches]
-description: "Defines protected-branch pull request, branch, title, trailer, and validation requirements. Use before branching, committing, or opening a review pull request."
+description: "Defines protected-branch pull request, branch, title, trailer, and validation requirements, and how to reconcile a long-lived branch with a squash-merged main. Use before branching, committing, opening a review pull request, or resolving merge conflicts."
 metadata:
   type: policy
 ---
@@ -45,6 +45,46 @@ request in this repository.
    report completion only after the pull request or other required artifact is
    verifiable.
 
+## Reconciling A Long-Lived Branch
+
+`main` squash-merges, which rewrites commit SHAs. A branch that predates
+several merges therefore looks far more divergent than it is, and the usual
+measurements all mislead:
+
+- `git cherry main <branch>` reports content already on `main` as unmerged,
+  because the squashed commit is a different object.
+- The three-dot range `main...HEAD`, which is what the pull request renders,
+  inflates the change by replaying work `main` already has.
+- The two-dot range `main..HEAD` understates it by hiding what the merge
+  will remove.
+
+Read both ranges before judging the size of a reconciliation, and confirm
+per file rather than trusting either total:
+
+```bash
+git diff --stat main...HEAD   # what the pull request shows
+git diff --stat main..HEAD    # the true net difference
+git log --oneline main --  <path>   # did this land on main already?
+```
+
+Merge `main` into the branch. Do not rebase: features that landed on `main`
+after the merge base exist only on that side, and rebasing replays the stale
+branch on top of them, reintroducing deletions of files the branch never had.
+
+Resolve add/add conflicts hunk by hunk. `git checkout --ours` and
+`--theirs` operate on the whole file and silently discard the hunks Git
+already merged correctly from the other side. Keep the feature that landed on
+`main` **and** the newer behavior from the branch, then confirm both survived
+before committing. A merge can also duplicate an adjacent block that neither
+side duplicated; re-read the resolved file rather than trusting the marker
+count to reach zero.
+
+When a pinned dependency conflicts, resolve by date rather than by side:
+
+```bash
+gh api repos/<owner>/<repo>/commits/<sha> --jq '.commit.committer.date'
+```
+
 ## Red Flags
 
 - Pushing directly to `main`.
@@ -53,17 +93,35 @@ request in this repository.
 - Omitting the Hive task trailer from assigned work.
 - Using `--no-verify` to bypass a real failure.
 - Reporting task completion before the required artifact exists.
+- Rebasing a long-lived branch onto `main` instead of merging `main` into it.
+- Resolving a conflicted file with `--ours` or `--theirs` when both sides
+  carry changes worth keeping.
+- Declaring a reconciliation finished because no conflict markers remain,
+  without re-running the suite that covers the resolved files.
 
 ## Verification
 
 ```bash
+bash scripts/check-skill-frontmatter.sh
+bash tests/generate-skills.sh
 bash tests/image-contract.sh
 bash tests/just-onboarding.sh
-bash scripts/check-skill-frontmatter.sh
 git diff --check
 just --list
-pre-commit run --all-files
+```
+
+`pre-commit run --all-files` is the fuller check, but its ShellCheck hook runs
+in a container and fails on a host with no reachable Podman socket. Treat it
+as advisory locally and let the required `validate` check enforce it.
+
+After resolving a merge, confirm no marker survived anywhere. Anchor the
+search, because shell here-strings legitimately contain `<<<`:
+
+```bash
+grep -rnE '^(<<<<<<< |=======$|>>>>>>> )' . && echo 'markers remain'
 ```
 
 Before review, confirm the pull request title, branch, checks, and required
-trailer with `gh pr view` and `gh pr checks`.
+trailer with `gh pr view` and `gh pr checks`. A reconciliation is done when
+`gh pr view --json mergeable,mergeStateStatus` reports `MERGEABLE` and
+`CLEAN`.
