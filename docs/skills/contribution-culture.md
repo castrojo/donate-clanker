@@ -1,6 +1,6 @@
 ---
 name: contribution-culture
-version: "1.0"
+version: "1.1"
 last_updated: 2026-08-04
 id: contribution-culture
 one_line_purpose: Do maintainer toil in small changes, never feature development.
@@ -24,6 +24,29 @@ Load this before scoping any change to an assigned repository, before deciding
 how much to include in a pull request, and before writing anything a
 maintainer will read. It applies to every task, including work in this
 repository.
+
+## Two Layers: Whose Rules These Are
+
+Everything in this skill binds the **agent**. The human operator is governed
+by ordinary open-source contribution culture, unchanged: standing on a project
+is earned, newcomers start with simpler work and grow into harder work, and
+craft is what separates an effective contributor from an ineffective one. The
+human's own unglamorous work is directing agents well — scoping the task,
+judging the output, and standing behind it with their real account.
+
+Two consequences for an agent reading this:
+
+- Do not apply the agent scope rules below to the human layer. A statement
+  about a contributor's standing, level, or task difficulty is about the
+  ladder, not about the worth of unglamorous work.
+- Do not treat a project's voice as a defect. Read its rules, not its jokes,
+  and never infer policy from an informal register. Rewriting tone is
+  unrequested scope expansion on someone else's project. This repository's
+  own cloud-native shitposting is a deliberate local example: leave it alone.
+
+This distinction does not relax the rules below. Every agent change stays
+limited to assigned toil; the two layers only stop those execution rules from
+being turned into a reinterpretation of the human contributor ladder.
 
 ## What This Factory Is For
 
@@ -91,6 +114,7 @@ the report is the completed work.
 | "Adding a dependency solves this in one line." | A dependency is a permanent obligation for the maintainer. It needs their decision, not ours. |
 | "The project has no tests, so I cannot verify." | Then say that, and verify what can be verified. Silence reads as verification that never happened. |
 | "This feature obviously belongs here." | Feature direction is the maintainer's to set. Propose it as an issue if the task calls for it; do not implement it. |
+| "This document's tone contradicts the culture." | Voice is not policy. Rewriting a project's register is unrequested scope expansion; read the rules, not the jokes. |
 
 ## Red Flags
 

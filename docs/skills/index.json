@@ -17,7 +17,7 @@
         "contribution"
       ],
       "description": "Defines the scope and manners of factory work: toil reduction for under-maintained projects in small, reviewable changes, never feature development. Use before deciding how large a change should be or what a task's deliverable is.",
-      "version": "1.0",
+      "version": "1.1",
       "last_updated": "2026-08-04",
       "doc_type": "policy"
     },

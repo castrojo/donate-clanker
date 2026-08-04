@@ -29,6 +29,24 @@ Avoid calling Factory Workers "reviewers" or "maintainers"; avoid calling
 Review Evidence a decision or approval; and avoid calling the PR Queue an
 assignment queue or merge authority.
 
+## Two layers
+
+The factory has a human layer and an agent layer, governed by different rules.
+Conflating them is the most likely misreading of this model.
+
+The **agent** does the unglamorous work: the toil defined above, in small,
+evidenced, reviewable changes.
+
+The **human** does the unglamorous work of directing agents — scoping a task,
+judging the output, and carrying the result to a maintainer. Their standing is
+earned under ordinary open-source contribution culture, which AI did not
+change; projects determine it, and Hive may use it when distributing work.
+Nothing in this repository sets, scores, or automates it, and the
+`human-queue` is out of scope here.
+
+Do not reconcile the two layers by applying agent scope rules to the human, or
+by reading the human ladder as a statement about agent output.
+
 ## Scope of work
 
 This is a toil-reduction factory for under-maintained open-source projects,
