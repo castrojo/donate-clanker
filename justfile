@@ -77,7 +77,7 @@ tool_env := env("TOOL", "")
 hive_repo_url := "https://github.com/kubestellar/hive"
 # origin/v2 via `git ls-remote --heads https://github.com/kubestellar/hive v2`
 # on 2026-08-04.
-hive_commit := "4d61ad7ce8b646a4e380865c521d5b12677240c9"
+hive_commit := "fc3d7179255d13a613632fd1e982691d2d8bc0ae"
 copilot_default_model := "gpt-5.6-luna"
 vm_runner_image := env("REVIEW_VM_RUNNER_IMAGE", "")
 vm_raw_image := env("REVIEW_VM_RAW", "")
