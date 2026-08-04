@@ -1,6 +1,6 @@
 ---
 name: static-pr-queue
-version: "1.3"
+version: "1.4"
 last_updated: 2026-08-04
 id: static-pr-queue
 one_line_purpose: Publish a safe, static queue of public pull requests.
@@ -51,9 +51,10 @@ GitHub owns pull-request state and merge decisions.
    The root `public/index.html` redirects to the Markdown view. The queue accepts
    `repository_dispatch` type `renovate-completed` from the central
    Renovate workflow; retain its schedule as a fallback.
-7. Use `GITHUB_TOKEN` with only `contents: write` in the refresh workflow.
-   Check out `main` explicitly and never use `pull_request_target` or execute
-   pull-request head code in a write-capable job.
+7. Use `GITHUB_TOKEN` with `contents: read`, `pages: write`, and
+   `id-token: write` in the refresh workflow. Check out `main` explicitly and
+   never use `pull_request_target` or execute pull-request head code in a
+   deploy-capable job.
 8. Keep the surface one document. Do not add `/org`, `/repo`, `/batch`,
    `/next`, content negotiation, `/.well-known/agent-queue`, webhooks, claims,
    leases, a key-value store, or private-repository support until a real
@@ -85,8 +86,8 @@ GitHub owns pull-request state and merge decisions.
 - [ ] A simulated source failure leaves both prior queue artifacts unchanged.
 - [ ] A repeated identical fixture leaves `generated_at` unchanged.
 - [ ] `pre-commit run --all-files` passes.
-- [ ] The workflow checks out `main`, has only `contents: write`, and excludes
-      `pull_request_target`.
+- [ ] The workflow checks out `main`, grants only `contents: read`,
+      `pages: write`, `id-token: write`, and excludes `pull_request_target`.
 
 ## Sources
 

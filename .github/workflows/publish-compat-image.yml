@@ -16,8 +16,9 @@ concurrency:
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
-  attestations: read
+  attestations: write
   contents: read
+  id-token: write
   packages: write
 
 env:
@@ -39,7 +40,8 @@ jobs:
           #   refs/heads/main  every merge: both architectures, 'sha-<commit>'
           #                     + ':stable'
           #   refs/tags/v*     release: both architectures, version tags + ':stable'
-          #   anything else    dispatch from a side branch: 'sha-' only
+          #   anything else    dispatch from a side branch: both architectures,
+          #                     'sha-' only
           #
           # ':stable' moves on every merge on purpose. This is a development
           # tool whose contributors are the people changing it, so the tag
@@ -67,13 +69,10 @@ jobs:
               echo 'version='
               echo 'version_tag='
               printf 'stable=%s\n' "$main"
-              if [[ "$main" == true ]]; then
-                # Stable moves on every merge and must remain usable on arm64.
-                echo 'platforms=linux/amd64,linux/arm64'
-              else
-                # A manual side-branch build never moves the default tag.
-                echo 'platforms=linux/amd64'
-              fi
+              # Every published digest is a complete contributor artifact.
+              # Side-branch dispatches do not move stable, but still publish
+              # the same two native platforms as release and main builds.
+              echo 'platforms=linux/amd64,linux/arm64'
             fi
             echo "tags<<EOF"
             echo "${IMAGE}:sha-${GITHUB_SHA}"
@@ -87,8 +86,41 @@ jobs:
             echo EOF
           } >> "$GITHUB_OUTPUT"
 
+      - name: Derive review image metadata
+        id: metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_image="$(sed -n 's/^ARG FSDK_RUNNER_IMAGE=\(.*\)$/\1/p' image/Containerfile)"
+          test -n "$base_image"
+          test "${base_image#*@}" != "$base_image"
+          {
+            printf 'created=%s\n' "$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+            printf 'base_name=%s\n' "${base_image%@*}"
+            printf 'base_digest=%s\n' "${base_image#*@}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Set up Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Resolve official Goose canary asset identities
+        id: goose
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release="$(gh api repos/aaif-goose/goose/releases/tags/canary)"
+          asset_digest() {
+            jq -er --arg name "$1" \
+              '.assets[] | select(.name == $name) | .digest |
+               select(test("^sha256:[0-9a-f]{64}$")) | ltrimstr("sha256:")' \
+              <<<"$release"
+          }
+          {
+            echo "x86_64_sha256=$(asset_digest goose-x86_64-unknown-linux-musl.tar.gz)"
+            echo "aarch64_sha256=$(asset_digest goose-aarch64-unknown-linux-musl.tar.gz)"
+          } >>"$GITHUB_OUTPUT"
 
       - name: Build review image for smoke test
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
@@ -99,6 +131,8 @@ jobs:
           tags: review:smoke
           build-args: |
             GOOSE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
+            GOOSE_X86_64_SHA256=${{ steps.goose.outputs.x86_64_sha256 }}
+            GOOSE_AARCH64_SHA256=${{ steps.goose.outputs.aarch64_sha256 }}
           secrets: |
             github_token=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha
@@ -135,14 +169,66 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
           build-args: |
             GOOSE_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
+            GOOSE_X86_64_SHA256=${{ steps.goose.outputs.x86_64_sha256 }}
+            GOOSE_AARCH64_SHA256=${{ steps.goose.outputs.aarch64_sha256 }}
           secrets: |
             github_token=${{ secrets.GITHUB_TOKEN }}
           labels: |
+            org.opencontainers.image.title=Bluefin review contributor
+            org.opencontainers.image.description=Foreground contributor runtime for projectbluefin/review.
+            org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.tags.outputs.version || steps.tags.outputs.sha }}
+            org.opencontainers.image.created=${{ steps.metadata.outputs.created }}
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.base.name=${{ steps.metadata.outputs.base_name }}
+            org.opencontainers.image.base.digest=${{ steps.metadata.outputs.base_digest }}
+          annotations: |
+            index:org.opencontainers.image.title=Bluefin review contributor
+            index:org.opencontainers.image.description=Foreground contributor runtime for projectbluefin/review.
+            index:org.opencontainers.image.url=${{ github.server_url }}/${{ github.repository }}
+            index:org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            index:org.opencontainers.image.revision=${{ github.sha }}
+            index:org.opencontainers.image.version=${{ steps.tags.outputs.version || steps.tags.outputs.sha }}
+            index:org.opencontainers.image.created=${{ steps.metadata.outputs.created }}
+            index:org.opencontainers.image.licenses=Apache-2.0
+            index:org.opencontainers.image.base.name=${{ steps.metadata.outputs.base_name }}
+            index:org.opencontainers.image.base.digest=${{ steps.metadata.outputs.base_digest }}
+          provenance: mode=max
+          sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Attest published review image digest
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true
+
+      - name: Install image audit tooling
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes skopeo
+
+      - name: Audit published image composition and attestations
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DERIVED_IMAGE: ${{ env.IMAGE }}@${{ steps.publish.outputs.digest }}
+        run: |
+          set -euo pipefail
+          bash tests/image-audit.sh \
+            --derived "$DERIVED_IMAGE" \
+            --require-oci \
+            --require-attestations \
+            --require-github-attestation \
+            --attestation-repository "${GITHUB_REPOSITORY}" \
+            --expected-source "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --expected-revision "${GITHUB_SHA}" \
+            --expected-version "${{ steps.tags.outputs.version || steps.tags.outputs.sha }}"
 
       - name: Verify published digest
         shell: bash

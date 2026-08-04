@@ -1,39 +1,194 @@
 #!/usr/bin/env python3
-"""Provide the small find subset used by contributor exploration."""
+"""Provide the find subset the contributor runtime and agents actually use.
 
+The FSDK base ships no findutils. Two callers depend on this: Hive's relay
+prunes stale /tmp entries every ten minutes with a full GNU expression, and
+agents explore repositories with the common predicates. Anything outside that
+subset fails loudly rather than silently reporting a wrong answer.
+"""
+
+import fnmatch
 import os
+import pwd
+import subprocess
 import sys
+import time
+
+PREDICATES = {"-name", "-type", "-user", "-mmin", "-newer", "-path"}
+
+
+class Unsupported(Exception):
+    pass
+
+
+def parse_expression(args: list[str]) -> tuple[list[list[tuple]], list[str] | None, int | None]:
+    """Return OR-groups of ANDed (negated, predicate, value) terms, plus -exec.
+
+    GNU find binds -a tighter than -o, so the terms are collected into
+    OR-groups of AND-terms. Hive's own cleanup relies on that precedence.
+    """
+    groups: list[list[tuple]] = [[]]
+    action: list[str] | None = None
+    depth: int | None = None
+    negate = False
+
+    while args:
+        option = args.pop(0)
+        if option == "-maxdepth":
+            depth = int(args.pop(0))
+        elif option in ("-not", "!"):
+            negate = True
+        elif option in ("-a", "-and"):
+            continue
+        elif option in ("-o", "-or"):
+            groups.append([])
+        elif option in PREDICATES:
+            if not args:
+                raise Unsupported(f"missing argument to {option}")
+            groups[-1].append((negate, option, args.pop(0)))
+            negate = False
+        elif option in ("-exec", "-execdir"):
+            command: list[str] = []
+            while args:
+                token = args.pop(0)
+                if token in ("+", ";", "\\;"):
+                    if token != "+":
+                        raise Unsupported("-exec ... ; is not supported; use +")
+                    break
+                command.append(token)
+            else:
+                raise Unsupported("-exec is missing its terminator")
+            action = command
+        elif option == "-print":
+            continue
+        else:
+            raise Unsupported(f"unsupported option: {option}")
+
+    if negate:
+        raise Unsupported("-not has no following predicate")
+    return groups, action, depth
+
+
+def matches(path: str, kind: str, groups: list[list[tuple]]) -> bool:
+    if groups == [[]]:
+        return True
+
+    def term(negated: bool, predicate: str, value: str) -> bool:
+        if predicate == "-name":
+            result = fnmatch.fnmatch(os.path.basename(path), value)
+        elif predicate == "-path":
+            result = fnmatch.fnmatch(path, value)
+        elif predicate == "-type":
+            result = kind == value
+        elif predicate == "-user":
+            try:
+                result = os.stat(path, follow_symlinks=False).st_uid == resolve_user(value)
+            except (OSError, KeyError):
+                result = False
+        elif predicate == "-mmin":
+            try:
+                age = (time.time() - os.stat(path, follow_symlinks=False).st_mtime) / 60
+            except OSError:
+                return False
+            result = compare(age, value)
+        elif predicate == "-newer":
+            try:
+                result = (
+                    os.stat(path, follow_symlinks=False).st_mtime
+                    > os.stat(value, follow_symlinks=False).st_mtime
+                )
+            except OSError:
+                result = False
+        else:  # pragma: no cover - parse_expression gates this
+            raise Unsupported(f"unsupported predicate: {predicate}")
+        return not result if negated else result
+
+    return any(group and all(term(*t) for t in group) for group in groups)
+
+
+def compare(actual: float, value: str) -> bool:
+    """Apply GNU find's +n / -n / n numeric comparison, truncated to integers."""
+    whole = int(actual)
+    if value.startswith("+"):
+        return whole > int(value[1:])
+    if value.startswith("-"):
+        return whole < int(value[1:])
+    return whole == int(value)
+
+
+_users: dict[str, int] = {}
+
+
+def resolve_user(name: str) -> int:
+    if name not in _users:
+        _users[name] = int(name) if name.isdigit() else pwd.getpwnam(name).pw_uid
+    return _users[name]
+
+
+def run(command: list[str], paths: list[str]) -> int:
+    if not paths:
+        return 0
+    argv = [token for token in command if token != "{}"]
+    # GNU find's `+` form appends as many paths as fit; one batch is
+    # equivalent here and keeps ordering deterministic.
+    result = subprocess.run(argv + paths, check=False)
+    return result.returncode
 
 
 def main(args: list[str]) -> int:
-    root = "."
-    if args and not args[0].startswith("-"):
-        root = args.pop(0)
-    depth = None
-    kinds: set[str] = set()
-    while args:
-        option = args.pop(0)
-        if option == "-maxdepth" and args:
-            depth = int(args.pop(0))
-        elif option == "-type" and args:
-            kinds.add(args.pop(0))
-        elif option == "-o":
+    roots: list[str] = []
+    while args and not args[0].startswith("-"):
+        roots.append(args.pop(0))
+    if not roots:
+        roots = ["."]
+
+    try:
+        groups, action, depth = parse_expression(args)
+    except Unsupported as error:
+        print(f"find: {error}", file=sys.stderr)
+        return 1
+    except ValueError as error:
+        print(f"find: invalid numeric argument: {error}", file=sys.stderr)
+        return 1
+
+    selected: list[str] = []
+    status = 0
+
+    def consider(path: str, kind: str) -> None:
+        try:
+            if matches(path, kind, groups):
+                selected.append(path)
+        except Unsupported as error:
+            print(f"find: {error}", file=sys.stderr)
+
+    for root in roots:
+        if not os.path.exists(root):
+            print(f"find: '{root}': No such file or directory", file=sys.stderr)
+            status = 1
             continue
-        else:
-            print(f"find: unsupported option: {option}", file=sys.stderr)
-            return 1
-    for directory, directories, files in os.walk(root):
-        relative = os.path.relpath(directory, root)
-        relative_depth = 0 if relative == "." else len(relative.split(os.sep))
-        if depth is not None and relative_depth >= depth:
-            directories[:] = []
-        if not kinds or "d" in kinds:
-            print(directory)
-        if depth is None or relative_depth < depth:
-            for name in files:
-                if not kinds or "f" in kinds:
-                    print(os.path.join(directory, name))
-    return 0
+        if not os.path.isdir(root):
+            consider(root, "f")
+            continue
+        for directory, directories, files in os.walk(root):
+            relative = os.path.relpath(directory, root)
+            relative_depth = 0 if relative == "." else len(relative.split(os.sep))
+            if depth is not None and relative_depth >= depth:
+                directories[:] = []
+            consider(directory, "d")
+            if depth is None or relative_depth < depth:
+                for name in sorted(files):
+                    consider(os.path.join(directory, name), "f")
+
+    if action is None:
+        for path in selected:
+            print(path)
+        return status
+
+    # `-exec ... +` deletes the paths it is given, so run it deepest-first;
+    # otherwise removing a parent invalidates the child paths still queued.
+    selected.sort(key=lambda path: path.count(os.sep), reverse=True)
+    return run(action, selected) or status
 
 
-raise SystemExit(main(sys.argv[1:]))
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

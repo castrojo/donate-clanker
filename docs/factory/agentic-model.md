@@ -64,6 +64,9 @@ Keep the model executable and compact:
 bash scripts/check-skill-frontmatter.sh
 bash tests/generate-skills.sh
 bash tests/image-contract.sh
+bash tests/hive-compatibility.sh
+bash tests/find-semantics.sh
+bash tests/bluefin-review.sh
 bash tests/just-onboarding.sh
 git diff --check
 just --list
