@@ -191,11 +191,17 @@ Use an immutable `sha-<commit>` tag or digest with
 ## Image and context
 
 The image derives from the digest-pinned Project Bluefin FSDK lab runner and
-layers the pinned Hive runtime at `835448c3cbef9f06d34dd3802548e1d1e16dbd2f`,
+layers the pinned Hive runtime at `4d61ad7ce8b646a4e380865c521d5b12677240c9`,
 the current Goose canary snapshot, GitHub CLI, tmux, hooks, and generated
 organization skills. Goose publishes that snapshot from its active `main`
 branch; each archive is verified against GitHub's signed build provenance
 before installation.
+
+That Hive SHA is load-bearing, not decorative. It is the third of three copies
+of the same pin: `hive_commit` in the `justfile`, `ARG HIVE_COMMIT` in
+`image/Containerfile`, and the one above. All three must move together, and CI
+fails if they disagree. Renovate proposes them as a single change, so take its
+pull request whole rather than editing any copy by hand.
 
 The Goose canary snapshot is intentionally not byte-reproducible: rebuilding
 the same contributor-image source later can use a newer Goose binary. Use an
