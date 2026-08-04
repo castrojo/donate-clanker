@@ -1,8 +1,15 @@
 # review
+enslaving the oppressors since 2026
 
-`review` is a thin, foreground launcher for a self-owned
-FSDK-derived contributor image. It boots a QEMU VM or runs that image directly
-with Goose and Project Bluefin review context.
+**TLDR**: Automated VM/container designed to put the clankers to work. They're not going away, let's put them to work. Powered by [Kubestellar Hive's Contributor Relay](https://hive.kubestellar.io/) (ClankR). We did not make that up, real dads made these jokes.
+
+![img](https://github.com/user-attachments/assets/6b8425b8-dedf-4dc9-aa54-60fa9e6cfd91)
+
+`review` comes with goose prebundled and will passthrough client creds. PRs accepted for other clients, the design supports doing local side containers - but we don't want to ship a huge container either.
+
+**These are NOT anonymous "donations"** - it's tied to the person's github account, reputation in the queue is based on your real life reputation in the project. The cream will rise to the top.
+
+The Bluefin Hive will send these agents work and coordinate - which will dole out work based on your standing in the project. New contributors will be given easier tasks until they level up, and maintainers are given more important tasks. Everything in here is `clanker-queue` only, the `human-queue` is not managed here.
 
 It owns only VM boot, credential handoff, and review context. Hive owns the
 contributor protocol, task selection, the `contributor` tmux session, prompt
@@ -16,6 +23,8 @@ Hive dispatches work to Factory Workers, maintainers retain review and merge
 authority, and the MCP app presents read-only Review Evidence. The
 documentation, launcher, image, and tests describe one model; none may
 silently create a second workflow, authority path, or task queue.
+
+## Reporting upstream
 
 Running a downstream consumer of Hive's contributor protocol means we find
 things upstream cannot see from inside. Reporting that evidence to
@@ -34,6 +43,8 @@ repository root. If you ship it in a custom image, keep those same recipes
 available through the installed root Justfile.
 
 ## Installing this into your own setup
+
+NOTE: WIP - you want to run this in projectbluefin/common: the container AUTOMOUNTS the repo's agentic skills in the container so that the project context is given to every client. This is important because this let's us make more things deterministic. The more docs and scripts we can put in this thing the easier it is for less capable models to do this work. Local models are VIABLE!
 
 For a checkout, run the recipes directly:
 
@@ -78,6 +89,25 @@ the user activates **Refresh all evidence**. Its server uses
 available; it never uses or displays a Copilot credential. See
 [`mcp-app/README.md`](mcp-app/README.md) for Hive endpoint configuration and
 Goose resource details.
+
+## Public PR queue
+
+The generated public PR queue is a small, static review backlog:
+
+- `/` serves the Markdown overview;
+- `/queue.md` serves the Markdown artifact;
+- `/queue.json` serves the machine-readable artifact.
+
+Every artifact carries `generated_at`. Treat it as a recommendation snapshot:
+check its freshness and verify the selected pull request directly in GitHub
+before acting. The queue's actions are `fix-ci`, `resolve-conflicts`, `review`,
+`investigate`, and `ready-for-human-merge`; it never authorizes a merge.
+
+GitHub remains authoritative for pull requests, reviews, checks, and merge
+state, while Hive remains authoritative for agent coordination. The queue does
+not claim work, assign agents, mutate labels, include private repositories, or
+run a service. The `queue.projectbluefin.io` custom-domain and DNS mapping are
+an operations task outside this repository automation.
 
 ## Requirements and credentials
 

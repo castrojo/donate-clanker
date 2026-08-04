@@ -1,0 +1,2123 @@
+{
+  "generated_at": "2026-08-03T20:51:18.061Z",
+  "items": [
+    {
+      "id": "projectbluefin/bluefin-lts#437",
+      "repository": "projectbluefin/bluefin-lts",
+      "number": 437,
+      "url": "https://github.com/projectbluefin/bluefin-lts/pull/437",
+      "title": "[quality] add BATS unit tests for kernel-swap.sh",
+      "updated_at": "2026-07-29T01:51:20Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "unknown",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 16 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-lts#418",
+      "repository": "projectbluefin/bluefin-lts",
+      "number": 418,
+      "url": "https://github.com/projectbluefin/bluefin-lts/pull/418",
+      "title": "fix: enable fractional scaling and fix nvidia glitches",
+      "updated_at": "2026-07-29T01:51:21Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "unknown",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 16 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-lts#483",
+      "repository": "projectbluefin/bluefin-lts",
+      "number": 483,
+      "url": "https://github.com/projectbluefin/bluefin-lts/pull/483",
+      "title": "fix(tests): correct rpm stub quoting and add skopeo assertion",
+      "updated_at": "2026-07-31T20:19:20Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 16 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-lts#494",
+      "repository": "projectbluefin/bluefin-lts",
+      "number": 494,
+      "url": "https://github.com/projectbluefin/bluefin-lts/pull/494",
+      "title": "fix(boot): avoid rechunker systemd ordering cycle",
+      "updated_at": "2026-08-03T19:58:29Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 16 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-lts#495",
+      "repository": "projectbluefin/bluefin-lts",
+      "number": 495,
+      "url": "https://github.com/projectbluefin/bluefin-lts/pull/495",
+      "title": "fix(boot): break rechunker ordering cycle",
+      "updated_at": "2026-08-03T20:03:24Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 16 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-lts#462",
+      "repository": "projectbluefin/bluefin-lts",
+      "number": 462,
+      "url": "https://github.com/projectbluefin/bluefin-lts/pull/462",
+      "title": "fix: install dnf5 so bluefin-lts-countme.service can find /usr/bin/dnf5",
+      "updated_at": "2026-07-31T13:21:40Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "dirty",
+      "check_state": "unknown",
+      "recommended_action": "resolve-conflicts",
+      "ranking_reasons": [
+        "repository has 16 open pull requests",
+        "GitHub reports merge conflicts"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-lts#451",
+      "repository": "projectbluefin/bluefin-lts",
+      "number": 451,
+      "url": "https://github.com/projectbluefin/bluefin-lts/pull/451",
+      "title": "chore(workflow): pin bonedigger lifecycle to clanker-queue rollout",
+      "updated_at": "2026-07-29T01:51:19Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 16 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-lts#470",
+      "repository": "projectbluefin/bluefin-lts",
+      "number": 470,
+      "url": "https://github.com/projectbluefin/bluefin-lts/pull/470",
+      "title": "fix(ci): run change detection on merge groups",
+      "updated_at": "2026-07-31T13:19:13Z",
+      "labels": [],
+      "review_state": "unknown",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 16 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-lts#475",
+      "repository": "projectbluefin/bluefin-lts",
+      "number": 475,
+      "url": "https://github.com/projectbluefin/bluefin-lts/pull/475",
+      "title": "feat(packages): add nethogs and lm_sensors",
+      "updated_at": "2026-07-31T13:19:16Z",
+      "labels": [
+        "agent/contributor",
+        "contributor/castrojo",
+        "cli/copilot"
+      ],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 16 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-lts#478",
+      "repository": "projectbluefin/bluefin-lts",
+      "number": 478,
+      "url": "https://github.com/projectbluefin/bluefin-lts/pull/478",
+      "title": "refactor(nvidia): document intentional divergence from upstream nvidia-install.sh (#435)",
+      "updated_at": "2026-07-31T13:19:24Z",
+      "labels": [
+        "agent/contributor",
+        "contributor/castrojo",
+        "cli/copilot"
+      ],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 16 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-lts#469",
+      "repository": "projectbluefin/bluefin-lts",
+      "number": 469,
+      "url": "https://github.com/projectbluefin/bluefin-lts/pull/469",
+      "title": "test: add build script parity coverage",
+      "updated_at": "2026-07-31T13:19:27Z",
+      "labels": [],
+      "review_state": "unknown",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 16 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-lts#456",
+      "repository": "projectbluefin/bluefin-lts",
+      "number": 456,
+      "url": "https://github.com/projectbluefin/bluefin-lts/pull/456",
+      "title": "ci(lab): publish PR results through MergeRaptor",
+      "updated_at": "2026-07-31T13:19:31Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "unknown",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 16 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-lts#472",
+      "repository": "projectbluefin/bluefin-lts",
+      "number": 472,
+      "url": "https://github.com/projectbluefin/bluefin-lts/pull/472",
+      "title": "fix(ci): assemble signed multi-arch manifest for bluefin-lts-nvidia:testing",
+      "updated_at": "2026-07-31T13:19:38Z",
+      "labels": [
+        "agent/contributor",
+        "contributor/castrojo",
+        "cli/copilot"
+      ],
+      "review_state": "unknown",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 16 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-lts#473",
+      "repository": "projectbluefin/bluefin-lts",
+      "number": 473,
+      "url": "https://github.com/projectbluefin/bluefin-lts/pull/473",
+      "title": "refactor(nvidia): centralize kernel args and schema override",
+      "updated_at": "2026-07-31T13:21:02Z",
+      "labels": [
+        "agent/contributor",
+        "contributor/castrojo",
+        "cli/copilot"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 16 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-lts#474",
+      "repository": "projectbluefin/bluefin-lts",
+      "number": 474,
+      "url": "https://github.com/projectbluefin/bluefin-lts/pull/474",
+      "title": "feat(nvidia): evaluate shared NVIDIA system files for LTS",
+      "updated_at": "2026-07-31T13:21:15Z",
+      "labels": [
+        "agent/contributor",
+        "contributor/castrojo",
+        "cli/copilot"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 16 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-lts#471",
+      "repository": "projectbluefin/bluefin-lts",
+      "number": 471,
+      "url": "https://github.com/projectbluefin/bluefin-lts/pull/471",
+      "title": "fix(boot): avoid rechunker service ordering cycle",
+      "updated_at": "2026-07-31T13:21:26Z",
+      "labels": [],
+      "review_state": "unknown",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 16 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/common#893",
+      "repository": "projectbluefin/common",
+      "number": 893,
+      "url": "https://github.com/projectbluefin/common/pull/893",
+      "title": "chore(deps): update github/codeql-action digest to f205ea1",
+      "updated_at": "2026-07-30T09:55:51Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/common#889",
+      "repository": "projectbluefin/common",
+      "number": 889,
+      "url": "https://github.com/projectbluefin/common/pull/889",
+      "title": "fix(bonedigger): cleanup trap returns 0 so report exits cleanly",
+      "updated_at": "2026-07-31T16:13:01Z",
+      "labels": [],
+      "review_state": "approved",
+      "mergeable_state": "dirty",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/common#807",
+      "repository": "projectbluefin/common",
+      "number": 807,
+      "url": "https://github.com/projectbluefin/common/pull/807",
+      "title": "feat(telemetry): implement weekly countme client for dakota",
+      "updated_at": "2026-07-31T22:21:41Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "dirty",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/common#917",
+      "repository": "projectbluefin/common",
+      "number": 917,
+      "url": "https://github.com/projectbluefin/common/pull/917",
+      "title": "fix(ujust): preserve report copy when optional files are absent",
+      "updated_at": "2026-08-03T14:54:26Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/common#924",
+      "repository": "projectbluefin/common",
+      "number": 924,
+      "url": "https://github.com/projectbluefin/common/pull/924",
+      "title": "[quality] add docs skill validator regression tests",
+      "updated_at": "2026-08-03T16:04:07Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/common#926",
+      "repository": "projectbluefin/common",
+      "number": 926,
+      "url": "https://github.com/projectbluefin/common/pull/926",
+      "title": "[quality] add BATS regression coverage for theming hook",
+      "updated_at": "2026-08-03T17:27:48Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/common#805",
+      "repository": "projectbluefin/common",
+      "number": 805,
+      "url": "https://github.com/projectbluefin/common/pull/805",
+      "title": "feat(bazaar): robust legacy schema support, instant local previews, and Freelens recommendations",
+      "updated_at": "2026-07-28T23:08:53Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "dirty",
+      "check_state": "success",
+      "recommended_action": "resolve-conflicts",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub reports merge conflicts"
+      ]
+    },
+    {
+      "id": "projectbluefin/common#902",
+      "repository": "projectbluefin/common",
+      "number": 902,
+      "url": "https://github.com/projectbluefin/common/pull/902",
+      "title": "fix(ujust): bootstrap fzf for --choose",
+      "updated_at": "2026-07-31T16:36:32Z",
+      "labels": [
+        "agent/contributor",
+        "contributor/castrojo",
+        "cli/copilot"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "dirty",
+      "check_state": "success",
+      "recommended_action": "resolve-conflicts",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub reports merge conflicts"
+      ]
+    },
+    {
+      "id": "projectbluefin/common#815",
+      "repository": "projectbluefin/common",
+      "number": 815,
+      "url": "https://github.com/projectbluefin/common/pull/815",
+      "title": "feat(motd): add uwelcome + update umotd",
+      "updated_at": "2026-07-31T19:34:12Z",
+      "labels": [
+        "blocked",
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "dirty",
+      "check_state": "unknown",
+      "recommended_action": "resolve-conflicts",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub reports merge conflicts"
+      ]
+    },
+    {
+      "id": "projectbluefin/common#808",
+      "repository": "projectbluefin/common",
+      "number": 808,
+      "url": "https://github.com/projectbluefin/common/pull/808",
+      "title": "fix(bazaar): cherry-pick bazaar fixes + migrate curated.yaml to new schema",
+      "updated_at": "2026-08-01T01:52:24Z",
+      "labels": [
+        "blocked",
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "dirty",
+      "check_state": "success",
+      "recommended_action": "resolve-conflicts",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub reports merge conflicts"
+      ]
+    },
+    {
+      "id": "projectbluefin/common#852",
+      "repository": "projectbluefin/common",
+      "number": 852,
+      "url": "https://github.com/projectbluefin/common/pull/852",
+      "title": "feat(brew): manage cask lifecycle in brew-preinstall",
+      "updated_at": "2026-08-02T20:46:12Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "approved",
+      "mergeable_state": "dirty",
+      "check_state": "success",
+      "recommended_action": "resolve-conflicts",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub reports merge conflicts"
+      ]
+    },
+    {
+      "id": "projectbluefin/common#923",
+      "repository": "projectbluefin/common",
+      "number": 923,
+      "url": "https://github.com/projectbluefin/common/pull/923",
+      "title": "test(docs): add regression tests for skill validators",
+      "updated_at": "2026-08-03T15:59:27Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "dirty",
+      "check_state": "success",
+      "recommended_action": "resolve-conflicts",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub reports merge conflicts"
+      ]
+    },
+    {
+      "id": "projectbluefin/common#921",
+      "repository": "projectbluefin/common",
+      "number": 921,
+      "url": "https://github.com/projectbluefin/common/pull/921",
+      "title": "fix(systemd): remove rechunker local-fs ordering cycle",
+      "updated_at": "2026-08-03T13:06:38Z",
+      "labels": [
+        "3-human-queue"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "review",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "review is required"
+      ]
+    },
+    {
+      "id": "projectbluefin/common#862",
+      "repository": "projectbluefin/common",
+      "number": 862,
+      "url": "https://github.com/projectbluefin/common/pull/862",
+      "title": "fix(ujust): install fzf before choosing recipes",
+      "updated_at": "2026-07-31T13:20:22Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "approved",
+      "mergeable_state": "clean",
+      "check_state": "unknown",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/fsdk-containers#42",
+      "repository": "projectbluefin/fsdk-containers",
+      "number": 42,
+      "url": "https://github.com/projectbluefin/fsdk-containers/pull/42",
+      "title": "ci: unbreak main, gate pull requests, and close the factory drift",
+      "updated_at": "2026-08-02T13:45:41Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/fsdk-containers#51",
+      "repository": "projectbluefin/fsdk-containers",
+      "number": 51,
+      "url": "https://github.com/projectbluefin/fsdk-containers/pull/51",
+      "title": "fix(vm): package current donate-clanker guest config",
+      "updated_at": "2026-08-03T03:55:27Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/fsdk-containers#52",
+      "repository": "projectbluefin/fsdk-containers",
+      "number": 52,
+      "url": "https://github.com/projectbluefin/fsdk-containers/pull/52",
+      "title": "ci: report failed main builds",
+      "updated_at": "2026-08-03T03:58:01Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/fsdk-containers#53",
+      "repository": "projectbluefin/fsdk-containers",
+      "number": 53,
+      "url": "https://github.com/projectbluefin/fsdk-containers/pull/53",
+      "title": "feat(ci): register OCI images with Artifact Hub",
+      "updated_at": "2026-08-03T04:18:38Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/fsdk-containers#54",
+      "repository": "projectbluefin/fsdk-containers",
+      "number": 54,
+      "url": "https://github.com/projectbluefin/fsdk-containers/pull/54",
+      "title": "ci: verify brew nspawn image weekly",
+      "updated_at": "2026-08-03T04:21:51Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/fsdk-containers#55",
+      "repository": "projectbluefin/fsdk-containers",
+      "number": 55,
+      "url": "https://github.com/projectbluefin/fsdk-containers/pull/55",
+      "title": "fix(vm): package matching donate-clanker runtime config",
+      "updated_at": "2026-08-03T11:40:36Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/fsdk-containers#56",
+      "repository": "projectbluefin/fsdk-containers",
+      "number": 56,
+      "url": "https://github.com/projectbluefin/fsdk-containers/pull/56",
+      "title": "ci: smoke test published OCI manifests",
+      "updated_at": "2026-08-03T11:43:55Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/fsdk-containers#57",
+      "repository": "projectbluefin/fsdk-containers",
+      "number": 57,
+      "url": "https://github.com/projectbluefin/fsdk-containers/pull/57",
+      "title": "ci: track remote BuildStream source refs",
+      "updated_at": "2026-08-03T11:47:28Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/fsdk-containers#58",
+      "repository": "projectbluefin/fsdk-containers",
+      "number": 58,
+      "url": "https://github.com/projectbluefin/fsdk-containers/pull/58",
+      "title": "fix(vm): package matching donate-clanker guest config",
+      "updated_at": "2026-08-03T17:07:25Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/fsdk-containers#59",
+      "repository": "projectbluefin/fsdk-containers",
+      "number": 59,
+      "url": "https://github.com/projectbluefin/fsdk-containers/pull/59",
+      "title": "ci(vm): smoke test published OCI manifests",
+      "updated_at": "2026-08-03T17:16:20Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/fsdk-containers#60",
+      "repository": "projectbluefin/fsdk-containers",
+      "number": 60,
+      "url": "https://github.com/projectbluefin/fsdk-containers/pull/60",
+      "title": "fix(ci): track BuildStream refs after Renovate updates",
+      "updated_at": "2026-08-03T18:07:01Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/fsdk-containers#61",
+      "repository": "projectbluefin/fsdk-containers",
+      "number": 61,
+      "url": "https://github.com/projectbluefin/fsdk-containers/pull/61",
+      "title": "fix(ci): atomically track Renovate BuildStream sources",
+      "updated_at": "2026-08-03T18:25:34Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/fsdk-containers#62",
+      "repository": "projectbluefin/fsdk-containers",
+      "number": 62,
+      "url": "https://github.com/projectbluefin/fsdk-containers/pull/62",
+      "title": "ci: notify when main build fails",
+      "updated_at": "2026-08-03T19:01:30Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/fsdk-containers#63",
+      "repository": "projectbluefin/fsdk-containers",
+      "number": 63,
+      "url": "https://github.com/projectbluefin/fsdk-containers/pull/63",
+      "title": "fix(lab-runner): reduce Argo CLI image size",
+      "updated_at": "2026-08-03T19:06:47Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 14 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/knuckle#853",
+      "repository": "projectbluefin/knuckle",
+      "number": 853,
+      "url": "https://github.com/projectbluefin/knuckle/pull/853",
+      "title": "chore(workflow): pin bonedigger lifecycle to clanker-queue rollout",
+      "updated_at": "2026-07-29T00:17:30Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 13 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/knuckle#848",
+      "repository": "projectbluefin/knuckle",
+      "number": 848,
+      "url": "https://github.com/projectbluefin/knuckle/pull/848",
+      "title": "chore(deps): update module golang.org/x/vuln to v1.6.0",
+      "updated_at": "2026-07-29T00:17:34Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 13 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/knuckle#847",
+      "repository": "projectbluefin/knuckle",
+      "number": 847,
+      "url": "https://github.com/projectbluefin/knuckle/pull/847",
+      "title": "fix(deps): update module golang.org/x/crypto to v0.54.0",
+      "updated_at": "2026-07-29T00:17:35Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 13 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/knuckle#845",
+      "repository": "projectbluefin/knuckle",
+      "number": 845,
+      "url": "https://github.com/projectbluefin/knuckle/pull/845",
+      "title": "fix(deps): update module charm.land/bubbles/v2 to v2.1.1",
+      "updated_at": "2026-07-29T00:17:37Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 13 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/knuckle#843",
+      "repository": "projectbluefin/knuckle",
+      "number": 843,
+      "url": "https://github.com/projectbluefin/knuckle/pull/843",
+      "title": "fix(deps): update module charm.land/bubbletea/v2 to v2.0.8",
+      "updated_at": "2026-07-29T00:17:39Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 13 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/knuckle#842",
+      "repository": "projectbluefin/knuckle",
+      "number": 842,
+      "url": "https://github.com/projectbluefin/knuckle/pull/842",
+      "title": "chore(deps): update github/codeql-action digest to 54f647b",
+      "updated_at": "2026-07-29T00:17:40Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 13 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/knuckle#837",
+      "repository": "projectbluefin/knuckle",
+      "number": 837,
+      "url": "https://github.com/projectbluefin/knuckle/pull/837",
+      "title": "fix(deps): update module github.com/coreos/butane to v0.29.0",
+      "updated_at": "2026-07-29T00:17:44Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 13 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/knuckle#735",
+      "repository": "projectbluefin/knuckle",
+      "number": 735,
+      "url": "https://github.com/projectbluefin/knuckle/pull/735",
+      "title": "feat(iso): FCOS live ISO build via coreos-installer iso customize",
+      "updated_at": "2026-07-29T00:19:33Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "dirty",
+      "check_state": "success",
+      "recommended_action": "resolve-conflicts",
+      "ranking_reasons": [
+        "repository has 13 open pull requests",
+        "GitHub reports merge conflicts"
+      ]
+    },
+    {
+      "id": "projectbluefin/knuckle#850",
+      "repository": "projectbluefin/knuckle",
+      "number": 850,
+      "url": "https://github.com/projectbluefin/knuckle/pull/850",
+      "title": "chore(deps): update oras-project/setup-oras digest to 1d808f7",
+      "updated_at": "2026-07-29T00:17:32Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "unknown",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 13 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/knuckle#851",
+      "repository": "projectbluefin/knuckle",
+      "number": 851,
+      "url": "https://github.com/projectbluefin/knuckle/pull/851",
+      "title": "chore(deps): update softprops/action-gh-release digest to 3d0d988",
+      "updated_at": "2026-07-29T00:17:32Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "unknown",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 13 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/knuckle#849",
+      "repository": "projectbluefin/knuckle",
+      "number": 849,
+      "url": "https://github.com/projectbluefin/knuckle/pull/849",
+      "title": "fix(deps): update module github.com/nvidia/go-nvlib to v0.12.0",
+      "updated_at": "2026-07-29T00:17:33Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "unknown",
+      "mergeable_state": "unknown",
+      "check_state": "unknown",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 13 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/knuckle#844",
+      "repository": "projectbluefin/knuckle",
+      "number": 844,
+      "url": "https://github.com/projectbluefin/knuckle/pull/844",
+      "title": "fix(deps): update module charm.land/lipgloss/v2 to v2.0.5",
+      "updated_at": "2026-07-29T00:17:38Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "unknown",
+      "mergeable_state": "unknown",
+      "check_state": "unknown",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 13 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/knuckle#855",
+      "repository": "projectbluefin/knuckle",
+      "number": 855,
+      "url": "https://github.com/projectbluefin/knuckle/pull/855",
+      "title": "fix(iso): load loop driver in kernel cmdline",
+      "updated_at": "2026-07-31T13:19:07Z",
+      "labels": [],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "unknown",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 13 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/dakota#1242",
+      "repository": "projectbluefin/dakota",
+      "number": 1242,
+      "url": "https://github.com/projectbluefin/dakota/pull/1242",
+      "title": "chore(deps): update core junctions (gnome-build-meta + freedesktop-sdk)",
+      "updated_at": "2026-08-03T07:19:46Z",
+      "labels": [
+        "pr/needs-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 9 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/dakota#1276",
+      "repository": "projectbluefin/dakota",
+      "number": 1276,
+      "url": "https://github.com/projectbluefin/dakota/pull/1276",
+      "title": "[quality] add Python regression tests for workflow and filemap scripts",
+      "updated_at": "2026-08-03T18:29:04Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 9 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/dakota#1189",
+      "repository": "projectbluefin/dakota",
+      "number": 1189,
+      "url": "https://github.com/projectbluefin/dakota/pull/1189",
+      "title": "chore(deps): update core junctions (next branch)",
+      "updated_at": "2026-08-03T20:34:55Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 9 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/dakota#962",
+      "repository": "projectbluefin/dakota",
+      "number": 962,
+      "url": "https://github.com/projectbluefin/dakota/pull/962",
+      "title": "Enable systemd-homed support by default",
+      "updated_at": "2026-07-29T00:01:14Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "approved",
+      "mergeable_state": "dirty",
+      "check_state": "success",
+      "recommended_action": "resolve-conflicts",
+      "ranking_reasons": [
+        "repository has 9 open pull requests",
+        "GitHub reports merge conflicts"
+      ]
+    },
+    {
+      "id": "projectbluefin/dakota#1237",
+      "repository": "projectbluefin/dakota",
+      "number": 1237,
+      "url": "https://github.com/projectbluefin/dakota/pull/1237",
+      "title": "docs: consolidate repository documentation",
+      "updated_at": "2026-07-31T13:21:51Z",
+      "labels": [
+        "pr/needs-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "dirty",
+      "check_state": "success",
+      "recommended_action": "resolve-conflicts",
+      "ranking_reasons": [
+        "repository has 9 open pull requests",
+        "GitHub reports merge conflicts"
+      ]
+    },
+    {
+      "id": "projectbluefin/dakota#1238",
+      "repository": "projectbluefin/dakota",
+      "number": 1238,
+      "url": "https://github.com/projectbluefin/dakota/pull/1238",
+      "title": "ci(release): align FSDK versioning and CI runners",
+      "updated_at": "2026-07-31T13:24:42Z",
+      "labels": [
+        "pr/needs-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "dirty",
+      "check_state": "success",
+      "recommended_action": "resolve-conflicts",
+      "ranking_reasons": [
+        "repository has 9 open pull requests",
+        "GitHub reports merge conflicts"
+      ]
+    },
+    {
+      "id": "projectbluefin/dakota#1257",
+      "repository": "projectbluefin/dakota",
+      "number": 1257,
+      "url": "https://github.com/projectbluefin/dakota/pull/1257",
+      "title": "fix(audio): disable PC-speaker WirePlumber sink",
+      "updated_at": "2026-07-31T16:49:19Z",
+      "labels": [
+        "pr/needs-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "review",
+      "ranking_reasons": [
+        "repository has 9 open pull requests",
+        "review is required"
+      ]
+    },
+    {
+      "id": "projectbluefin/dakota#1269",
+      "repository": "projectbluefin/dakota",
+      "number": 1269,
+      "url": "https://github.com/projectbluefin/dakota/pull/1269",
+      "title": "chore(deps): update common: v2026.08-6 -> v2026.08-8",
+      "updated_at": "2026-08-03T07:19:38Z",
+      "labels": [
+        "pr/needs-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "review",
+      "ranking_reasons": [
+        "repository has 9 open pull requests",
+        "review is required"
+      ]
+    },
+    {
+      "id": "projectbluefin/dakota#1270",
+      "repository": "projectbluefin/dakota",
+      "number": 1270,
+      "url": "https://github.com/projectbluefin/dakota/pull/1270",
+      "title": "chore(deps): update jetbrains-mono-nerd-font v3.4.0 -> v3.5.0",
+      "updated_at": "2026-08-03T07:19:53Z",
+      "labels": [
+        "pr/needs-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "review",
+      "ranking_reasons": [
+        "repository has 9 open pull requests",
+        "review is required"
+      ]
+    },
+    {
+      "id": "projectbluefin/website#700",
+      "repository": "projectbluefin/website",
+      "number": 700,
+      "url": "https://github.com/projectbluefin/website/pull/700",
+      "title": "fix(test): stop wolves-movie-flow strict-mode violation on comic-hero-shot",
+      "updated_at": "2026-07-23T06:29:51Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 6 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/website#701",
+      "repository": "projectbluefin/website",
+      "number": 701,
+      "url": "https://github.com/projectbluefin/website/pull/701",
+      "title": "chore(deps): bump immutable from 5.1.5 to 5.1.9",
+      "updated_at": "2026-07-24T05:39:23Z",
+      "labels": [
+        "dependencies",
+        "javascript"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 6 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/website#690",
+      "repository": "projectbluefin/website",
+      "number": 690,
+      "url": "https://github.com/projectbluefin/website/pull/690",
+      "title": "chore(deps): update actions/setup-node action to v7",
+      "updated_at": "2026-07-25T15:34:30Z",
+      "labels": [],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 6 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/website#702",
+      "repository": "projectbluefin/website",
+      "number": 702,
+      "url": "https://github.com/projectbluefin/website/pull/702",
+      "title": "chore(deps): bump postcss from 8.5.15 to 8.5.23",
+      "updated_at": "2026-07-25T15:39:03Z",
+      "labels": [
+        "dependencies",
+        "javascript"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 6 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/website#693",
+      "repository": "projectbluefin/website",
+      "number": 693,
+      "url": "https://github.com/projectbluefin/website/pull/693",
+      "title": "fix(tooling): generate lint-clean wallpaper list",
+      "updated_at": "2026-07-25T15:30:58Z",
+      "labels": [],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 6 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/website#694",
+      "repository": "projectbluefin/website",
+      "number": 694,
+      "url": "https://github.com/projectbluefin/website/pull/694",
+      "title": "fix(wolves): restore mobile soundtrack progress",
+      "updated_at": "2026-07-25T15:30:59Z",
+      "labels": [],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 6 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin#911",
+      "repository": "projectbluefin/bluefin",
+      "number": 911,
+      "url": "https://github.com/projectbluefin/bluefin/pull/911",
+      "title": "feat(ci): add BATS coverage reporting artifacts",
+      "updated_at": "2026-07-29T10:19:54Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 5 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin#964",
+      "repository": "projectbluefin/bluefin",
+      "number": 964,
+      "url": "https://github.com/projectbluefin/bluefin/pull/964",
+      "title": "fix(build): invalidate package layer for build file changes",
+      "updated_at": "2026-08-02T18:33:03Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "review",
+      "ranking_reasons": [
+        "repository has 5 open pull requests",
+        "review is required"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin#895",
+      "repository": "projectbluefin/bluefin",
+      "number": 895,
+      "url": "https://github.com/projectbluefin/bluefin/pull/895",
+      "title": "chore(workflow): pin bonedigger lifecycle to clanker-queue rollout",
+      "updated_at": "2026-07-28T23:32:55Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 5 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin#913",
+      "repository": "projectbluefin/bluefin",
+      "number": 913,
+      "url": "https://github.com/projectbluefin/bluefin/pull/913",
+      "title": "ci: restore run-upgrade-test as promotion gate",
+      "updated_at": "2026-07-31T13:22:12Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 5 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin#961",
+      "repository": "projectbluefin/bluefin",
+      "number": 961,
+      "url": "https://github.com/projectbluefin/bluefin/pull/961",
+      "title": "chore(deps): pin projectbluefin/testsuite action to b7a7cda",
+      "updated_at": "2026-08-03T18:42:43Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "clean",
+      "check_state": "unknown",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 5 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/renovate-config#22",
+      "repository": "projectbluefin/renovate-config",
+      "number": 22,
+      "url": "https://github.com/projectbluefin/renovate-config/pull/22",
+      "title": "chore(deps): update renovatebot/github-action action to v46.1.15",
+      "updated_at": "2026-07-01T14:45:08Z",
+      "labels": [],
+      "review_state": "approved",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "ready-for-human-merge",
+      "ranking_reasons": [
+        "repository has 5 open pull requests",
+        "approved with successful checks"
+      ]
+    },
+    {
+      "id": "projectbluefin/renovate-config#23",
+      "repository": "projectbluefin/renovate-config",
+      "number": 23,
+      "url": "https://github.com/projectbluefin/renovate-config/pull/23",
+      "title": "chore(deps): update actions/checkout action to v7",
+      "updated_at": "2026-07-01T14:45:08Z",
+      "labels": [],
+      "review_state": "approved",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "ready-for-human-merge",
+      "ranking_reasons": [
+        "repository has 5 open pull requests",
+        "approved with successful checks"
+      ]
+    },
+    {
+      "id": "projectbluefin/renovate-config#26",
+      "repository": "projectbluefin/renovate-config",
+      "number": 26,
+      "url": "https://github.com/projectbluefin/renovate-config/pull/26",
+      "title": "chore(deps): update actions/checkout digest to d23441a",
+      "updated_at": "2026-07-23T00:55:20Z",
+      "labels": [],
+      "review_state": "approved",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "ready-for-human-merge",
+      "ranking_reasons": [
+        "repository has 5 open pull requests",
+        "approved with successful checks"
+      ]
+    },
+    {
+      "id": "projectbluefin/renovate-config#25",
+      "repository": "projectbluefin/renovate-config",
+      "number": 25,
+      "url": "https://github.com/projectbluefin/renovate-config/pull/25",
+      "title": "chore(deps): update actions/setup-node action to v7",
+      "updated_at": "2026-07-23T00:55:21Z",
+      "labels": [],
+      "review_state": "approved",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "ready-for-human-merge",
+      "ranking_reasons": [
+        "repository has 5 open pull requests",
+        "approved with successful checks"
+      ]
+    },
+    {
+      "id": "projectbluefin/renovate-config#24",
+      "repository": "projectbluefin/renovate-config",
+      "number": 24,
+      "url": "https://github.com/projectbluefin/renovate-config/pull/24",
+      "title": "chore(deps): update actions/setup-node digest to 2499707",
+      "updated_at": "2026-07-23T00:55:22Z",
+      "labels": [],
+      "review_state": "approved",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "ready-for-human-merge",
+      "ranking_reasons": [
+        "repository has 5 open pull requests",
+        "approved with successful checks"
+      ]
+    },
+    {
+      "id": "projectbluefin/lab#534",
+      "repository": "projectbluefin/lab",
+      "number": 534,
+      "url": "https://github.com/projectbluefin/lab/pull/534",
+      "title": "fix(recc): collect metrics from BuildStream logs",
+      "updated_at": "2026-07-31T22:45:41Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 4 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/review#54",
+      "repository": "projectbluefin/review",
+      "number": 54,
+      "url": "https://github.com/projectbluefin/review/pull/54",
+      "title": "fix: align contributor release configuration",
+      "updated_at": "2026-08-03T02:46:36Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "dirty",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 4 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/review#63",
+      "repository": "projectbluefin/review",
+      "number": 63,
+      "url": "https://github.com/projectbluefin/review/pull/63",
+      "title": "Update README.md",
+      "updated_at": "2026-08-03T19:38:51Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 4 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/review#59",
+      "repository": "projectbluefin/review",
+      "number": 59,
+      "url": "https://github.com/projectbluefin/review/pull/59",
+      "title": "chore(deps-dev): bump esbuild from 0.24.2 to 0.28.1 in /mcp-app",
+      "updated_at": "2026-08-03T16:04:52Z",
+      "labels": [
+        "dependencies",
+        "javascript"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "review",
+      "ranking_reasons": [
+        "repository has 4 open pull requests",
+        "review is required"
+      ]
+    },
+    {
+      "id": "projectbluefin/bonedigger#33",
+      "repository": "projectbluefin/bonedigger",
+      "number": 33,
+      "url": "https://github.com/projectbluefin/bonedigger/pull/33",
+      "title": "feat(bonedigger): add clanker-queue migration workflow",
+      "updated_at": "2026-07-28T23:31:51Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 4 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bonedigger#32",
+      "repository": "projectbluefin/bonedigger",
+      "number": 32,
+      "url": "https://github.com/projectbluefin/bonedigger/pull/32",
+      "title": "chore(deps): update actions/checkout digest to d23441a",
+      "updated_at": "2026-07-28T23:31:52Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 4 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bonedigger#28",
+      "repository": "projectbluefin/bonedigger",
+      "number": 28,
+      "url": "https://github.com/projectbluefin/bonedigger/pull/28",
+      "title": "chore(deps): update actions/checkout action to v7",
+      "updated_at": "2026-07-28T23:31:57Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 4 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bonedigger#17",
+      "repository": "projectbluefin/bonedigger",
+      "number": 17,
+      "url": "https://github.com/projectbluefin/bonedigger/pull/17",
+      "title": "docs(agents): add AGENTS.md and integrate bonedigger into factory model",
+      "updated_at": "2026-07-28T23:32:07Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 4 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/lab#492",
+      "repository": "projectbluefin/lab",
+      "number": 492,
+      "url": "https://github.com/projectbluefin/lab/pull/492",
+      "title": "fix(kde): enforce soak gate flake evidence budget",
+      "updated_at": "2026-07-31T22:26:17Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 4 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/lab#576",
+      "repository": "projectbluefin/lab",
+      "number": 576,
+      "url": "https://github.com/projectbluefin/lab/pull/576",
+      "title": "chore(deps): lock file maintenance",
+      "updated_at": "2026-08-03T00:43:17Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 4 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/lab#577",
+      "repository": "projectbluefin/lab",
+      "number": 577,
+      "url": "https://github.com/projectbluefin/lab/pull/577",
+      "title": "chore: refresh linuxserver.io catalog index",
+      "updated_at": "2026-08-03T06:00:28Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 4 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/review#62",
+      "repository": "projectbluefin/review",
+      "number": 62,
+      "url": "https://github.com/projectbluefin/review/pull/62",
+      "title": "feat: add pi + DeepSeek as parallel contributor agent",
+      "updated_at": "2026-08-03T15:04:25Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 4 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/testsuite#672",
+      "repository": "projectbluefin/testsuite",
+      "number": 672,
+      "url": "https://github.com/projectbluefin/testsuite/pull/672",
+      "title": "test: cover GNOME shell readiness helper",
+      "updated_at": "2026-07-31T15:45:01Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/testsuite#675",
+      "repository": "projectbluefin/testsuite",
+      "number": 675,
+      "url": "https://github.com/projectbluefin/testsuite/pull/675",
+      "title": "test(scripts): add unit tests for validate_docs.py",
+      "updated_at": "2026-07-31T20:19:59Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/testsuite#676",
+      "repository": "projectbluefin/testsuite",
+      "number": 676,
+      "url": "https://github.com/projectbluefin/testsuite/pull/676",
+      "title": "test(scripts): add installer contract coverage for KDE webdriver",
+      "updated_at": "2026-07-31T22:21:44Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/actions#377",
+      "repository": "projectbluefin/actions",
+      "number": 377,
+      "url": "https://github.com/projectbluefin/actions/pull/377",
+      "title": "ci(actions): use self-repository composition syntax",
+      "updated_at": "2026-08-03T19:10:17Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluespeed#46",
+      "repository": "projectbluefin/bluespeed",
+      "number": 46,
+      "url": "https://github.com/projectbluefin/bluespeed/pull/46",
+      "title": "feat(just): add cluster-status health check recipe (#19)",
+      "updated_at": "2026-07-29T01:17:57Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "dirty",
+      "check_state": "success",
+      "recommended_action": "resolve-conflicts",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "GitHub reports merge conflicts"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluespeed#57",
+      "repository": "projectbluefin/bluespeed",
+      "number": 57,
+      "url": "https://github.com/projectbluefin/bluespeed/pull/57",
+      "title": "chore(deps): update docker.io/persesdev/perses docker tag to v0.54.0",
+      "updated_at": "2026-07-29T15:43:48Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "review",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "review is required"
+      ]
+    },
+    {
+      "id": "projectbluefin/finpilot#214",
+      "repository": "projectbluefin/finpilot",
+      "number": 214,
+      "url": "https://github.com/projectbluefin/finpilot/pull/214",
+      "title": "chore(deps): update projectbluefin/actions digest to d61bf3f",
+      "updated_at": "2026-08-03T18:40:02Z",
+      "labels": [
+        "size:XS",
+        "automerge",
+        "chore/deps"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "review",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "review is required"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-mcp#48",
+      "repository": "projectbluefin/bluefin-mcp",
+      "number": 48,
+      "url": "https://github.com/projectbluefin/bluefin-mcp/pull/48",
+      "title": "chore(deps): update dependency go to v1.26.4",
+      "updated_at": "2026-06-16T16:10:35Z",
+      "labels": [
+        "auto-generated",
+        "priority:low",
+        "size:XS",
+        "lgtm"
+      ],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "unknown",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-mcp#50",
+      "repository": "projectbluefin/bluefin-mcp",
+      "number": 50,
+      "url": "https://github.com/projectbluefin/bluefin-mcp/pull/50",
+      "title": "chore(deps): update actions/checkout action to v7",
+      "updated_at": "2026-07-01T14:45:12Z",
+      "labels": [
+        "auto-generated",
+        "priority:low",
+        "size:XS",
+        "lgtm"
+      ],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefin-mcp#51",
+      "repository": "projectbluefin/bluefin-mcp",
+      "number": 51,
+      "url": "https://github.com/projectbluefin/bluefin-mcp/pull/51",
+      "title": "chore(deps): update actions/setup-go action to v7",
+      "updated_at": "2026-07-23T00:55:26Z",
+      "labels": [
+        "auto-generated",
+        "priority:low",
+        "size:XS",
+        "lgtm"
+      ],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluespeed#43",
+      "repository": "projectbluefin/bluespeed",
+      "number": 43,
+      "url": "https://github.com/projectbluefin/bluespeed/pull/43",
+      "title": "docs: add laptop quickstart, cluster-status recipe, and hardware requirements",
+      "updated_at": "2026-07-29T01:18:00Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/finpilot#139",
+      "repository": "projectbluefin/finpilot",
+      "number": 139,
+      "url": "https://github.com/projectbluefin/finpilot/pull/139",
+      "title": "fix: prevent clean-stage.sh glob failure on empty /var/cache",
+      "updated_at": "2026-07-29T01:26:10Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/finpilot#83",
+      "repository": "projectbluefin/finpilot",
+      "number": 83,
+      "url": "https://github.com/projectbluefin/finpilot/pull/83",
+      "title": "docs: clarify rechunking binary availability (#54)",
+      "updated_at": "2026-07-29T01:27:17Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/.project#6",
+      "repository": "projectbluefin/.project",
+      "number": 6,
+      "url": "https://github.com/projectbluefin/.project/pull/6",
+      "title": "Refresh `.project` repository inventory from current `projectbluefin` org state",
+      "updated_at": "2026-07-29T03:15:05Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/actions#354",
+      "repository": "projectbluefin/actions",
+      "number": 354,
+      "url": "https://github.com/projectbluefin/actions/pull/354",
+      "title": "fix(ci): use secrets.MERGERAPTOR_APP_ID and client-id in factory workflows",
+      "updated_at": "2026-08-03T18:38:03Z",
+      "labels": [
+        "3-clanker-queue"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/actions#376",
+      "repository": "projectbluefin/actions",
+      "number": 376,
+      "url": "https://github.com/projectbluefin/actions/pull/376",
+      "title": "fix(actions): resolve bundled cosign installer from self repository",
+      "updated_at": "2026-08-03T19:14:04Z",
+      "labels": [
+        "3-clanker-queue"
+      ],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/.project#2",
+      "repository": "projectbluefin/.project",
+      "number": 2,
+      "url": "https://github.com/projectbluefin/.project/pull/2",
+      "title": "chore(deps): update actions/checkout digest to 34e1148",
+      "updated_at": "2026-07-01T14:45:08Z",
+      "labels": [],
+      "review_state": "approved",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "ready-for-human-merge",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "approved with successful checks"
+      ]
+    },
+    {
+      "id": "projectbluefin/.project#5",
+      "repository": "projectbluefin/.project",
+      "number": 5,
+      "url": "https://github.com/projectbluefin/.project/pull/5",
+      "title": "chore(deps): update actions/checkout action to v7",
+      "updated_at": "2026-07-01T14:45:08Z",
+      "labels": [],
+      "review_state": "approved",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "ready-for-human-merge",
+      "ranking_reasons": [
+        "repository has 3 open pull requests",
+        "approved with successful checks"
+      ]
+    },
+    {
+      "id": "projectbluefin/documentation#1006",
+      "repository": "projectbluefin/documentation",
+      "number": 1006,
+      "url": "https://github.com/projectbluefin/documentation/pull/1006",
+      "title": "chore(deps): update actions/setup-node action to v7",
+      "updated_at": "2026-07-30T15:54:14Z",
+      "labels": [],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 2 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/documentation#1009",
+      "repository": "projectbluefin/documentation",
+      "number": 1009,
+      "url": "https://github.com/projectbluefin/documentation/pull/1009",
+      "title": "chore(deps): lock file maintenance",
+      "updated_at": "2026-07-30T15:55:22Z",
+      "labels": [],
+      "review_state": "review_required",
+      "mergeable_state": "unknown",
+      "check_state": "success",
+      "recommended_action": "investigate",
+      "ranking_reasons": [
+        "repository has 2 open pull requests",
+        "GitHub evidence is incomplete"
+      ]
+    },
+    {
+      "id": "projectbluefin/iso#67",
+      "repository": "projectbluefin/iso",
+      "number": 67,
+      "url": "https://github.com/projectbluefin/iso/pull/67",
+      "title": "chore(deps): update github actions to v7",
+      "updated_at": "2026-07-29T01:29:15Z",
+      "labels": [
+        "4-review"
+      ],
+      "review_state": "approved",
+      "mergeable_state": "unknown",
+      "check_state": "failure",
+      "recommended_action": "fix-ci",
+      "ranking_reasons": [
+        "repository has 1 open pull request",
+        "one or more checks failed"
+      ]
+    },
+    {
+      "id": "projectbluefin/bluefinctl#23",
+      "repository": "projectbluefin/bluefinctl",
+      "number": 23,
+      "url": "https://github.com/projectbluefin/bluefinctl/pull/23",
+      "title": "fix(core): prefer runtime bootc tag over build-time image-info",
+      "updated_at": "2026-07-23T00:59:38Z",
+      "labels": [],
+      "review_state": "approved",
+      "mergeable_state": "clean",
+      "check_state": "success",
+      "recommended_action": "ready-for-human-merge",
+      "ranking_reasons": [
+        "repository has 1 open pull request",
+        "approved with successful checks"
+      ]
+    }
+  ]
+}
