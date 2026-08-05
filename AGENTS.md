@@ -137,8 +137,9 @@ pre-commit run --all-files
 FSDK input alone with `--verify-base-evidence`; audit a built or published
 image with `--derived <image>`.
 
-The `pre-commit` shellcheck hook needs a container socket. Without one, run
-`SKIP=shellcheck pre-commit run --all-files` and lint separately.
+`pre-commit run --all-files` runs the socket-free hygiene checks locally.
+ShellCheck is a CI-only manual hook because its upstream hook runs in a
+container; CI invokes it explicitly.
 
 ## References
 

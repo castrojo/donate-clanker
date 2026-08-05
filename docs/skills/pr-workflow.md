@@ -122,9 +122,10 @@ git diff --check
 just --list
 ```
 
-`pre-commit run --all-files` is the fuller check, but its ShellCheck hook runs
-in a container and fails on a host with no reachable Podman socket. Treat it
-as advisory locally and let the required `validate` check enforce it.
+`pre-commit run --all-files` runs all socket-free contributor hygiene checks.
+ShellCheck is a manual container-backed hook that the required `validate`
+workflow invokes explicitly, so a missing local container socket does not
+block the local gate.
 
 After resolving a merge, confirm no marker survived anywhere. Anchor the
 search, because shell here-strings legitimately contain `<<<`:

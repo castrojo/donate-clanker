@@ -44,6 +44,7 @@ jobs:
           set -euo pipefail
           python -m pip install --upgrade pre-commit
           pre-commit run --all-files --show-diff-on-failure
+          pre-commit run shellcheck --hook-stage manual --all-files --show-diff-on-failure
 
       - name: Skill frontmatter and index stay aligned
         run: |

@@ -370,8 +370,9 @@ FSDK input alone, or `--derived <image>` to audit a build:
 CONTAINER_ENGINE=podman bash tests/image-audit.sh --derived localhost/review:dev
 ```
 
-The `pre-commit` shellcheck hook runs in a container and needs a container
-socket. Without one, use `SKIP=shellcheck pre-commit run --all-files`.
+`pre-commit run --all-files` runs socket-free hygiene checks locally.
+ShellCheck remains required in CI, where the validate workflow invokes its
+manual container-backed hook explicitly.
 
 See [`AGENTS.md`](AGENTS.md) for contributor boundaries and
 [`docs/SKILL.md`](docs/SKILL.md) for task-specific documentation.
