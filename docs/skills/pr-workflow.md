@@ -14,6 +14,7 @@ tags: [git, pullrequest, conventional, hooks, branches]
 description: "Defines protected-branch pull request, branch, title, trailer, and validation requirements, and how to reconcile a long-lived branch with a squash-merged main. Use before branching, committing, opening a review pull request, or resolving merge conflicts."
 metadata:
   type: policy
+  context7-sources: [/pre-commit/pre-commit]
 ---
 
 # PR Workflow
