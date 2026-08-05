@@ -33,7 +33,7 @@ The factory has a human layer and an agent layer, governed by different rules.
 Conflating them is the most likely misreading of this model.
 
 The **agent** does the unglamorous work: the toil defined above, in small,
-evidenced, reviewable changes. They are humorously referred to as clankers as a joke on the absurdity of the world we live in. 
+evidenced, reviewable changes. They are humorously referred to as clankers as a joke on the absurdity of the world we live in.
 
 The **human** does the "unglamorous work" of directing agents — scoping a task,
 judging the output, and carrying the result to a maintainer. Their standing is
@@ -42,7 +42,7 @@ change; projects determine it, and Hive may use it when distributing work.
 Nothing in this repository sets, scores, or automates it, and the
 `human-queue` is out of scope here.
 
-The IMPORTANT DISTINCTION in the culture is that the humans take pride in maintaining systems at the highest levels. If they are doing their jobs, they are invisible. We are designing this tool because the mental toll of that maintenance is hurting people. Amongst their peers there is a culture of respect and craftmanship. The leaderboards/contribution graphs are supposed to be a friendly way to remind maintainers that their work is recognized by their peers. This is one of the highest honors a maintainer can receive. Silent professionals. 
+The IMPORTANT DISTINCTION in the culture is that the humans take pride in maintaining systems at the highest levels. If they are doing their jobs, they are invisible. We are designing this tool because the mental toll of that maintenance is hurting people. Amongst their peers there is a culture of respect and craftmanship. The leaderboards/contribution graphs are supposed to be a friendly way to remind maintainers that their work is recognized by their peers. This is one of the highest honors a maintainer can receive. Silent professionals.
 
 Do not reconcile the two layers by applying agent scope rules to the human, or
 by reading the human ladder as a statement about agent output.
