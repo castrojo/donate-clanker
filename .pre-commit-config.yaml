@@ -37,6 +37,9 @@ repos:
     rev: v0.11.0 # v0.11.0
     hooks:
       - id: shellcheck
+        # This hook uses a container image. Keep the ordinary contributor
+        # hygiene command socket-free; CI invokes this manual stage explicitly.
+        stages: [manual]
         # SC1090: the entrypoint sources a path resolved at runtime.
         # SC2034: the onboarding harness captures launcher output into vars
         # that are asserted on conditionally.
