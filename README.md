@@ -250,7 +250,7 @@ Use an immutable `sha-<commit>` tag or digest with
 ## Image and context
 
 The image derives from the digest-pinned Project Bluefin FSDK lab runner and
-layers the pinned Hive runtime at `4d61ad7ce8b646a4e380865c521d5b12677240c9`,
+layers the pinned Hive runtime at `fc3d7179255d13a613632fd1e982691d2d8bc0ae`,
 the current Goose canary snapshot, GitHub CLI, tmux, hooks, and generated
 organization skills. Goose publishes that snapshot from its active `main`
 branch; each archive is verified against GitHub's signed build provenance

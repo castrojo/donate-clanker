@@ -1,7 +1,7 @@
 ---
 name: hive-runtime
-version: "1.9"
-last_updated: 2026-08-04
+version: "2.0"
+last_updated: 2026-08-06
 id: hive-runtime
 one_line_purpose: Operate inside Hive's tmux, token, and cooldown constraints.
 entry_point: docs/skills/hive-runtime.md
@@ -64,19 +64,10 @@ assigned contributor session behaves unexpectedly.
    `ready` it sends is event-driven and none is timed; it wedges idle. No task
    was assigned in that state, so nothing is held. Move the pin rather than
    adding a downstream retry.
-
-### Periodic Goose restart loop
-
-If the relay repeatedly logs `CLI ready — accepting tasks`, `CLI restarted:
-goose`, and `Restarting goose CLI for memory cleanup (task 3)`, leave the
-running contributor alone and report it upstream. In the pinned relay,
-`tmuxSendKeys()` starts the periodic restart while `tasksCompletedCount` is
-three; when `relaunchCLI()` becomes ready, `flushPendingTask()` re-enters
-`tmuxSendKeys()` before that count changes, so it starts the same restart
-again instead of delivering the pending assignment. This is upstream relay
-behavior, not a launcher, image, or tmux lifecycle concern. Include the relay
-SHA and the alternating log lines in an upstream report; do not add a client
-retry, a session recreation, or a local relay patch.
+7. Treat the relay's protocol version and capability declaration as
+   informational. The relay reports its runtime posture during authentication,
+   and Hive stores and surfaces it without routing or gating assignments on it.
+   Do not add downstream capability-based task selection.
 
 ### GitHub identity
 
@@ -130,9 +121,9 @@ and no launcher change duplicates Hive lifecycle behavior.
 Cite upstream by pinned permalink, never a branch path.
 
 - Relay message cases, including `task_unavailable`:
-  [`bin/contributor-relay.sh` @ 4d61ad7c](https://github.com/kubestellar/hive/blob/4d61ad7ce8b646a4e380865c521d5b12677240c9/bin/contributor-relay.sh)
+  [`bin/contributor-relay.sh` @ fc3d717](https://github.com/kubestellar/hive/blob/fc3d7179255d13a613632fd1e982691d2d8bc0ae/bin/contributor-relay.sh)
 - Workspace preparation and tmux rooting:
-  [`bin/contributor-agent.sh` @ 4d61ad7c](https://github.com/kubestellar/hive/blob/4d61ad7ce8b646a4e380865c521d5b12677240c9/bin/contributor-agent.sh)
+  [`bin/contributor-agent.sh` @ fc3d717](https://github.com/kubestellar/hive/blob/fc3d7179255d13a613632fd1e982691d2d8bc0ae/bin/contributor-agent.sh)
 - Task release on disconnect:
-  [`v2/pkg/dashboard/contribute_ws.go#L1057-L1090` @ 4d61ad7c](https://github.com/kubestellar/hive/blob/4d61ad7ce8b646a4e380865c521d5b12677240c9/v2/pkg/dashboard/contribute_ws.go#L1057-L1090)
+  [`v2/pkg/dashboard/contribute_ws.go#L1057-L1090` @ fc3d717](https://github.com/kubestellar/hive/blob/fc3d7179255d13a613632fd1e982691d2d8bc0ae/v2/pkg/dashboard/contribute_ws.go#L1057-L1090)
 - tmux terminal and mouse configuration: Context7 `/tmux/tmux`
