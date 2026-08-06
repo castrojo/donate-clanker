@@ -442,7 +442,7 @@ require .github/workflows/publish-compat-image.yml \
   'index:org.opencontainers.image.title=Bluefin review contributor' \
   'provenance: mode=max' \
   'sbom: true' \
-  'actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d' \
+  'actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6' \
   'subject-digest: ${{ steps.publish.outputs.digest }}' \
   'push-to-registry: true' \
   '--require-attestations' \
