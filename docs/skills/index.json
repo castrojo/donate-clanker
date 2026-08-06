@@ -56,8 +56,8 @@
         "workspace"
       ],
       "description": "Explains Hive's tmux session, workspace directory, prompt and output contract, contributor credentials, token lifetime, cooldown, and exclusive task selection. Use when operating or debugging a session.",
-      "version": "1.9",
-      "last_updated": "2026-08-04",
+      "version": "2.0",
+      "last_updated": "2026-08-06",
       "doc_type": "reference"
     },
     {
