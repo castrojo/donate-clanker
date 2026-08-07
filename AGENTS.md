@@ -126,7 +126,9 @@ Code, tests, user documentation, and skills must agree with it.
 
 Every session ships the requested work and records any durable, source-backed
 learning in the closest matching document under `docs/skills/`. Update
-`docs/skills/index.json` in the same change. Do not commit changelogs, session
+`docs/skills/index.json` in the same change with
+`bash scripts/check-skill-frontmatter.sh --write`; the manifest is generated
+from frontmatter, never edited by hand. Do not commit changelogs, session
 notes, implementation plans, design scratchpads, or "append here" documents.
 Remove stale records of that kind and route durable guidance to the matching
 skill instead.

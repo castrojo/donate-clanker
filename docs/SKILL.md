@@ -19,6 +19,6 @@ it scopes every task, so read it alongside the matching skill.
 | Prepare a branch, commit, or pull request | [`pr-workflow.md`](skills/pr-workflow.md) |
 | Maintain documentation, skills, or factory compliance | [`skill-improvement.md`](skills/skill-improvement.md) |
 
-`docs/skills/index.json` is the machine-readable catalog. Its entries mirror
-the frontmatter in each skill file. When changing a skill, update its catalog
-entry in the same change.
+`docs/skills/index.json` is the machine-readable catalog, generated from the
+frontmatter in each skill file. When changing a skill, regenerate it with
+`bash scripts/check-skill-frontmatter.sh --write` in the same change.

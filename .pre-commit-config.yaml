@@ -87,10 +87,10 @@ repos:
         entry: bash tests/image-contract.sh
         files: ^(image|tests/image-contract\.sh)
         pass_filenames: false
-      # docs/skills/index.json is generated, so it drifts silently from the
-      # front-matter it mirrors unless something checks both sides.
+      # docs/skills/index.json is generated from front-matter; the checker
+      # fails on a stale manifest (regenerate with --write).
       - id: check-skill-frontmatter
-        name: skill front-matter and index.json agree
+        name: skill front-matter valid and index.json fresh
         language: system
         entry: bash scripts/check-skill-frontmatter.sh
         files: ^docs/skills/
