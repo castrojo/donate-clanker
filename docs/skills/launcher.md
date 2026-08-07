@@ -1,6 +1,6 @@
 ---
 name: launcher
-version: "2.4"
+version: "2.5"
 last_updated: 2026-08-07
 id: launcher
 one_line_purpose: Change review just recipes without breaking foreground.
@@ -78,6 +78,11 @@ Goose, or image build skill documents.
    terminal is attached. Profiles are defaults, never overrides:
    `GOOSE_MODEL`, `GOOSE_THINKING_EFFORT`, and `GOOSE_CONTEXT_LIMIT` from the
    environment always win.
+   The *profile name* is validated; the model ID it resolves to is not. The
+   Copilot catalog is provider-side and changes without a release here, and a
+   caller-supplied `GOOSE_MODEL` is passed through unvalidated by design. Form
+   the environment and let Goose surface a model the provider will not serve.
+   Do not add a catalog check to the launcher.
 6. For container-only mode, pass Copilot and GitHub credentials by inherited
    environment (`--env NAME`), not command-line values or host configuration
    mounts. Resolve the GitHub token from `REVIEW_GH_TOKEN`, existing
@@ -213,6 +218,8 @@ want to be certain which launcher you are invoking.
   unvalidated, or a hint that names the default container instead of the one
   the caller asked for.
 - A second implementation of launcher behavior in another language.
+- A model-catalog or model-ID validity check in the launcher; only the profile
+  name is a closed set.
 - Task-selection policy outside Hive.
 
 ## Verification
