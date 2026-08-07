@@ -78,7 +78,11 @@ if [ -d "$skills_root" ]; then
   note "${#skills[@]} org skills available (load one with /<skill-name>)"
 fi
 
-validation_tools=(bats shellcheck systemd-analyze pre-commit just podman)
+# Contributor work is usually lint-gated, and the base ships no linter and no
+# package manager to obtain one (fsdk-containers#89). Naming them at startup
+# stops an agent from discovering it mid-task and reaching for a slow ad-hoc
+# `npx --yes` download.
+validation_tools=(bats shellcheck hadolint systemd-analyze pre-commit just podman)
 missing_validation_tools=()
 for validation_tool in "${validation_tools[@]}"; do
   if ! command -v "$validation_tool" >/dev/null 2>&1; then
@@ -86,7 +90,7 @@ for validation_tool in "${validation_tools[@]}"; do
   fi
 done
 if ((${#missing_validation_tools[@]})); then
-  note "validation tools unavailable: ${missing_validation_tools[*]}"
+  note "validation tools unavailable: ${missing_validation_tools[*]} (fsdk-containers#89)"
 fi
 
 # Assigned work is usually YAML -- workflows, manifests, skill frontmatter --

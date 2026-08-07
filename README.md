@@ -187,8 +187,10 @@ agent can use every scope on its GitHub token; prefer a
 `REVIEW_GH_TOKEN` limited to `public_repo` or `repo`.
 
 At startup, the contributor image reports any unavailable common validation
-commands (`bats`, `shellcheck`, `systemd-analyze`, `pre-commit`, `just`, and
-`podman`) without blocking the assigned task.
+commands (`bats`, `shellcheck`, `hadolint`, `systemd-analyze`, `pre-commit`,
+`just`, and `podman`) without blocking the assigned task. The base ships none
+of the linters and no package manager to obtain one, tracked as
+[fsdk-containers#89](https://github.com/projectbluefin/fsdk-containers/issues/89).
 
 The VM guest has no GitHub identity mapping; see
 [The two launch modes are not interchangeable](#the-two-launch-modes-are-not-interchangeable).

@@ -1,6 +1,6 @@
 ---
 name: image-build
-version: "2.16"
+version: "2.17"
 last_updated: 2026-08-07
 id: image-build
 one_line_purpose: Derive and pin the review contributor image safely.
@@ -150,8 +150,9 @@ fix.
    step and must not be an argument or environment layer.
 10. Treat the image as a task runtime, not a general validation distribution.
    At startup, probe the baseline validation commands (`bats`, `shellcheck`,
-   `systemd-analyze`, `pre-commit`, `just`, and `podman`) and report only the
-   missing ones — `just` comes from the FSDK base — without blocking Hive or
+   `hadolint`, `systemd-analyze`, `pre-commit`, `just`, and `podman`) and
+   report only the missing ones, naming fsdk-containers#89 so the absence is
+   traceable — `just` comes from the FSDK base — without blocking Hive or
    installing them solely to hide the absence.
 11. Before an FSDK pin is built, audit with
     `bash tests/image-audit.sh --verify-base-evidence`; it verifies the
