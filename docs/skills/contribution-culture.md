@@ -1,6 +1,6 @@
 ---
 name: contribution-culture
-version: "1.3"
+version: "1.4"
 last_updated: 2026-08-07
 id: contribution-culture
 one_line_purpose: Do maintainer toil in small changes, never feature development.
@@ -88,6 +88,14 @@ is allowed." The words to refuse are *grandfathered*, *sanctioned*, *legacy
 exception*, *pre-existing*, *for now*, and *temporarily*. If the exception is
 worth writing down, the fix is worth doing instead.
 
+A described gap is the same defect wearing different clothes. *Known gap*,
+*documented gap*, *known limitation*, *open upstream gap*, and *tracked to
+closure* all announce a known-wrong thing and then leave it in place. Use the
+issue tracker: a gap gets an issue number, and the document gets at most one
+sentence pointing at it. Prose explaining why something is broken cannot be
+assigned or closed, so it survives the fix and becomes the reason nobody
+noticed the fix was possible.
+
 The worked example is local. This repository shipped Python `find` and `cmp`
 shims that a document described as grandfathered. That one word kept 214 lines
 alive after the pinned base gained GNU findutils 4.10.0 and diffutils 3.12.
@@ -167,6 +175,7 @@ shim standing once the seam fix lands.
   withdrawal.
 - Treating documentation, triage, or test work as lower-value than code.
 - Any standing exception: "grandfathered", "sanctioned", "legacy", "for now".
+- A "known gap" or "known limitation" section where an issue number belongs.
 - A test that asserts known-wrong behavior is correct.
 
 ## Verification

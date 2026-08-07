@@ -17,7 +17,7 @@
         "contribution"
       ],
       "description": "Defines the scope and manners of factory work: toil reduction for under-maintained projects in small, reviewable changes, never feature development. Use before deciding how large a change should be or what a task's deliverable is.",
-      "version": "1.3",
+      "version": "1.4",
       "last_updated": "2026-08-07",
       "doc_type": "policy"
     },
@@ -94,8 +94,8 @@
         "contribution"
       ],
       "description": "Defines how this repository reports evidence to kubestellar/hive and follows up on filed issues. Use before opening, commenting on, or responding to an upstream Hive issue or pull request.",
-      "version": "1.2",
-      "last_updated": "2026-08-04",
+      "version": "1.3",
+      "last_updated": "2026-08-07",
       "doc_type": "policy"
     },
     {
@@ -114,7 +114,7 @@
         "audit"
       ],
       "description": "Use when maintaining the pinned FSDK-derived contributor image, audit, Goose canary assets, Hive runtime, or publishing path.",
-      "version": "2.15",
+      "version": "2.16",
       "last_updated": "2026-08-07",
       "doc_type": "procedure"
     },

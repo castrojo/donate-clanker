@@ -59,6 +59,13 @@ is allowed" — and a test that pins the exception makes correcting the defect
 fail CI. Reject the words *grandfathered*, *sanctioned*, *legacy exception*,
 *pre-existing*, *for now*, and *temporarily* in this repository's documents.
 
+A gap is filed, not documented. When something is broken or missing — here, in
+the pinned base, or upstream — open an issue and reference it by number. Do not
+write a section explaining it. An issue has a state and a close event, so it
+disappears when the defect does; a paragraph outlives the fix and reads as
+justification. A code comment gets one line naming the issue that deletes it,
+and a user-visible limitation gets one sentence naming the issue. Nothing else.
+
 Use the tools the image already ships. If a common utility is missing, add it
 to the base at the FSDK seam; never hand-roll a local reimplementation, and
 never leave a shim standing once the seam fix lands. A shim is not inert

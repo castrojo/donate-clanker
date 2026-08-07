@@ -1,6 +1,6 @@
 ---
 name: image-build
-version: "2.15"
+version: "2.16"
 last_updated: 2026-08-07
 id: image-build
 one_line_purpose: Derive and pin the review contributor image safely.
@@ -39,33 +39,27 @@ Builds run on the ghost cluster's BuildBarn remote-execution grid per
 degraded-mode opt-out that must be announced when used and is not acceptable
 as a permanent workaround.
 
-## Known Base Gap: gzip
+## A Base Gap Is Filed, Not Described
 
-**`lab-runner` 25.08 does not ship `gzip`, and this is a gap to close
-upstream, not a local decision to defend.** Verified by execution against the
-pinned digest: `tar`, `xz`, `zstd` and `bzip2` are all present; `gzip` is not.
-GNU tar has no built-in inflate — it execs the `gzip` binary — so on a
-`.tar.gz` both `tar -xzf` *and* auto-detecting `tar -xf` fail outright:
+When the base turns out to be missing something, **open an issue on
+`projectbluefin/fsdk-containers` and reference it by number.** Do not describe
+the gap here.
 
-```
-tar (child): gzip: Cannot exec: No such file or directory
-tar: Child returned status 2
-```
+A tracked issue has a state, an assignee, and a close event, so it disappears
+when the component lands. A paragraph has none of those: it survives the fix,
+and a future reader cannot tell a live defect from a closed one. Worse, prose
+explaining why something is missing reads as justification, which is how "this
+is broken" quietly becomes "this is expected" — the grandfathering `AGENTS.md`
+rejects. Write down the reproduction where someone can close it.
 
-Nothing else present covers it: `xz -d` refuses gzip and `zstd` is built
-without zlib support (`--format=gzip` → "Incorrect parameter"). `.tar.xz`
-extracts normally, so this is specific to gzip.
+Only two things belong in this repository. A code comment gets one line where
+the code is otherwise unreadable — what the line does and which issue deletes
+it — and nothing more. A user-visible limitation gets one sentence naming the
+issue, as `README.md` does for VM mode with #50.
 
-`gh`, `tmux` and `goose` all publish `.tar.gz`, so the image must decompress
-gzip. This is exactly the gap that let hand-rolled Python persist for years:
-Python links zlib directly, so a `tarfile` one-liner silently worked where the
-base could not, and the missing component was never reported. **Add `gzip` at
-the BST seam.** When it lands, the correct form is plain `tar -xzf` and the
-`-I` filter below is deleted. Until then `tar -I 'python3 -m gzip'` supplies
-that one codec while GNU tar keeps every archive semantic — recorded here as
-an open upstream gap, tracked to closure, not a settled local answer.
-
-`unzip` and `rsync` are absent too; nothing in this image needs them today.
+Report what you can reproduce, follow the evidence rules in
+[`upstream-hive.md`](upstream-hive.md), and let the component owner decide the
+fix.
 
 ## Core Process
 1. Derive from the FSDK lab-runner base pinned by a tagged digest
@@ -135,12 +129,10 @@ an open upstream gap, tracked to closure, not a settled local answer.
    for a single binary, `--strip-components=1` for Node's versioned tree — and
    keep each `sha256sum -c -` ahead of its extraction. A missing member then
    fails the build with `Not found in archive` rather than writing an empty
-   binary. **`gzip` is absent from the base and GNU tar has no built-in
-   inflate**, so `tar -xzf` *and* auto-detecting `tar -xf` both fail on a
-   `.tar.gz` with `gzip: Cannot exec`; `xz` and `zstd` refuse gzip too. Until
-   gzip is added at the FSDK seam, `tar -I 'python3 -m gzip'` supplies only
-   that codec while tar keeps every archive semantic. Remove only Node headers
-   and verified-unused npm cache; retain `node`, `npm`, and `corepack`.
+   binary. The `tar -I 'python3 -m gzip'` filter supplies the one codec the
+   base lacks; see fsdk-containers#87, which deletes it. Remove only Node
+   headers and verified-unused npm cache; retain `node`, `npm`, and
+   `corepack`.
 7. Place controlled Goose configuration under `/opt/bluefin/goose` as the
    image-owned policy, data, and state seam. Revalidate compatibility settings
    against the pinned Hive runtime before retaining them; do not preserve stale
@@ -233,6 +225,12 @@ Do not use this runbook to change Hive assignment, checkout, or contributor prot
 - "Passing `--env NAME=value` is harmless." Podman exposes command arguments
   locally; export the value and use `--env NAME` so Podman inherits only that
   host environment entry.
+- "Writing the gap down means it's tracked." A document cannot be assigned,
+  queried, or closed. It outlives the fix and turns a defect into expected
+  behavior. File the issue; reference the number.
+- "Someone needs the background." The reproduction belongs in the issue, where
+  the person who can fix it will look. Nobody debugging the base reads a
+  downstream skill first.
 
 ## What The Image Audit Forbids
 
@@ -246,7 +244,8 @@ way to know which an agent ran.
 **Ordinary userland is forbidden nowhere.** `find`, `cmp`, `diff`, `rg`, `fd`,
 `yq` and ShellCheck belong in the base when a contributor needs them; their
 absence is what made live agents fail with `command not found`. Add them at
-the BST seam, never here. For `find` and `cmp` the audit checks provenance
+the BST seam, never here, and file the ones that are missing rather than
+describing them. For `find` and `cmp` the audit checks provenance
 rather than presence: Hive's relay calls both directly, the base carries real
 GNU implementations, and the audit fails if either resolves under
 `/usr/local/bin` — the shape a reintroduced shim would take.
@@ -267,6 +266,8 @@ GNU implementations, and the audit fails if either resolves under
   cross-distribution closure.
 - A local reimplementation of a standard utility, or a shim surviving a gap the
   FSDK base has since closed.
+- A base gap described in a document instead of filed as an issue, or any
+  section that exists to explain a known-broken thing.
 
 ## Verification
 
