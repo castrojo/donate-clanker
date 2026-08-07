@@ -56,8 +56,8 @@
         "workspace"
       ],
       "description": "Explains Hive's tmux session, workspace directory, prompt and output contract, contributor credentials, token lifetime, cooldown, and exclusive task selection. Use when operating or debugging a session.",
-      "version": "2.0",
-      "last_updated": "2026-08-06",
+      "version": "2.1",
+      "last_updated": "2026-08-07",
       "doc_type": "reference"
     },
     {
@@ -75,7 +75,7 @@
         "websocket"
       ],
       "description": "Diagnoses a contributor that connects but receives no assignment without adding client-side selection or retry behavior. Use when a ready contributor remains idle.",
-      "version": "1.4",
+      "version": "1.5",
       "last_updated": "2026-08-07",
       "doc_type": "runbook"
     },

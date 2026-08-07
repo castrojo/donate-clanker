@@ -1,7 +1,7 @@
 ---
 name: hive-runtime
-version: "2.0"
-last_updated: 2026-08-06
+version: "2.1"
+last_updated: 2026-08-07
 id: hive-runtime
 one_line_purpose: Operate inside Hive's tmux, token, and cooldown constraints.
 entry_point: docs/skills/hive-runtime.md
@@ -57,9 +57,14 @@ assigned contributor session behaves unexpectedly.
 6. Do not filter, decline, rank, or retry assignments in this repository.
    Hive selection is the sole authority. The relay's own negative-ack handling
    is Hive's, not ours: when the hub declines to assign work it sends
-   `task_unavailable` with a reason (`no_work`, `token_mint_failed`,
-   `tier_disabled`, `concurrency_limit`), which the relay logs before re-asking
-   after a fixed delay. A relay revision predating that case logs the message
+   `task_unavailable` with a reason, which the relay logs before re-asking
+   30 seconds later. The reasons are defined by the *hub*, in
+   `v2/pkg/dashboard/contribute_ws.go`, not by the relay — read them there.
+   Three are enforced refusals (`token_mint_failed`, `tier_disabled`,
+   `concurrency_limit`), two are rate caps (`hourly_limit`, `daily_limit`),
+   and three mean the hub simply has nothing to hand over right now
+   (`contribution_suspended`, `hub_not_ready`, `no_matching_work`). A relay
+   revision predating that case logs the message
    as an unknown type and then has no path back to asking, because every
    `ready` it sends is event-driven and none is timed; it wedges idle. No task
    was assigned in that state, so nothing is held. Move the pin rather than
@@ -68,6 +73,15 @@ assigned contributor session behaves unexpectedly.
    informational. The relay reports its runtime posture during authentication,
    and Hive stores and surfaces it without routing or gating assignments on it.
    Do not add downstream capability-based task selection.
+8. Expect the interactive delivery mode. The pinned runtime reads
+   `CONTRIBUTOR_MODE`, which selects between `interactive` (the default: a
+   live tmux pane the relay types the prompt into) and `headless` (no tmux
+   session at all — the relay drives a one-shot CLI per task and writes
+   lifecycle state to `HIVE_HEADLESS_STATUS_FILE`). review sets neither and
+   runs interactive, which is what `just review-container` attaches to and
+   what the entrypoint's `tmux has-session -t contributor` readiness check
+   requires. Headless exists for an unattended Kubernetes contributor; do not
+   set it here expecting the same attachable session.
 
 ### GitHub identity
 

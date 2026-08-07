@@ -1,6 +1,6 @@
 ---
 name: hive-triage
-version: "1.4"
+version: "1.5"
 last_updated: 2026-08-07
 id: hive-triage
 one_line_purpose: Diagnose why an attached contributor is never handed work.
@@ -31,13 +31,26 @@ arrived and the session then failed.
    hub.
 2. Read the relay log first. When the hub declines to assign work it sends a
    `task_unavailable` negative-ack and the relay prints the reason before
-   re-asking on its own fixed delay. Observed against hub protocol 1.2:
-   `no_matching_work`. Also defined: `token_mint_failed`, `tier_disabled`,
-   `concurrency_limit`. Take the string the relay actually printed over this
-   list, which has drifted before, and do not reconstruct it from the hub
-   dashboard. A relay predating that case logs the message as an unknown type
-   instead of a reason and then stops asking; that is a pin problem, not a hub
-   problem.
+   re-asking 30 seconds later. The reason strings are the hub's, defined in
+   `v2/pkg/dashboard/contribute_ws.go`; the relay only prints `msg.reason`, and
+   its own comment naming `no_work` is stale — no such reason exists in the
+   hub. Read the constants, and take the string the relay actually printed over
+   any list, including this one:
+
+   | Reason | Means |
+   |---|---|
+   | `no_matching_work` | Running and unsuspended, but every candidate was filtered out. The starved-queue case. |
+   | `contribution_suspended` | The operator turned the whole contribute queue off. Nobody gets work. |
+   | `hub_not_ready` | No status snapshot yet; transient at startup. |
+   | `token_mint_failed` | A scoped token could not be minted for the tier — often a missing installation permission. |
+   | `tier_disabled` | The contributor's trust tier is in `hub.disabled_tiers`. |
+   | `concurrency_limit` | Assigning would exceed the tier's `max_concurrent` for this identity. |
+   | `hourly_limit` / `daily_limit` | The tier's `max_per_hour` / `max_per_day` cap was hit. |
+
+   The last four are enforced refusals aimed at this contributor; the first
+   three are hub-wide conditions no local change affects. A relay predating
+   these cases logs the message as an unknown type and then stops asking; that
+   is a pin problem, not a hub problem.
 3. Read the hub's own read-only endpoints rather than guessing at them. On a
    hosted hub these answer unauthenticated, while `/api/health` and
    `/api/status` redirect to OAuth and tell you nothing:
