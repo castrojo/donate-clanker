@@ -1,6 +1,6 @@
 ---
 name: image-build
-version: "2.14"
+version: "2.15"
 last_updated: 2026-08-07
 id: image-build
 one_line_purpose: Derive and pin the review contributor image safely.
@@ -28,9 +28,11 @@ composed of `freedesktop-sdk.bst:components/*.bst`. Adding a userland tool
 means adding or updating a BST element there, not patching the Containerfile.
 
 This repository's only lever is the `FSDK_RUNNER_IMAGE` build arg, which pins
-the resulting digest. **Do not add Containerfile package overlays. Do not
-multi-stage `COPY` binaries out of third-party images.** Both were rejected in
-`projectbluefin/fsdk-containers#86` as the wrong answer.
+the resulting digest. Four substitutes have each been proposed and rejected:
+a Containerfile package overlay, a multi-stage `COPY` out of a third-party
+image such as busybox, a `curl` of a prebuilt binary, and a new intermediate
+`review-base` image. Adding the component upstream and bumping the digest is
+the whole fix; reach for nothing else.
 
 Builds run on the ghost cluster's BuildBarn remote-execution grid per
 `fsdk-containers`' `docs/skills/remote-execution.md`. `BST_LOCAL=1` is a

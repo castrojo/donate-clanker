@@ -17,8 +17,8 @@
         "contribution"
       ],
       "description": "Defines the scope and manners of factory work: toil reduction for under-maintained projects in small, reviewable changes, never feature development. Use before deciding how large a change should be or what a task's deliverable is.",
-      "version": "1.1",
-      "last_updated": "2026-08-04",
+      "version": "1.2",
+      "last_updated": "2026-08-07",
       "doc_type": "policy"
     },
     {
@@ -133,7 +133,7 @@
         "audit"
       ],
       "description": "Use when maintaining the pinned FSDK-derived contributor image, audit, Goose canary assets, Hive runtime, or publishing path.",
-      "version": "2.14",
+      "version": "2.15",
       "last_updated": "2026-08-07",
       "doc_type": "procedure"
     },
@@ -152,7 +152,7 @@
         "foreground"
       ],
       "description": "Maintains the three foreground review recipes, VM and container-only launch paths, and credential boundaries. Use when editing justfile.",
-      "version": "2.1",
+      "version": "2.2",
       "last_updated": "2026-08-07",
       "doc_type": "runbook"
     },
@@ -191,7 +191,7 @@
         "worktree"
       ],
       "description": "Defines protected-branch pull request, branch, title, trailer, and validation requirements, how to commit without clobbering uncommitted work, and how to reconcile a long-lived branch with a squash-merged main. Use before branching or committing.",
-      "version": "1.6",
+      "version": "1.7",
       "last_updated": "2026-08-07",
       "doc_type": "policy"
     },

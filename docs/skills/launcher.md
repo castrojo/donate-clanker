@@ -1,6 +1,6 @@
 ---
 name: launcher
-version: "2.1"
+version: "2.2"
 last_updated: 2026-08-07
 id: launcher
 one_line_purpose: Change review just recipes without breaking foreground.
@@ -39,6 +39,12 @@ Goose, or image build skill documents.
    | `review` | Run the disposable QEMU VM in the foreground. |
    | `review-container` | Run the contributor container directly for fast local iteration. |
    | `review-doctor` | Perform read-only preflight checks. |
+
+   `just` reads only the current directory's justfile, so these recipes fail
+   with `justfile does not contain recipe` from any other checkout. That is
+   `just`'s behavior, not a launcher bug: fix it outside the repository with a
+   `~/.local/bin` shim that forwards these three names to this justfile, and
+   do not add a wrapper recipe here to compensate.
 
 2. Keep both launch paths foreground. No detached Podman, background service,
    lifecycle command, or persistent launcher state is allowed beyond the
