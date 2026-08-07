@@ -446,8 +446,8 @@ require image/entrypoint.sh \
   '/opt/bluefin/local-agent-policy.md' \
   'core.hooksPath /opt/bluefin/git-hooks' \
   'shopt -s nullglob' \
-  'validation_tools=(bats shellcheck systemd-analyze pre-commit just podman)' \
-  'validation tools unavailable:' \
+  'validation_tools=(bats shellcheck hadolint systemd-analyze pre-commit just podman)' \
+  'validation tools unavailable: ${missing_validation_tools[*]} (fsdk-containers#89)' \
   "python3 -c 'import yaml'" \
   'no YAML parser: ${missing_parsers[*]} (fsdk-containers#88); read YAML as text' \
   'tmux_fallback_term=xterm-256color' \

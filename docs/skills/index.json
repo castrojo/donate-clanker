@@ -114,7 +114,7 @@
         "audit"
       ],
       "description": "Use when maintaining the pinned FSDK-derived contributor image, audit, Goose canary assets, Hive runtime, or publishing path.",
-      "version": "2.16",
+      "version": "2.17",
       "last_updated": "2026-08-07",
       "doc_type": "procedure"
     },
