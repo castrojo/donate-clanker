@@ -40,7 +40,7 @@ else
 fi
 
 # 3. index.json must validate against the schema (requires jsonschema).
-python3 - <<'PY'
+python3 - <<'PY' || fail=1
 import json, sys, os
 try:
     import jsonschema
@@ -65,10 +65,9 @@ except jsonschema.SchemaError as exc:
     print("::error file=docs/skills/index.schema.json::invalid schema: %s" % exc.message)
     sys.exit(1)
 PY
-[[ $? -eq 0 ]] || fail=1
 
 # 4. Every .md file (not index.md) must have an index.json entry and vice-versa.
-python3 - <<'PY'
+python3 - <<'PY' || fail=1
 import json, os, sys
 skill_dir = "docs/skills"
 catalog = json.load(open(os.path.join(skill_dir, "index.json")))
@@ -89,7 +88,6 @@ if errors:
     sys.exit(1)
 print("  ok  index.json entries match .md files (%d skills)" % len(ids))
 PY
-[[ $? -eq 0 ]] || fail=1
 
 if [[ "$fail" -eq 0 ]]; then
   echo "skill-conformance: all checks passed"
