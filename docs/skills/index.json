@@ -75,8 +75,8 @@
         "websocket"
       ],
       "description": "Diagnoses a contributor that connects but receives no assignment without adding client-side selection or retry behavior. Use when a ready contributor remains idle.",
-      "version": "1.3",
-      "last_updated": "2026-08-04",
+      "version": "1.4",
+      "last_updated": "2026-08-07",
       "doc_type": "runbook"
     },
     {
@@ -152,7 +152,7 @@
         "foreground"
       ],
       "description": "Maintains the three foreground review recipes, VM and container-only launch paths, and credential boundaries. Use when editing justfile.",
-      "version": "2.0",
+      "version": "2.1",
       "last_updated": "2026-08-07",
       "doc_type": "runbook"
     },
@@ -209,8 +209,8 @@
         "factory"
       ],
       "description": "Maintains review documentation and skill contracts from local source evidence. Use when auditing docs, correcting stale guidance, or recording durable agent learning.",
-      "version": "1.0",
-      "last_updated": "2026-08-03",
+      "version": "1.1",
+      "last_updated": "2026-08-07",
       "doc_type": "reference"
     }
   ]
