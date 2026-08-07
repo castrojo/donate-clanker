@@ -19,6 +19,7 @@ metadata:
 ## When to Use
 Load this before changing `image/Containerfile`, `image/config/`, image pins,
 or published contributor-image behavior.
+
 ## Ownership Boundary
 Image *content* is owned upstream in `projectbluefin/fsdk-containers`, not
 here. `image/Containerfile` derives from `ghcr.io/projectbluefin/lab-runner`,
@@ -35,6 +36,7 @@ Builds run on the ghost cluster's BuildBarn remote-execution grid per
 `fsdk-containers`' `docs/skills/remote-execution.md`. `BST_LOCAL=1` is a
 degraded-mode opt-out that must be announced when used and is not acceptable
 as a permanent workaround.
+
 ## Core Process
 1. Derive from the FSDK lab-runner base pinned by a tagged digest
    (`name:tag@sha256:`). The digest is the security property; the tag is what
@@ -54,14 +56,14 @@ as a permanent workaround.
    `ls` with modern alternatives. If a modern tool is added, install it under
    its own native name (e.g. `rg`) beside the canonical command, never as a
    replacement; none is installed today.
-5. Missing standard runtime utilities belong at the FSDK seam. The pinned
-   `lab-runner:25.08` ships coreutils but not findutils, procps, gawk, tar,
-   diffutils, `less`, `file`, or `patch`; `image/config/local-agent-policy.md`
-   tells agents this instead of adding shims. An interim shim must satisfy
-   every caller: Hive's relay prunes stale `/tmp` with `-maxdepth`, `-type`,
-   `-user`, `-not`, `-name`, `-mmin`, and `-exec ... +`; a shim rejecting those
-   fails invisibly. Match GNU precedence; `tests/find-semantics.sh` pins the
-   expressions.
+5. Missing standard runtime utilities belong at the FSDK seam, and going there
+   works: `lab-runner` once shipped coreutils alone, so `which`, `xargs`, `ps`,
+   `awk`, `tar`, `diff` and `patch` exited 127 in live runs until the
+   components were added upstream, fixing every consumer at once. Never answer
+   a missing utility with a shim here. The two that exist are grandfathered and
+   must satisfy every caller: Hive's relay prunes `/tmp` with `-maxdepth`,
+   `-type`, `-user`, `-not`, `-name`, `-mmin` and `-exec ... +`, so a shim
+   rejecting those fails invisibly. `tests/find-semantics.sh` pins them.
 6. Pin Node, GitHub CLI, and tmux versions and verify their checksums. For
    mutable Goose `canary`, CI resolves official `unknown-linux-musl` asset
    digests before each build, passes them as build inputs, and records them in
@@ -141,8 +143,13 @@ the same change. That condition is machine-checked by
 `image/Containerfile` rather than a hand-maintained list; keep the two in step
 when the image starts or stops consuming an upstream file.
 
-Never add a downstream workaround for an upstream protocol gap; see
-[`upstream-hive.md`](upstream-hive.md).
+Never add a downstream workaround for an upstream protocol gap. Moving the pin
+is the fix; a local retry, poll, timeout, or shim becomes a permanent
+compatibility burden for both sides. See [`upstream-hive.md`](upstream-hive.md).
+
+## When Not to Use
+
+Do not use this runbook to change Hive assignment, checkout, or contributor protocol behavior; those belong in Hive. Do not switch the final image to a shell-less base or copy a hand-selected dynamic-library closure from another distribution.
 
 ## Common Rationalizations
 
@@ -154,10 +161,29 @@ Never add a downstream workaround for an upstream protocol gap; see
   deliberately.
 - "It's only a SHA bump, automerge it." Hive is a protocol dependency; verify
   the three consumed files are unchanged first.
-- "Replacing grep/find/cat/ls makes every agent faster." Install modern tools
-  beside them, never substituting semantics; Hive's relay calls `find` too.
-- "Passing `--env NAME=value` is harmless." Podman exposes command arguments;
-  export the value and use `--env NAME` instead.
+- "Replacing grep/find/cat/ls makes every agent faster." These commands are a
+  script interface, and the scripts are not all yours: Hive's relay calls `find`
+  too. Install modern tools beside them, never substituting semantics.
+- "Passing `--env NAME=value` is harmless." Podman exposes command arguments
+  locally; export the value and use `--env NAME` so Podman inherits only that
+  host environment entry.
+
+## What The Image Audit Forbids
+
+`tests/image-audit.sh` keeps two rules apart that are easy to conflate. A
+**package manager** (`apt`, `dnf`, `apk`) is forbidden in both images always:
+content comes from BST elements, so a self-mutating runtime is a defect.
+**Anything review installs itself** (`node`, `npm`, `gh`, `tmux`, `goose`) is
+forbidden in the base only, because a second copy means two versions and no
+way to know which an agent ran.
+
+**Ordinary userland is forbidden nowhere.** `find`, `cmp`, `diff`, `rg`, `fd`,
+`yq` and ShellCheck belong in the base when a contributor needs them; their
+absence is what made live agents fail with `command not found`. Add them at
+the BST seam, never here. `find` and `cmp` are the exception: review ships
+shims Hive's relay depends on, so the audit asserts each resolves under
+`/usr/local/bin` rather than forbidding the base copy, which would fail a
+correct change and still miss a PATH regression.
 
 ## Red Flags
 
