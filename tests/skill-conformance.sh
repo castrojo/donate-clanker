@@ -15,14 +15,20 @@ cd "$repo_root"
 fail=0
 
 ok() { printf '  ok  %s\n' "$*"; }
-fail_msg() { printf '::error::%s\n' "$*"; fail=1; }
+fail_msg() {
+  printf '::error::%s\n' "$*"
+  fail=1
+}
 
 # 1. index.schema.json must exist and parse as JSON.
 if [[ ! -f docs/skills/index.schema.json ]]; then
   fail_msg "docs/skills/index.schema.json is missing"
 else
   python3 -c "import json,sys; json.load(open('docs/skills/index.schema.json'))" \
-    2>&1 || { fail_msg "docs/skills/index.schema.json does not parse as JSON"; fail=1; }
+    2>&1 || {
+    fail_msg "docs/skills/index.schema.json does not parse as JSON"
+    fail=1
+  }
   ok "docs/skills/index.schema.json exists and parses"
 fi
 
