@@ -76,7 +76,7 @@ three public recipes:
 | Command | Purpose |
 |---|---|
 | `just review` | Run the contributor through a foreground QEMU VM. |
-| `just review-container` | Run the contributor container directly, without a VM. |
+| `just review-container [profile] [effort]` | Run the contributor container directly, without a VM. |
 | `just review-doctor` | Perform read-only launch diagnostics. |
 
 Every run remains attached to its originating terminal. Ctrl-C or closing that
@@ -166,8 +166,26 @@ an operations task outside this repository automation.
 Goose is the only agent backend and GitHub Copilot is the only supported
 provider. `GOOSE_PROVIDER` may be unset or `github_copilot`; `GOOSE_MODEL`
 optionally overrides the `gpt-5.6-luna` default, and
-`GOOSE_THINKING_EFFORT` optionally overrides the default `high` reasoning
-effort. A `gh auth token` does not authenticate Copilot inference.
+`GOOSE_THINKING_EFFORT` optionally overrides the default `max` reasoning
+effort for `review-container` (the VM default remains `high`). A `gh auth
+token` does not authenticate Copilot inference.
+
+`review-container` takes two optional positional arguments, a model profile
+and a thinking effort:
+
+| Invocation | Model | Effort | Context |
+|---|---|---|---|
+| `just review-container` | `gpt-5.6-luna` | `max` | provider default |
+| `just review-container luna` | `gpt-5.6-luna` | `max` | provider default |
+| `just review-container opus5 high` | `claude-opus-5` | `high` | `264000` |
+
+Run it with no arguments in a terminal and `gum` picks both interactively;
+without a terminal, or without `gum` installed, it launches the default
+profile. Efforts are `low`, `medium`, `high`, and `max`. Contributor runs are
+automated once Hive starts feeding them work, so `opus5` clamps
+`GOOSE_CONTEXT_LIMIT` rather than paying for a window nobody reads.
+`GOOSE_MODEL`, `GOOSE_THINKING_EFFORT`, and `GOOSE_CONTEXT_LIMIT` from the
+environment still win over any profile.
 
 The container recipe inherits the Copilot and GitHub tokens by environment
 variable name, so token values are not placed on Podman's command line. The
