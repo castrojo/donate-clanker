@@ -94,7 +94,7 @@
         "contribution"
       ],
       "description": "Defines how this repository reports evidence to kubestellar/hive and follows up on filed issues. Use before opening, commenting on, or responding to an upstream Hive issue or pull request.",
-      "version": "1.1",
+      "version": "1.2",
       "last_updated": "2026-08-04",
       "doc_type": "policy"
     },

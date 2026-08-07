@@ -176,6 +176,9 @@ contributor_image_available() {
   # this without starting anything.
   local ref="$1"
   podman image exists "$ref" && return 0
+  # A 'localhost/' ref has no registry behind it, so a manifest probe can only
+  # dial localhost and fail slowly. Absent from local storage is the answer.
+  case "$ref" in localhost/*) return 1 ;; esac
   podman manifest inspect "$ref" &>/dev/null
 }
 launcher_boot_id() {
@@ -300,6 +303,19 @@ ensure_contributor_image() {
     fi
   fi
   contributor_image_available "$ref" && return 0
+  # 'localhost/' is podman's local-storage namespace, never a registry host.
+  # Pulling it dials https://localhost/v2/ and fails three times with a
+  # connection-refused error that reads like a network fault, so a deleted
+  # local build looked like a broken registry. Say the real thing instead.
+  case "$ref" in
+    localhost/*)
+      echo "ERROR: ${ref} is a locally built image and it is not in local storage." >&2
+      echo "  Nothing can pull it: 'localhost/' is podman's local namespace, not a registry." >&2
+      echo "  Build it: podman build -f image/Containerfile -t ${ref#localhost/} ." >&2
+      echo "  Or drop the override to use the published default: unset REVIEW_CONTRIBUTOR_IMAGE" >&2
+      return 1
+      ;;
+  esac
   podman pull "$ref" && return 0
   echo "ERROR: cannot obtain the contributor image ${ref}." >&2
   echo "  Published tags are 'stable', the version tags and 'sha-<commit>' — there is no ':latest'." >&2
