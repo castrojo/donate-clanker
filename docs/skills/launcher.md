@@ -1,6 +1,6 @@
 ---
 name: launcher
-version: "2.3"
+version: "2.4"
 last_updated: 2026-08-07
 id: launcher
 one_line_purpose: Change review just recipes without breaking foreground.
@@ -71,8 +71,9 @@ Goose, or image build skill documents.
    image's direct-invocation fallback.
    That default comes from the model profile: `review-container [profile]
    [effort]` resolves `luna` to `gpt-5.6-luna` at `max` with the provider's
-   own context window, and `opus5` to `claude-opus-5` at `high` with
-   `GOOSE_CONTEXT_LIMIT=264000`. An empty profile is `luna`; two profiles do
+   own context window, `opus5` to `claude-opus-5` at `high` with
+   `GOOSE_CONTEXT_LIMIT=264000`, and `kimi` to `kimi-k3` at `max` with the
+   same clamp. An empty profile is `luna`; a short fixed profile list does
    not warrant a picker, so every launch is noninteractive whether or not a
    terminal is attached. Profiles are defaults, never overrides:
    `GOOSE_MODEL`, `GOOSE_THINKING_EFFORT`, and `GOOSE_CONTEXT_LIMIT` from the

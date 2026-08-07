@@ -534,8 +534,15 @@ assert_file_contains "--env GOOSE_MODEL=claude-opus-5" "$runner_log"
 assert_file_contains "--env GOOSE_THINKING_EFFORT=high" "$runner_log"
 assert_file_contains "--env GOOSE_CONTEXT_LIMIT=264000" "$runner_log"
 
-begin "review-container: an effort argument overrides the profile default"
+begin "review-container: the kimi profile is max effort with a clamped context"
 reset_logs
+RECIPE_ARGS=(kimi)
+run_recipe review-container GH_READY=1
+assert_file_contains "--env GOOSE_MODEL=kimi-k3" "$runner_log"
+assert_file_contains "--env GOOSE_THINKING_EFFORT=max" "$runner_log"
+assert_file_contains "--env GOOSE_CONTEXT_LIMIT=264000" "$runner_log"
+
+begin "review-container: an effort argument overrides the profile default"reset_logs
 RECIPE_ARGS=(opus5 max)
 run_recipe review-container GH_READY=1
 assert_file_contains "--env GOOSE_THINKING_EFFORT=max" "$runner_log"
@@ -556,8 +563,9 @@ assert_nonzero_status "$STATUS" "an unknown effort must not launch anything"
 assert_contains "unknown thinking effort 'ludicrous'" "$OUT"
 
 begin "review-container: an empty profile never prompts"
-# Two profiles do not need a picker. An empty profile is the default one, and
-# gum sitting on PATH with a canned answer must not change that.
+# A short fixed profile list does not need a picker. An empty profile is the
+# default one, and gum sitting on PATH with a canned answer must not change
+# that.
 reset_logs
 RECIPE_ARGS=("" high)
 run_recipe review-container GH_READY=1 \
