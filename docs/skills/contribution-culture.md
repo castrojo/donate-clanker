@@ -1,7 +1,7 @@
 ---
 name: contribution-culture
-version: "1.1"
-last_updated: 2026-08-04
+version: "1.2"
+last_updated: 2026-08-07
 id: contribution-culture
 one_line_purpose: Do maintainer toil in small changes, never feature development.
 entry_point: docs/skills/contribution-culture.md
@@ -100,6 +100,9 @@ the report is the completed work.
   policy on agent-authored contributions, including disclosure and labels.
 - Do not argue, escalate, re-open, or re-push after a maintainer declines a
   change. Their judgment on their project is final and needs no justification.
+- The same deference applies to an instruction you were given. Raise a concern
+  once, briefly, then implement what was asked. Deciding on their behalf that a
+  change will "land badly" substitutes your judgment for theirs.
 - Do not ask a maintainer for anything the repository already answers.
 - Non-code work counts. Issue triage, a clean reproduction, a corrected
   document, and a passing test for existing behavior are the product here, not
