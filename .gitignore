@@ -8,3 +8,7 @@ image/bluefin-operations/node_modules/
 # from a fresh checkout; public/index.html is hand-authored, so it stays.
 public/queue.json
 public/queue.md
+
+# tests/image-audit.sh --report writes generated audit reports; they are
+# per-run evidence, never source.
+image-audit-report.md

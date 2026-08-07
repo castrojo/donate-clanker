@@ -379,7 +379,9 @@ pre-commit run --all-files
 `tests/image-audit.sh` inspects a real image, so it needs a container engine
 and network access. It defaults to `docker`; on a podman host set
 `CONTAINER_ENGINE=podman`. Use `--verify-base-evidence` to check the pinned
-FSDK input alone, or `--derived <image>` to audit a build:
+FSDK input alone, or `--derived <image>` to audit a build. The report records
+each platform's runtime evidence as native or unavailable — never QEMU —
+and `--report image-audit-report.md` writes it to a git-ignored file:
 
 ```bash
 CONTAINER_ENGINE=podman bash tests/image-audit.sh --derived localhost/review:dev

@@ -154,7 +154,9 @@ pre-commit run --all-files
 `tests/image-audit.sh` needs a container engine and network. It defaults to
 `docker`; on a podman host pass `CONTAINER_ENGINE=podman`. Check the pinned
 FSDK input alone with `--verify-base-evidence`; audit a built or published
-image with `--derived <image>`.
+image with `--derived <image>`. The report always records both platform slots
+as native or unavailable, and `--report image-audit-report.md` writes the
+Markdown report to a git-ignored file.
 
 `pre-commit run --all-files` runs the socket-free hygiene checks locally.
 ShellCheck is a CI-only manual hook because its upstream hook runs in a

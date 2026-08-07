@@ -10,6 +10,7 @@ cd "$repo_root"
 
 base_image="$(sed -n 's/^ARG FSDK_RUNNER_IMAGE=\(.*\)$/\1/p' image/Containerfile)"
 derived_image=""
+report_file=""
 require_oci=false
 require_attestations=false
 require_github_attestation=false
@@ -40,6 +41,8 @@ Options:
   --expected-revision SHA  Require matching OCI revision value.
   --expected-version TAG   Require matching OCI version value.
   --verify-base-evidence   Verify FSDK provenance and exactly linux/amd64+linux/arm64.
+  --report FILE            Also write the Markdown report to FILE. The report
+                           is generated output; keep it out of git.
 EOF
 }
 
@@ -84,6 +87,10 @@ while [[ $# -gt 0 ]]; do
   --verify-base-evidence)
     verify_base_evidence=true
     shift
+    ;;
+  --report)
+    report_file="${2:?--report needs a path}"
+    shift 2
     ;;
   -h | --help)
     usage
@@ -154,6 +161,16 @@ forbid_line() {
   local inventory="$1" kind="$2" name="$3"
   if grep -qFx "${kind}:${name}" <<<"$inventory"; then
     error "forbidden ${kind} command present in runtime: ${name}"
+  fi
+}
+
+emit_report() {
+  printf '%s' "$report"
+  if [[ -n "$report_file" ]]; then
+    printf '%s' "$report" >"$report_file"
+  fi
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    printf '%s' "$report" >>"$GITHUB_STEP_SUMMARY"
   fi
 }
 
@@ -251,6 +268,11 @@ else
   append "- Host architecture: \`$(normalize_arch "$(engine_arch)")\`"
 fi
 append ""
+# Every figure in this report is measured from the exact digests above, at
+# runtime where the host architecture allows it. Comparisons against retired
+# digests are historical and live in issues #70 and #87, never here.
+append "All facts below are current exact-digest measurements. Retired-digest comparisons are historical context only and live in #70/#87, not in this report."
+append ""
 append "#### FSDK manifest and compressed layers"
 append ""
 append "| Platform | Manifest | Compressed layers |"
@@ -282,10 +304,7 @@ if "$verify_base_evidence"; then
     --repo projectbluefin/fsdk-containers
   append ""
   append "- FSDK attestation: verified for \`$(registry_reference "$base_image")\`."
-  printf '%s' "$report"
-  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-    printf '%s' "$report" >>"$GITHUB_STEP_SUMMARY"
-  fi
+  emit_report
   [[ "$fail" -eq 0 ]] && echo "✓ FSDK input evidence holds."
   exit "$fail"
 fi
@@ -558,12 +577,12 @@ base_required="bash cat chmod cp curl git grep jq ls mkdir mv python3 rm sed sh 
 package_managers="apt dnf apk"
 review_owned="node npm gh tmux goose"
 base_forbidden="${review_owned} ${package_managers}"
-derived_required="bash node npm corepack gh tmux goose find cmp infocmp"
+derived_required="bash node npm corepack gh tmux goose find cmp diff infocmp"
 derived_forbidden="$package_managers"
 # Base commands Hive's relay calls directly and review must never shim over.
 # image/Containerfile proves their semantics at build time against the real
 # base; this checks the finished runtime still resolves them from it.
-derived_unshadowed="find cmp"
+derived_unshadowed="find cmp diff"
 
 append ""
 append "#### Native runtime audit"
@@ -643,10 +662,37 @@ NODE
   append "  - commands: ${command_facts}; terminfo: ${terminfo_facts:-none}; forbidden package managers absent."
 done
 
-printf '%s' "$report"
-if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-  printf '%s' "$report" >>"$GITHUB_STEP_SUMMARY"
-fi
+# Record both platform slots explicitly. A platform with no native host is
+# unavailable evidence, never a skipped row and never a QEMU substitute;
+# native arm64 runtime measurement is tracked by #87.
+append ""
+append "#### Runtime evidence by platform"
+append ""
+append "| Platform | Base | Derived |"
+append "| --- | --- | --- |"
+for platform in amd64 arm64; do
+  for image_kind in base derived; do
+    if [[ "$image_kind" == base ]]; then
+      arch="$base_arch"
+    else
+      arch="$derived_arch"
+    fi
+    if [[ "$arch" == "$platform" && "$arch" == "$host_arch" ]]; then
+      slot="**native** (this host)"
+    else
+      slot="unavailable (no native linux/${platform} host)"
+      [[ "$platform" == arm64 ]] && slot+=" — #87"
+    fi
+    if [[ "$image_kind" == base ]]; then
+      base_slot="$slot"
+    else
+      derived_slot="$slot"
+    fi
+  done
+  append "| linux/${platform} | ${base_slot} | ${derived_slot} |"
+done
+
+emit_report
 
 [[ "$fail" -eq 0 ]] && echo "✓ image audit holds."
 exit "$fail"
