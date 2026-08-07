@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-04",
+  "generated_at": "2026-08-07",
   "schema_version": "1.0",
   "skills": [
     {
@@ -80,25 +80,6 @@
       "doc_type": "runbook"
     },
     {
-      "id": "upstream-hive",
-      "name": "upstream-hive",
-      "one_line_purpose": "File and follow up on kubestellar/hive issues as an exemplary downstream.",
-      "entry_point": "docs/skills/upstream-hive.md",
-      "category": "ci-ops",
-      "status": "active",
-      "tags": [
-        "hive",
-        "upstream",
-        "issues",
-        "evidence",
-        "contribution"
-      ],
-      "description": "Defines how this repository reports evidence to kubestellar/hive and follows up on filed issues. Use before opening, commenting on, or responding to an upstream Hive issue or pull request.",
-      "version": "1.3",
-      "last_updated": "2026-08-07",
-      "doc_type": "policy"
-    },
-    {
       "id": "image-build",
       "name": "image-build",
       "one_line_purpose": "Derive and pin the review contributor image safely.",
@@ -138,25 +119,6 @@
       "doc_type": "runbook"
     },
     {
-      "id": "static-pr-queue",
-      "name": "static-pr-queue",
-      "one_line_purpose": "Publish a safe, static queue of public pull requests.",
-      "entry_point": "docs/skills/static-pr-queue.md",
-      "category": "ci-ops",
-      "status": "active",
-      "tags": [
-        "github",
-        "actions",
-        "queue",
-        "static",
-        "pullrequest"
-      ],
-      "description": "Publishes the public static PR queue without creating queue authority. Use when changing queue generation, ranking, artifacts, or refresh automation.",
-      "version": "1.4",
-      "last_updated": "2026-08-04",
-      "doc_type": "procedure"
-    },
-    {
       "id": "pr-workflow",
       "name": "pr-workflow",
       "one_line_purpose": "Open review pull requests that merge cleanly.",
@@ -193,6 +155,44 @@
       "version": "1.1",
       "last_updated": "2026-08-07",
       "doc_type": "reference"
+    },
+    {
+      "id": "static-pr-queue",
+      "name": "static-pr-queue",
+      "one_line_purpose": "Publish a safe, static queue of public pull requests.",
+      "entry_point": "docs/skills/static-pr-queue.md",
+      "category": "ci-ops",
+      "status": "active",
+      "tags": [
+        "github",
+        "actions",
+        "queue",
+        "static",
+        "pullrequest"
+      ],
+      "description": "Publishes the public static PR queue without creating queue authority. Use when changing queue generation, ranking, artifacts, or refresh automation.",
+      "version": "1.4",
+      "last_updated": "2026-08-04",
+      "doc_type": "procedure"
+    },
+    {
+      "id": "upstream-hive",
+      "name": "upstream-hive",
+      "one_line_purpose": "File and follow up on kubestellar/hive issues as an exemplary downstream.",
+      "entry_point": "docs/skills/upstream-hive.md",
+      "category": "ci-ops",
+      "status": "active",
+      "tags": [
+        "hive",
+        "upstream",
+        "issues",
+        "evidence",
+        "contribution"
+      ],
+      "description": "Defines how this repository reports evidence to kubestellar/hive and follows up on filed issues. Use before opening, commenting on, or responding to an upstream Hive issue or pull request.",
+      "version": "1.3",
+      "last_updated": "2026-08-07",
+      "doc_type": "policy"
     }
   ]
 }

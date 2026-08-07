@@ -46,7 +46,7 @@ jobs:
           pre-commit run --all-files --show-diff-on-failure
           pre-commit run shellcheck --hook-stage manual --all-files --show-diff-on-failure
 
-      - name: Skill frontmatter and index stay aligned
+      - name: Skill frontmatter valid and generated index fresh
         run: |
           set -euo pipefail
           bash scripts/check-skill-frontmatter.sh

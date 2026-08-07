@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Validate docs/skills/*.md front-matter and keep docs/skills/index.json in
-# sync with it. This is the single skill-catalog check: front-matter field
-# validation, schema conformance of index.json, and bidirectional coverage
-# between docs/skills/*.md and the manifest all live here.
+# Validate docs/skills/*.md front-matter and generate docs/skills/index.json
+# from it. Front-matter is the source of truth: this script builds the
+# manifest, validates it against index.schema.json, and fails if the committed
+# index.json differs from the generated content. `--write` rewrites the
+# manifest instead of comparing.
 #
 # Modelled on projectbluefin/common's scripts/check-skill-frontmatter.sh, with
-# two differences: every skill in this repo is held to the size limits below
-# with no standing exceptions, and it also
-# validates the generated index.json manifest against the source files.
+# one difference: every skill in this repo is held to the size limits below
+# with no standing exceptions.
 #
 # Deliberately python3-only: `yq` is not guaranteed on contributor machines or
 # in the container image, and the front-matter subset used here (scalars,
@@ -45,17 +45,20 @@ REQUIRED_KEYS = [
 ]
 VALID_STATUS = {"active", "deprecated", "reserved"}
 VALID_CATEGORY = {"ci-ops", "test-authoring", "meta"}
-# Fields the manifest mirrors from front-matter; must match exactly.
-MIRRORED = [
+SCHEMA_VERSION = "1.0"
+# Manifest fields copied verbatim from front-matter, in output order.
+# doc_type is appended separately from metadata.type.
+MANIFEST_FIELDS = [
+    "id",
     "name",
-    "description",
+    "one_line_purpose",
     "entry_point",
     "category",
     "status",
+    "tags",
+    "description",
     "version",
     "last_updated",
-    "one_line_purpose",
-    "tags",
 ]
 
 errors = []
@@ -193,18 +196,41 @@ def check_file(path):
     return fm
 
 
-def check_index(front_matter, stems):
-    if not os.path.exists(INDEX):
-        error(INDEX, "manifest is missing")
-        return
-    try:
-        with open(INDEX, "r", encoding="utf-8") as handle:
-            manifest = json.load(handle)
-    except ValueError as exc:
-        error(INDEX, "does not parse as JSON: %s" % exc)
-        return
+def build_manifest(front_matter):
+    """Build the index.json content from parsed front-matter.
 
-    # Validate against schema when jsonschema is available.
+    Entries are sorted by id so output is deterministic. generated_at tracks
+    the newest last_updated so regeneration is byte-stable until a skill
+    actually changes.
+    """
+    skills = []
+    for stem in sorted(front_matter):
+        fm = front_matter[stem]
+        entry = {field: fm.get(field) for field in MANIFEST_FIELDS}
+        metadata = fm.get("metadata")
+        entry["doc_type"] = metadata.get("type") if isinstance(metadata, dict) else None
+        skills.append(entry)
+    generated_at = max(
+        (fm["last_updated"] for fm in front_matter.values() if fm.get("last_updated")),
+        default="",
+    )
+    return {
+        "generated_at": generated_at,
+        "schema_version": SCHEMA_VERSION,
+        "skills": skills,
+    }
+
+
+def render_manifest(manifest):
+    return json.dumps(manifest, indent=2) + "\n"
+
+
+def check_index(front_matter, write):
+    manifest = build_manifest(front_matter)
+    rendered = render_manifest(manifest)
+
+    # Validate the generated manifest against the schema when jsonschema is
+    # available.
     if os.path.exists(SCHEMA):
         try:
             with open(SCHEMA, "r", encoding="utf-8") as fh:
@@ -224,45 +250,44 @@ def check_index(front_matter, stems):
     else:
         error(SCHEMA, "schema file is missing")
 
-    entries = manifest.get("skills")
-    if not isinstance(entries, list):
-        error(INDEX, "missing top-level 'skills' array")
+    if write:
+        if errors:
+            error(INDEX, "not writing the manifest while front-matter has errors")
+            return
+        with open(INDEX, "w", encoding="utf-8") as handle:
+            handle.write(rendered)
+        print("wrote %s (%d skills)" % (INDEX, len(manifest["skills"])))
         return
 
-    by_id = {}
-    for entry in entries:
-        entry_id = entry.get("id")
-        if not entry_id:
-            error(INDEX, "entry without an 'id': %s" % json.dumps(entry, sort_keys=True))
-            continue
-        if entry_id in by_id:
-            error(INDEX, "duplicate entry for id '%s'" % entry_id)
-        by_id[entry_id] = entry
-
-    for entry_id in sorted(set(by_id) - stems):
-        error(INDEX, "entry '%s' has no docs/skills/%s.md" % (entry_id, entry_id))
-    for stem in sorted(stems - set(by_id)):
-        error(INDEX, "docs/skills/%s.md has no manifest entry" % stem)
-
-    for stem in sorted(set(by_id) & set(front_matter)):
-        entry = by_id[stem]
-        fm = front_matter[stem]
-        for field in MIRRORED:
-            if entry.get(field) != fm.get(field):
-                error(
-                    INDEX,
-                    "entry '%s' field '%s' is %s but docs/skills/%s.md has %s"
-                    % (
-                        stem,
-                        field,
-                        json.dumps(entry.get(field)),
-                        stem,
-                        json.dumps(fm.get(field)),
-                    ),
-                )
+    if not os.path.exists(INDEX):
+        error(INDEX, "manifest is missing; run scripts/check-skill-frontmatter.sh --write")
+        return
+    with open(INDEX, "r", encoding="utf-8") as handle:
+        committed = handle.read()
+    if committed != rendered:
+        error(
+            INDEX,
+            "manifest is stale; regenerate with scripts/check-skill-frontmatter.sh --write",
+        )
+        import difflib
+        sys.stdout.writelines(
+            difflib.unified_diff(
+                committed.splitlines(keepends=True),
+                rendered.splitlines(keepends=True),
+                fromfile=INDEX,
+                tofile="generated",
+            )
+        )
 
 
 def main():
+    args = sys.argv[1:]
+    write = "--write" in args
+    unknown = [arg for arg in args if arg != "--write"]
+    if unknown:
+        print("::error::unknown argument(s): %s" % " ".join(unknown))
+        return 1
+
     if not os.path.isdir(SKILL_DIR):
         print("::error file=%s::skill directory is missing" % SKILL_DIR)
         return 1
@@ -285,8 +310,7 @@ def main():
         if fm is not None:
             front_matter[os.path.basename(path)[: -len(".md")]] = fm
 
-    stems = {os.path.basename(path)[: -len(".md")] for path in paths}
-    check_index(front_matter, stems)
+    check_index(front_matter, write)
 
     print(
         "checked %d skill document(s) and %s: %d error(s), %d warning(s)"

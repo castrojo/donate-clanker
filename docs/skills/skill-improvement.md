@@ -42,8 +42,9 @@ that work.
    supplements local guidance; it does not override local repository
    boundaries or assign work.
 4. Correct stale, contradictory, or missing durable guidance in the nearest
-   user document or `docs/skills/` file. Update `docs/skills/index.json` when
-   a skill frontmatter field changes.
+   user document or `docs/skills/` file. Regenerate `docs/skills/index.json`
+   with `bash scripts/check-skill-frontmatter.sh --write` when a skill
+   frontmatter field changes.
 5. Keep the repository compact. Do not commit changelogs, session notes,
    planning scratchpads, design records, or "append here" instructions.
    Remove obsolete records rather than preserving them as live guidance.

@@ -91,8 +91,8 @@ Keep the model executable and compact:
 1. Treat local code and tests as evidence for implementation behavior.
 2. Treat `AGENTS.md`, this document, and the matching skill as the
    agent-facing contract.
-3. Record durable operational knowledge in `docs/skills/` and mirror skill
-   frontmatter in `docs/skills/index.json`.
+3. Record durable operational knowledge in `docs/skills/` and generate
+   `docs/skills/index.json` from skill frontmatter.
 4. Delete stale changelogs, session notes, plans, design scratchpads, and
    append-only status documents. They are historical noise, not the model.
 5. Use the pinned `projectbluefin/common` catalog as a shared sidecar after
