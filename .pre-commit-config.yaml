@@ -99,6 +99,12 @@ repos:
         entry: bash scripts/check-skill-frontmatter.sh
         files: ^docs/skills/
         pass_filenames: false
+      - id: skill-conformance
+        name: skill catalog matches its schema and files
+        language: system
+        entry: bash tests/skill-conformance.sh
+        files: ^docs/skills/
+        pass_filenames: false
       - id: generate-skills
         name: skill generator rejects unsafe manifest paths
         language: system
