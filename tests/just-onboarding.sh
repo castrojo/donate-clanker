@@ -395,12 +395,14 @@ reset_logs() {
   : >"$find_log"
   : >"$credential_log"
   rm -f "$consumed_marker"
+  RECIPE_ARGS=()
 }
 reset_logs
 
 # ── runner ────────────────────────────────────────────────────────────────
 # run_recipe <recipe> [KEY=VALUE ...] — runs the launcher with a hermetic
-# environment; sets OUT and STATUS.
+# environment; sets OUT and STATUS. Positional recipe arguments go in the
+# RECIPE_ARGS array, since everything after <recipe> is read as environment.
 run_recipe() {
   local recipe="$1"
   shift
@@ -413,6 +415,7 @@ run_recipe() {
       -u GH_TOKEN -u GITHUB_TOKEN \
       -u REVIEW_GH_TOKEN -u FAKE_GH_TOKEN -u FAKE_GH_SCOPES \
       -u TEST_UNAME_M -u TEST_CURL_MODE -u REVIEW_TEST_GUM_TTY \
+      -u GOOSE_THINKING_EFFORT -u GOOSE_CONTEXT_LIMIT \
       -u REVIEW_NON_INTERACTIVE -u GOOSE_INSTALLED \
       -u REVIEW_TEST_BOOTSTRAP_MODE \
       HOME="$home" PATH="$fake_bin:/usr/bin:/bin" TMPDIR="$tmp_root" \
@@ -429,7 +432,7 @@ run_recipe() {
       FAKE_FIRMWARE_MODE=pflash \
       REVIEW_VM_RUNNER_IMAGE="ghcr.io/projectbluefin/review-vm-runner@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
       "$@" \
-      "$real_just" --justfile "$justfile" "$recipe" 2>&1
+      "$real_just" --justfile "$justfile" "$recipe" "${RECIPE_ARGS[@]}" 2>&1
   )"
   STATUS=$?
   set -e
@@ -495,6 +498,7 @@ run_recipe review-container GH_READY=1
 assert_nonzero_status "$STATUS" "the fake runner always exits non-zero"
 assert_file_contains "--env GOOSE_PROVIDER=github_copilot" "$runner_log"
 assert_file_contains "--env GOOSE_MODEL=gpt-5.6-luna" "$runner_log"
+assert_file_contains "--env GOOSE_THINKING_EFFORT=max" "$runner_log"
 assert_file_not_exists "$cfg_dir/last-selections.env"
 assert_file_not_exists "$cfg_dir/secrets.env"
 assert_eq "$(wc -c <"$gum_log")" 0 "gum must not be invoked"
@@ -504,6 +508,53 @@ reset_logs
 run_recipe review-container GH_READY=1 GOOSE_MODEL=gpt-test \
   GOOSE_THINKING_EFFORT=medium
 assert_file_contains "--env GOOSE_THINKING_EFFORT=medium" "$runner_log"
+
+begin "review-container: no profile is luna at max with the provider's own context"
+reset_logs
+run_recipe review-container GH_READY=1
+assert_file_contains "--env GOOSE_MODEL=gpt-5.6-luna" "$runner_log"
+assert_file_contains "--env GOOSE_THINKING_EFFORT=max" "$runner_log"
+assert_file_not_contains "GOOSE_CONTEXT_LIMIT" "$runner_log"
+assert_eq "$(wc -c <"$gum_log")" 0 "a headless run must not invoke gum"
+
+begin "review-container: the opus profile clamps the context window"
+reset_logs
+RECIPE_ARGS=(opus5 high)
+run_recipe review-container GH_READY=1
+assert_file_contains "--env GOOSE_MODEL=claude-opus-5" "$runner_log"
+assert_file_contains "--env GOOSE_THINKING_EFFORT=high" "$runner_log"
+assert_file_contains "--env GOOSE_CONTEXT_LIMIT=264000" "$runner_log"
+
+begin "review-container: an effort argument overrides the profile default"
+reset_logs
+RECIPE_ARGS=(opus5 max)
+run_recipe review-container GH_READY=1
+assert_file_contains "--env GOOSE_THINKING_EFFORT=max" "$runner_log"
+
+begin "review-container: an unknown profile is one actionable error"
+reset_logs
+RECIPE_ARGS=(gpt-9)
+run_recipe review-container GH_READY=1
+assert_nonzero_status "$STATUS" "an unknown profile must not launch anything"
+assert_contains "unknown model profile 'gpt-9'" "$OUT"
+assert_contains "Known profiles" "$OUT"
+
+begin "review-container: an unknown thinking effort is one actionable error"
+reset_logs
+RECIPE_ARGS=(luna ludicrous)
+run_recipe review-container GH_READY=1
+assert_nonzero_status "$STATUS" "an unknown effort must not launch anything"
+assert_contains "unknown thinking effort 'ludicrous'" "$OUT"
+
+begin "review-container: an empty profile asks with gum when a terminal exists"
+reset_logs
+# The effort is supplied so only the model prompt runs — the gum stub has a
+# single canned answer, and one prompt is enough to prove the picker fires.
+RECIPE_ARGS=("" high)
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
+  GUM_CHOOSE_RESPONSE=opus5
+assert_file_contains "choose" "$gum_log"
+assert_file_contains "--env GOOSE_MODEL=claude-opus-5" "$runner_log"
 
 # ══ 3. Doctor: advisory VM limitation, no failure on a fully provisioned host ══
 if kvm_usable; then
@@ -1206,14 +1257,14 @@ begin "static: the launcher ships no lifecycle command"
 # A stop/start/restart verb would mean a run can outlive its terminal. It
 # cannot: Ctrl-C is the only way a review run ends, and a stale name
 # is reclaimed at launch by --replace, not by a second command.
-if grep -nE '^review-(stop|start|restart|kill|clean|down|up):' "$code"; then
+if grep -nE '^review-(stop|start|restart|kill|clean|down|up)[ :]' "$code"; then
   fail "the launcher must never ship a lifecycle recipe — Ctrl-C is the stop button"
 fi
 if grep -n 'just review-stop' "$code"; then
   fail "nothing may point a user at a stop command that must not exist"
 fi
 # The recipe list is exactly: launch the VM, launch the container, diagnose.
-assert_eq "$(grep -cE '^review[a-z-]*:' "$code")" 3 \
+assert_eq "$(grep -cE '^review[a-z-]*[ :]' "$code")" 3 \
   "expected exactly three recipes (review, -container, -doctor)"
 
 begin "static: upstream contribute-setup runs with upstream's own version-check opt-out"

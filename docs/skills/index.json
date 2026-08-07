@@ -152,8 +152,8 @@
         "foreground"
       ],
       "description": "Maintains the three foreground review recipes, VM and container-only launch paths, and credential boundaries. Use when editing justfile.",
-      "version": "1.8",
-      "last_updated": "2026-08-04",
+      "version": "1.9",
+      "last_updated": "2026-08-06",
       "doc_type": "runbook"
     },
     {

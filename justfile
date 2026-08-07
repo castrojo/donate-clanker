@@ -15,6 +15,8 @@
 #                     hand the terminal to the contributor agent.
 #   review-container  Run only the contributor container — no VM —
 #                     for quick local development. Also foreground.
+#                     Takes an optional model profile and thinking effort,
+#                     e.g. 'just review-container opus5 high'.
 #   review-doctor     Read-only preflight diagnostics. Starts nothing.
 #
 # ─────────────────────────────────────────────────────────────────────────
@@ -79,6 +81,12 @@ hive_repo_url := "https://github.com/kubestellar/hive"
 # on 2026-08-04.
 hive_commit := "fc3d7179255d13a613632fd1e982691d2d8bc0ae"
 copilot_default_model := "gpt-5.6-luna"
+# Contributor runs are automated in practice — Hive keeps feeding the session —
+# so a large window is money spent on context nobody reads. Opus is the one
+# model whose default window is worth clamping; luna keeps the provider
+# default because it is already the cheap path.
+opus_model := "claude-opus-5"
+opus_context_limit := "264000"
 vm_runner_image := env("REVIEW_VM_RUNNER_IMAGE", "")
 vm_raw_image := env("REVIEW_VM_RAW", "")
 vm_version := env("REVIEW_VM_VERSION", "25.08.15")
@@ -439,6 +447,52 @@ resolve_goose_selection() {
   GOOSE_PROVIDER="github_copilot"
   GOOSE_MODEL="${GOOSE_MODEL:-${COPILOT_DEFAULT_MODEL}}"
   return 0
+}
+# Turn a short profile name ('luna', 'opus5') plus an optional thinking effort
+# into GOOSE_MODEL / GOOSE_THINKING_EFFORT / GOOSE_CONTEXT_LIMIT. An empty
+# profile with a terminal and gum present asks; otherwise the default wins.
+# An explicit GOOSE_MODEL in the environment still beats all of it.
+resolve_model_profile() {
+  local profile="${1:-}" effort="${2:-}"
+  if [[ -z "$profile" ]] && can_prompt_with_gum; then
+    profile="$(gum choose --header "Model" "luna" "opus5")" || return 1
+    [[ -n "$effort" ]] || effort="$(gum choose --header "Thinking effort" "low" "medium" "high" "max")" || return 1
+  fi
+  case "${profile,,}" in
+    ""|default|luna|gpt-5.6-luna)
+      PROFILE_MODEL="${COPILOT_DEFAULT_MODEL}"
+      PROFILE_EFFORT="max"
+      PROFILE_CONTEXT_LIMIT=""
+      ;;
+    opus5|opus-5|opus|claude-opus-5)
+      PROFILE_MODEL="${OPUS_MODEL}"
+      PROFILE_EFFORT="high"
+      PROFILE_CONTEXT_LIMIT="${OPUS_CONTEXT_LIMIT}"
+      ;;
+    *)
+      echo "ERROR: unknown model profile '${profile}'." >&2
+      echo "  Known profiles: luna (${COPILOT_DEFAULT_MODEL}), opus5 (${OPUS_MODEL})." >&2
+      return 1
+      ;;
+  esac
+  case "${effort,,}" in
+    "") ;;
+    low|medium|high|max) PROFILE_EFFORT="${effort,,}" ;;
+    *)
+      echo "ERROR: unknown thinking effort '${effort}'; expected low, medium, high, or max." >&2
+      return 1
+      ;;
+  esac
+  GOOSE_MODEL="${GOOSE_MODEL:-${PROFILE_MODEL}}"
+  GOOSE_THINKING_EFFORT="${GOOSE_THINKING_EFFORT:-${PROFILE_EFFORT}}"
+  GOOSE_CONTEXT_LIMIT="${GOOSE_CONTEXT_LIMIT:-${PROFILE_CONTEXT_LIMIT}}"
+  echo "✓ model ${GOOSE_MODEL}, thinking effort ${GOOSE_THINKING_EFFORT}, context ${GOOSE_CONTEXT_LIMIT:-provider default}."
+  return 0
+}
+can_prompt_with_gum() {
+  command -v gum &>/dev/null || return 1
+  [[ "${REVIEW_TEST_GUM_TTY:-}" == "1" ]] && return 0
+  [[ -t 0 ]] && [[ -t 1 ]]
 }
 normalize_git_remote() {
   local value="$1"
@@ -953,13 +1007,20 @@ review:
 # Run ONLY the contributor container — no VM — for quick local development.
 # Same preflight and same provider/model selection as the VM path, minus the
 # hardware isolation, so it is the fast loop while hacking on the image.
-# Usage: just review-container
-review-container:
+#
+#   just review-container              # gum picker, or luna/max when headless
+#   just review-container luna         # gpt-5.6-luna at max effort (default)
+#   just review-container opus5 high   # claude-opus-5, high effort, 264k context
+#
+# Usage: just review-container [luna|opus5] [low|medium|high|max]
+review-container profile="" effort="":
     #!/usr/bin/env bash
     set -euo pipefail
     {{shared_functions}}
     TOOL="{{tool_env}}"
     COPILOT_DEFAULT_MODEL="{{copilot_default_model}}"
+    OPUS_MODEL="{{opus_model}}"
+    OPUS_CONTEXT_LIMIT="{{opus_context_limit}}"
 
     STATE_DIR="${HOME}/.local/state/review"
     HIVE_SRC_DIR="${STATE_DIR}/hive-src"
@@ -976,6 +1037,7 @@ review-container:
       exit 1
     }
 
+    resolve_model_profile "{{profile}}" "{{effort}}"
     resolve_goose_selection
     ensure_hive_contributor_env
 
@@ -993,6 +1055,7 @@ review-container:
     [[ -n "$GOOSE_PROVIDER" ]] && CONTAINER_ARGS+=(--env "GOOSE_PROVIDER=${GOOSE_PROVIDER}")
     [[ -n "$GOOSE_MODEL" ]] && CONTAINER_ARGS+=(--env "GOOSE_MODEL=${GOOSE_MODEL}")
     [[ -n "${GOOSE_THINKING_EFFORT:-}" ]] && CONTAINER_ARGS+=(--env "GOOSE_THINKING_EFFORT=${GOOSE_THINKING_EFFORT}")
+    [[ -n "${GOOSE_CONTEXT_LIMIT:-}" ]] && CONTAINER_ARGS+=(--env "GOOSE_CONTEXT_LIMIT=${GOOSE_CONTEXT_LIMIT}")
     if [[ "${GOOSE_PROVIDER:-}" == "github_copilot" ]]; then
       resolve_copilot_token
       if [[ -n "${COPILOT_TOKEN:-}" ]]; then

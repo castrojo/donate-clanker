@@ -1,7 +1,7 @@
 ---
 name: launcher
-version: "1.8"
-last_updated: 2026-08-04
+version: "1.9"
+last_updated: 2026-08-06
 id: launcher
 one_line_purpose: Change review just recipes without breaking foreground.
 entry_point: docs/skills/launcher.md
@@ -56,6 +56,18 @@ Goose, or image build skill documents.
    at every launch. Nothing is persisted: not a secret, not a provider, not a
    model. There is no last-selection file, and `tests/just-onboarding.sh`
    asserts one is never written.
+   `review-container` must set its own thinking-effort default before forming
+   the Podman environment, while still honoring `GOOSE_THINKING_EFFORT` from
+   the caller. Do not apply that container default to the VM or replace the
+   image's direct-invocation fallback.
+   That default comes from the model profile: `review-container [profile]
+   [effort]` resolves `luna` to `gpt-5.6-luna` at `max` with the provider's
+   own context window, and `opus5` to `claude-opus-5` at `high` with
+   `GOOSE_CONTEXT_LIMIT=264000`. An empty profile asks with `gum` when a
+   terminal is attached and falls back to `luna` when one is not, so the
+   headless path stays noninteractive. Profiles are defaults, never
+   overrides: `GOOSE_MODEL`, `GOOSE_THINKING_EFFORT`, and
+   `GOOSE_CONTEXT_LIMIT` from the environment always win.
 6. For container-only mode, pass Copilot and GitHub credentials by inherited
    environment (`--env NAME`), not command-line values or host configuration
    mounts. Resolve the GitHub token from `REVIEW_GH_TOKEN`, existing
