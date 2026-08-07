@@ -1,6 +1,6 @@
 ---
 name: launcher
-version: "2.0"
+version: "2.1"
 last_updated: 2026-08-07
 id: launcher
 one_line_purpose: Change review just recipes without breaking foreground.
@@ -146,6 +146,25 @@ attach to the first one's session.
 
 Hive selects every task. The launcher must not filter, skip, rank, or decline
 assignments by repository, label, title, author, or issue.
+
+## Rootless Podman And Mounted Host Files
+
+Rootless Podman maps the host user to container **root**, not to the container
+user of the same uid. A mounted host file keeps its mode, so Hive's
+`contributor.env` at `0600` arrives root-owned and the image's `dev` user
+cannot read it — the agent dies at startup with `Permission denied` before any
+work begins. Launch with `--userns keep-id:uid=1000,gid=1000` so the host user
+maps onto `dev`. Never answer this by loosening the host file's mode; it holds
+Hive credentials.
+
+A locally built image has no registry behind it and is not a moving tag.
+`podman build -t review:dev` stores `localhost/review:dev`, and refreshing
+that emits pull retries and an always-false "may be out of date" warning.
+Detect the local build before deciding a ref is refreshable.
+
+`just` reads only the justfile in the current directory, so `just
+review-container` fails from another repository; run it from this checkout or
+pass `--justfile`.
 
 ## Common Rationalizations
 
