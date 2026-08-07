@@ -69,8 +69,7 @@
 # Goose is the only agent backend. There is no local inference, no model
 # profile catalogue, and no multi-CLI auto-detection: one backend means one
 # readiness check and one fix-it message when it fails.
-tool_order := "goose"
-
+#
 # TOOL is read from the environment so 'TOOL=goose just review'
 # works as documented — 'just' recipe parameters are positional, not
 # KEY=VALUE, so it cannot be a plain recipe parameter. Any value other than
@@ -87,7 +86,6 @@ copilot_default_model := "gpt-5.6-luna"
 # default because it is already the cheap path.
 opus_model := "claude-opus-5"
 opus_context_limit := "264000"
-vm_runner_image := env("REVIEW_VM_RUNNER_IMAGE", "")
 vm_raw_image := env("REVIEW_VM_RAW", "")
 vm_version := env("REVIEW_VM_VERSION", "25.08.15")
 # The fsdk-derived contributor image. Used by
@@ -125,47 +123,24 @@ print_missing_hive_setup_guidance() {
   echo "ERROR: missing Hive setup at ${path}; ${reason}." >&2
   echo "  Re-run review from an interactive terminal, or pre-seed it yourself from kubestellar/hive @ ${commit} by running \`just contribute-setup ${tool}\` in an interactive checkout (set REVIEW_HIVE_COMMIT to another full commit if needed)" >&2
 }
-tool_installed() {
-  case "$1" in
-    goose) command -v goose &>/dev/null ;;
-    *)     return 1 ;;
-  esac
-}
-tool_authenticated() {
+GOOSE_INSTALL_HINT="Install: https://github.com/block/goose/releases"
+GOOSE_FIXIT_HINT="Run: goose configure, select GitHub Copilot, and complete the device flow."
+
+goose_configured() {
   # An explicit GOOSE_PROVIDER counts as configured because the launcher
   # passes it straight through to the guest; otherwise Goose's own config
   # must name a provider. A GitHub login alone is deliberately NOT enough:
   # Goose still needs a provider selected before it can talk to a model.
-  case "$1" in
-    goose)
-      [[ -n "${GOOSE_PROVIDER:-}" ]] && return 0
-      local cfg="${HOME}/.config/goose/config.yaml"
-      [[ -s "$cfg" ]] && grep -Eq '^[[:space:]]*(GOOSE_PROVIDER|provider):[[:space:]]*[^[:space:]#]' "$cfg"
-      ;;
-    *) return 1 ;;
-  esac
+  [[ -n "${GOOSE_PROVIDER:-}" ]] && return 0
+  local cfg="${HOME}/.config/goose/config.yaml"
+  [[ -s "$cfg" ]] && grep -Eq '^[[:space:]]*(GOOSE_PROVIDER|provider):[[:space:]]*[^[:space:]#]' "$cfg"
 }
 require_copilot_provider() {
-  case "${GOOSE_PROVIDER:-}" in
-    ""|github_copilot) return 0 ;;
-    *)
-      echo "ERROR: GOOSE_PROVIDER=${GOOSE_PROVIDER} is not supported — review supports GitHub Copilot only." >&2
-      echo "  Unset GOOSE_PROVIDER or set GOOSE_PROVIDER=github_copilot." >&2
-      return 1
-      ;;
-  esac
-}
-tool_fixit_hint() {
-  case "$1" in
-    goose) echo "Run: goose configure, select GitHub Copilot, and complete the device flow." ;;
-    *)     echo "Unknown tool: $1" ;;
-  esac
-}
-tool_install_hint() {
-  case "$1" in
-    goose) echo "Install: https://github.com/block/goose/releases" ;;
-    *)     echo "" ;;
-  esac
+  local provider="${GOOSE_PROVIDER:-}"
+  [[ -z "$provider" || "$provider" == "github_copilot" ]] && return 0
+  echo "ERROR: GOOSE_PROVIDER=${provider} is not supported — review supports GitHub Copilot only." >&2
+  echo "  Unset GOOSE_PROVIDER or set GOOSE_PROVIDER=github_copilot." >&2
+  return 1
 }
 require_goose_backend() {
   # TOOL exists only for compatibility with the documented invocation; the
@@ -179,9 +154,9 @@ require_goose_backend() {
 preflight_agent() {
   # Exactly one ERROR line per failure, each with the command that fixes it.
   require_copilot_provider || return 1
-  tool_installed goose || {
+  command -v goose &>/dev/null || {
     echo "ERROR: goose is not installed." >&2
-    echo "  $(tool_install_hint goose)" >&2
+    echo "  ${GOOSE_INSTALL_HINT}" >&2
     return 1
   }
   github_auth_ready || {
@@ -189,9 +164,9 @@ preflight_agent() {
     echo "  Run: ${GITHUB_LOGIN_COMMAND}" >&2
     return 1
   }
-  tool_authenticated goose || {
+  goose_configured || {
     echo "ERROR: Goose has no usable provider configuration." >&2
-    echo "  $(tool_fixit_hint goose)" >&2
+    echo "  ${GOOSE_FIXIT_HINT}" >&2
     return 1
   }
 }
@@ -208,12 +183,6 @@ launcher_boot_id() {
   # owner PID keeps a recycled number from ever reading as a live owner.
   cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo unknown
 }
-container_owner_label() {
-  # The raw marker this launcher wrote at 'podman run' time, or nothing at all
-  # for a container that predates ownership marking.
-  local name="$1"
-  podman inspect --format '{{index .Config.Labels "review.owner"}}' "$name" 2>/dev/null || true
-}
 container_owner_pid() {
   # The owning client PID, printed only when that process is genuinely still
   # the launcher run that started this container. Nothing otherwise.
@@ -227,7 +196,7 @@ container_owner_pid() {
   # run' command line cannot tell that apart from a live session, so the
   # launcher records the answer itself instead of guessing.
   local name="$1" marker owner_boot owner_pid
-  marker="$(container_owner_label "$name")"
+  marker="$(podman inspect --format '{{index .Config.Labels "review.owner"}}' "$name" 2>/dev/null || true)"
   [[ "$marker" == *:* ]] || return 0
   owner_boot="${marker%%:*}"
   owner_pid="${marker##*:}"
@@ -250,24 +219,9 @@ container_owner_tty() {
   [[ -n "$tty" && "$tty" != "?" ]] || return 1
   printf '%s\n' "$tty"
 }
-container_has_owner() {
-  # A launcher-written marker is authoritative. Only a container from before
-  # ownership marking falls back to the old command-line heuristic, which
-  # cannot distinguish 'the owner exists' from 'conmon outlived it'.
-  local name="$1" pattern
-  if [[ -n "$(container_owner_label "$name")" ]]; then
-    [[ -n "$(container_owner_pid "$name")" ]]
-    return
-  fi
-  # This fallback is the one place a name reaches a regex. Podman's own name
-  # rule allows '.', which would otherwise match any character and let one
-  # instance's heuristic answer for a differently-named sibling.
-  pattern="${name//./\\.}"
-  pgrep -f "^podman run .*--name ${pattern}( |\$)" >/dev/null 2>&1
-}
 require_valid_container_name() {
   # A name supplied through REVIEW_CONTAINER_NAME reaches 'podman run --name'
-  # and the ownership probes, so it is checked against podman's own rule
+  # and the ownership probe, so it is checked against podman's own rule
   # rather than handed to podman as-is and left to fail late and cryptically.
   local name="$1"
   [[ "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] && return 0
@@ -297,44 +251,35 @@ require_no_running_instance() {
   local name="$1" owner_pid owner_tty
   [[ "$(podman inspect --format '{{.State.Running}}' "$name" 2>/dev/null || echo false)" == "true" ]] || return 0
   owner_pid="$(container_owner_pid "$name")"
-  if [[ -z "$owner_pid" ]] && ! container_has_owner "$name"; then
+  if [[ -z "$owner_pid" ]]; then
     echo "✓ reclaiming ${name} from a run whose terminal is gone."
     return 0
   fi
   echo "ERROR: ${name} is already running in another terminal." >&2
   echo "  Attach to the live session: podman exec -it ${name} tmux attach -t contributor" >&2
-  if [[ -n "$owner_pid" ]] && owner_tty="$(container_owner_tty "$owner_pid")"; then
+  if owner_tty="$(container_owner_tty "$owner_pid")"; then
     # Only ever name Ctrl-C when a terminal to press it in demonstrably
     # exists. The old message advised it unconditionally, so an ownerless
     # container told the user to act in a terminal that was already gone.
     echo "  Or press Ctrl-C in the terminal that owns it (pid ${owner_pid} on ${owner_tty})." >&2
-  elif [[ -n "$owner_pid" ]]; then
+  else
     echo "  Its launcher (pid ${owner_pid}) has no terminal; end that process to stop it." >&2
   fi
   return 1
 }
-image_ref_is_local_build() {
-  # A locally built image has no registry behind it, so trying to refresh it
-  # only produces a failed pull and a misleading "may be out of date" warning.
-  # podman stores 'podman build -t review:dev' as 'localhost/review:dev', so
-  # accept the bare name a user is likely to type as well as the stored form.
-  local ref="$1"
-  case "$ref" in
-    localhost/*) return 0 ;;
-    */*)         return 1 ;;
-  esac
-  podman image exists "localhost/${ref}"
-}
 image_ref_is_moving() {
   # A digest is immutable and an 'sha-<commit>' tag is minted once per build,
-  # so both always name exactly one image. Anything else can be repointed at
-  # a newer build under the same name.
+  # so both always name exactly one image. A locally built image has no
+  # registry behind it either, so refreshing it only produces a failed pull
+  # and a misleading "may be out of date" warning; podman stores
+  # 'podman build -t review:dev' as 'localhost/review:dev', so accept the bare
+  # name a user is likely to type as well as the stored form. Anything else
+  # can be repointed at a newer build under the same name.
   case "$1" in
-    *@sha256:*) return 1 ;;
-    *:sha-*)    return 1 ;;
+    *@sha256:*|*:sha-*|localhost/*) return 1 ;;
+    */*)                            return 0 ;;
   esac
-  image_ref_is_local_build "$1" && return 1
-  return 0
+  ! podman image exists "localhost/$1"
 }
 ensure_contributor_image() {
   # A missing tag otherwise surfaces as a bare 'manifest unknown' from
@@ -458,14 +403,12 @@ report_missing_gh_token() {
   return 0
 }
 report_vm_github_identity_blocked() {
-  local presence="$1"
+  # Unconditional on both callers: the current guest has no bootstrap mapping
+  # for a host GH_TOKEN, so whether the host happens to have one changes
+  # nothing about what the VM can do.
   echo "! VM GitHub identity is blocked: the current guest cannot receive GH_TOKEN." >&2
-  if [[ "$presence" == present ]]; then
-    echo "  A host GitHub token was found, but adding one would not reach this VM guest." >&2
-  else
-    echo "  No host GitHub token was found, but adding one would not reach this VM guest." >&2
-  fi
-  echo "  Until then, use review-container for work that needs fork, push, or PR access." >&2
+  echo "  A host gh login or REVIEW_GH_TOKEN cannot satisfy this VM prerequisite." >&2
+  echo "  Use review-container for work that needs fork, push, or PR access." >&2
   return 0
 }
 resolve_goose_selection() {
@@ -476,22 +419,18 @@ resolve_goose_selection() {
   return 0
 }
 # Turn a short profile name ('luna', 'opus5') plus an optional thinking effort
-# into GOOSE_MODEL / GOOSE_THINKING_EFFORT / GOOSE_CONTEXT_LIMIT. An empty
-# profile with a terminal and gum present asks; otherwise the default wins.
-# An explicit GOOSE_MODEL in the environment still beats all of it.
+# into GOOSE_MODEL / GOOSE_THINKING_EFFORT / GOOSE_CONTEXT_LIMIT. Two profiles,
+# no picker: an empty profile is the default one. Profiles are defaults, never
+# overrides — an explicit GOOSE_* value in the environment still wins.
 resolve_model_profile() {
   local profile="${1:-}" effort="${2:-}"
-  if [[ -z "$profile" ]] && can_prompt_with_gum; then
-    profile="$(gum choose --header "Model" "luna" "opus5")" || return 1
-    [[ -n "$effort" ]] || effort="$(gum choose --header "Thinking effort" "low" "medium" "high" "max")" || return 1
-  fi
   case "${profile,,}" in
-    ""|default|luna|gpt-5.6-luna)
+    ""|luna)
       PROFILE_MODEL="${COPILOT_DEFAULT_MODEL}"
       PROFILE_EFFORT="max"
       PROFILE_CONTEXT_LIMIT=""
       ;;
-    opus5|opus-5|opus|claude-opus-5)
+    opus5)
       PROFILE_MODEL="${OPUS_MODEL}"
       PROFILE_EFFORT="high"
       PROFILE_CONTEXT_LIMIT="${OPUS_CONTEXT_LIMIT}"
@@ -516,19 +455,12 @@ resolve_model_profile() {
   echo "✓ model ${GOOSE_MODEL}, thinking effort ${GOOSE_THINKING_EFFORT}, context ${GOOSE_CONTEXT_LIMIT:-provider default}."
   return 0
 }
-can_prompt_with_gum() {
-  command -v gum &>/dev/null || return 1
-  [[ "${REVIEW_TEST_GUM_TTY:-}" == "1" ]] && return 0
-  [[ -t 0 ]] && [[ -t 1 ]]
-}
 normalize_git_remote() {
   local value="$1"
   value="${value#ssh://}"
   value="${value%.git}"
   value="${value%/}"
   if [[ "$value" =~ ^git@github\.com:(.+)$ ]]; then
-    printf 'https://github.com/%s\n' "${BASH_REMATCH[1]}"
-  elif [[ "$value" =~ ^git@github\.com/(.+)$ ]]; then
     printf 'https://github.com/%s\n' "${BASH_REMATCH[1]}"
   else
     printf '%s\n' "$value"
@@ -618,22 +550,6 @@ read_hive_value() {
   local key="$1"
   awk -F= -v wanted="$key" '$1 == wanted {sub(/^[^=]*=/, ""); print; exit}' "$HIVE_CONTRIBUTOR_ENV"
 }
-ensure_vm_runner() {
-  command -v podman &>/dev/null || {
-    echo "ERROR: Podman is required to run the pinned QEMU VM runner." >&2
-    echo "  Install Podman, then re-run review." >&2
-    return 1
-  }
-  command -v python3 &>/dev/null || {
-    echo "ERROR: python3 is required to open the one-shot VM bootstrap channel." >&2
-    return 1
-  }
-  [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]] || {
-    echo "ERROR: /dev/kvm is unavailable or not usable by this user." >&2
-    echo "  Enable KVM access, then re-run review (see: review-doctor)." >&2
-    return 1
-  }
-}
 vm_host_arch() {
   case "$(uname -m)" in
     x86_64|amd64) printf 'x86_64\n' ;;
@@ -663,7 +579,7 @@ vm_firmware() {
   # while qemu's own bundled firmware uses edk2-<arch>-code.fd.
   local -a names=()
   case "$arch" in
-    x86_64)  names=(edk2-x86_64-code.fd OVMF_CODE.fd OVMF_CODE_4M.fd OVMF.fd) ;;
+    x86_64)  names=(edk2-x86_64-code.fd 'OVMF_CODE*.fd' OVMF.fd) ;;
     aarch64) names=(edk2-aarch64-code.fd AAVMF_CODE.fd QEMU_EFI.fd) ;;
     *) return 1 ;;
   esac
@@ -682,24 +598,20 @@ vm_firmware() {
 vm_firmware_vars() {
   # Split edk2/OVMF firmware is a pflash PAIR: a read-only CODE image plus a
   # writable VARS image. `-bios` cannot load these; they must be attached as
-  # pflash units 0 and 1. Given the CODE path, locate its VARS template.
-  # Note x86_64 uses the i386 vars image in QEMU's own firmware tree.
+  # pflash units 0 and 1. The VARS template sits beside the CODE image under
+  # the same name with CODE->VARS (so OVMF_CODE_4M.fd pairs with
+  # OVMF_VARS_4M.fd), except that edk2's own tree names its variable stores
+  # after the 32-bit architecture. A name with no CODE in it is a single-blob
+  # firmware and has no pair at all.
   local code="$1" dir base vars
   dir="$(dirname "$code")"
   base="$(basename "$code")"
-  case "$base" in
-    edk2-x86_64-code.fd|edk2-i386-code.fd|edk2-x86_64-secure-code.fd) vars="edk2-i386-vars.fd" ;;
-    edk2-aarch64-code.fd|edk2-arm-code.fd)                            vars="edk2-arm-vars.fd" ;;
-    OVMF_CODE.fd|OVMF_CODE_4M.fd)                                     vars="OVMF_VARS.fd" ;;
-    AAVMF_CODE.fd)                                                    vars="AAVMF_VARS.fd" ;;
-    *) return 1 ;;
-  esac
-  [[ -f "${dir}/${vars}" ]] && { printf '%s\n' "${dir}/${vars}"; return 0; }
-  # OVMF_CODE_4M.fd pairs with OVMF_VARS_4M.fd on some distributions.
-  [[ "$vars" == OVMF_VARS.fd && -f "${dir}/OVMF_VARS_4M.fd" ]] && {
-    printf '%s\n' "${dir}/OVMF_VARS_4M.fd"; return 0;
-  }
-  return 1
+  vars="${base/CODE/VARS}"
+  vars="${vars/code/vars}"
+  vars="${vars/edk2-x86_64/edk2-i386}"
+  vars="${vars/edk2-aarch64/edk2-arm}"
+  [[ "$vars" != "$base" && -f "${dir}/${vars}" ]] || return 1
+  printf '%s\n' "${dir}/${vars}"
 }
 vm_firmware_hint() {
   # brew is the one install path that works without layering or a reboot on an
@@ -718,6 +630,10 @@ ensure_vm_host() {
   }
   [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]] || {
     echo "ERROR: /dev/kvm is unavailable or not usable by this user." >&2
+    return 1
+  }
+  command -v python3 &>/dev/null || {
+    echo "ERROR: python3 is required to open the one-shot VM bootstrap channel." >&2
     return 1
   }
 }
@@ -749,19 +665,14 @@ cached_vm_raw() {
   return 1
 }
 cleanup_obsolete_vm_cache() {
-  local state_dir="$1" version="$2" arch="$3" current stale current_stale
+  # There is exactly one current raw path per architecture. Anything else
+  # under that architecture's cache name — an older release, a dead partial,
+  # a leftover sidecar — is obsolete by definition.
+  local state_dir="$1" version="$2" arch="$3" current stale
   current="$(vm_raw_cache_path "$state_dir" "$version" "$arch")"
   shopt -s nullglob
-  for stale in "$state_dir"/review-vm-*-${arch}.raw     "$state_dir"/review-vm-*-${arch}.raw.sha256     "$state_dir"/review-vm-*-${arch}.raw.zst     "$state_dir"/review-vm-*-${arch}.raw.partial     "$state_dir"/review-vm-*-${arch}.raw.zst.partial     "$state_dir"/review-vm-*-${arch}.raw.sha256.partial; do
-    case "$stale" in
-      *.raw) current_stale="$stale" ;;
-      *.raw.sha256) current_stale="${stale%.sha256}" ;;
-      *.raw.zst) current_stale="${stale%.zst}" ;;
-      *.raw.partial) current_stale="${stale%.partial}" ;;
-      *.raw.zst.partial) current_stale="${stale%.zst.partial}" ;;
-      *.raw.sha256.partial) current_stale="${stale%.sha256.partial}" ;;
-    esac
-    [[ "$current_stale" == "$current" ]] || rm -f "$stale"
+  for stale in "$state_dir"/review-vm-*-"${arch}".raw*; do
+    [[ "$stale" == "${current}"* ]] || rm -f "$stale"
   done
   shopt -u nullglob
 }
@@ -797,7 +708,7 @@ fetch_vm_raw() {
     rm -f "${zst}.partial"
     if [[ "$arch" == "aarch64" ]]; then
       echo "ERROR: the aarch64 VM raw asset is unavailable for release ${version}: ${url}" >&2
-      echo "  Use a published REVIEW_VM_RUNNER_IMAGE until that release asset exists." >&2
+      echo "  Use review-container until that release asset exists." >&2
     else
       echo "ERROR: VM release asset is not published yet: ${url}" >&2
     fi
@@ -872,12 +783,7 @@ review:
         report_missing_copilot_credential
       fi
     fi
-    resolve_gh_token
-    if [[ -n "${GH_TOKEN_VALUE:-}" ]]; then
-      report_vm_github_identity_blocked present
-    else
-      report_vm_github_identity_blocked absent
-    fi
+    report_vm_github_identity_blocked
 
     ensure_hive_contributor_env
 
@@ -892,8 +798,7 @@ review:
       echo "ERROR: could not secure the VM run directory." >&2
       exit 1
     }
-    BOOTSTRAP_SOCKET_NAME="bootstrap-${RUN_ID}.sock"
-    BOOTSTRAP_SOCKET="${RUN_DIR}/${BOOTSTRAP_SOCKET_NAME}"
+    BOOTSTRAP_SOCKET="${RUN_DIR}/bootstrap-${RUN_ID}.sock"
     BOOTSTRAP_PID=""
     cleanup_bootstrap() {
       if [[ -n "$BOOTSTRAP_PID" ]]; then
@@ -936,11 +841,11 @@ review:
     }
 
     VM_RAW="{{vm_raw_image}}"
-    if [[ -z "$VM_RAW" && -z "{{vm_runner_image}}" ]]; then
+    if [[ -z "$VM_RAW" ]]; then
       VM_ARCH="$(vm_host_arch)"
       VM_RAW="$(cached_vm_raw "$STATE_DIR" "{{vm_version}}" "$VM_ARCH" || true)"
     fi
-    if [[ -z "$VM_RAW" && -z "{{vm_runner_image}}" && "${REVIEW_TEST_SKIP_VM_FETCH:-}" != 1 ]]; then
+    if [[ -z "$VM_RAW" && "${REVIEW_TEST_SKIP_VM_FETCH:-}" != 1 ]]; then
       VM_RAW="$(fetch_vm_raw "$STATE_DIR" "{{vm_version}}")"
     fi
     if [[ -n "$VM_RAW" ]]; then
@@ -1001,42 +906,17 @@ review:
       set -e
       exit "$status"
     fi
-    [[ -n "{{vm_runner_image}}" ]] || {
-      echo "ERROR: review VM runner is not configured." >&2
-      echo "  Set REVIEW_VM_RUNNER_IMAGE to the signed immutable runner image reference." >&2
-      exit 1
-    }
-    ensure_vm_runner
-    require_no_running_instance review-vm
-    start_bootstrap_server
-    CONTAINER_ARGS=(
-      podman run --rm --interactive --tty --replace --name review-vm
-      --label "$(owner_run_label)"
-      --device /dev/kvm
-      --mount "type=bind,src=${RUN_DIR},dst=/run/review,rw"
-      --env "REVIEW_BOOTSTRAP_SOCKET=/run/review/${BOOTSTRAP_SOCKET_NAME}"
-      --env "REVIEW_RUN_ID=${RUN_ID}"
-      --env "REVIEW_VM=1"
-      --env "AGENT_BACKEND=goose"
-    )
-    [[ -n "$GOOSE_PROVIDER" ]] && CONTAINER_ARGS+=(--env "GOOSE_PROVIDER=${GOOSE_PROVIDER}")
-    [[ -n "$GOOSE_MODEL" ]] && CONTAINER_ARGS+=(--env "GOOSE_MODEL=${GOOSE_MODEL}")
-    [[ -n "${GOOSE_THINKING_EFFORT:-}" ]] && CONTAINER_ARGS+=(--env "GOOSE_THINKING_EFFORT=${GOOSE_THINKING_EFFORT}")
-    CONTAINER_ARGS+=("{{vm_runner_image}}")
-    echo "✓ review is running in the pinned QEMU VM runner."
-    echo "  Stop any time with Ctrl-C — that is the only way it ends."
-    set +e
-    "${CONTAINER_ARGS[@]}"
-    status=$?
-    set -e
-    exit "$status"
+    echo "ERROR: no review VM disk is available for this host." >&2
+    echo "  Re-run review to fetch release {{vm_version}}, or point REVIEW_VM_RAW at a" >&2
+    echo "  verified raw disk with its .sha256 sidecar beside it." >&2
+    exit 1
 
 # Run ONLY the contributor container — no VM — for quick local development.
 # Same preflight and same provider/model selection as the VM path, minus the
 # hardware isolation, so it is the fast loop while hacking on the image.
 #
-#   just review-container              # gum picker, or luna/max when headless
-#   just review-container luna         # gpt-5.6-luna at max effort (default)
+#   just review-container              # luna: gpt-5.6-luna at max effort
+#   just review-container luna         # the same, named explicitly
 #   just review-container opus5 high   # claude-opus-5, high effort, 264k context
 #
 # One instance owns the 'review-container' name, so a second concurrent agent
@@ -1186,15 +1066,6 @@ review-doctor:
         echo "    Supply {{vm_raw_image}} and {{vm_raw_image}}.sha256, or unset REVIEW_VM_RAW."
         fail=$((fail+1))
       fi
-    elif [[ -n "{{vm_runner_image}}" ]]; then
-      if contributor_image_available "{{vm_runner_image}}"; then
-        echo "  ✓ configured VM runner image is resolvable: {{vm_runner_image}}"
-        pass=$((pass+1))
-      else
-        echo "  ✗ configured VM runner image cannot be resolved: {{vm_runner_image}}"
-        echo "    Publish or correct REVIEW_VM_RUNNER_IMAGE."
-        fail=$((fail+1))
-      fi
     elif [[ -n "$VM_ARCH" ]]; then
       check "qemu-system-${VM_ARCH} installed" command -v "qemu-system-${VM_ARCH}"
       check "qemu-img installed (disposable VM overlays)" command -v qemu-img
@@ -1214,11 +1085,11 @@ review-doctor:
         pass=$((pass+1))
       elif [[ "$VM_ARCH" == "aarch64" ]]; then
         echo "  ✗ aarch64 VM release artifact is unavailable: ${VM_RELEASE_URL}"
-        echo "    Configure a published REVIEW_VM_RUNNER_IMAGE until the aarch64 raw asset is released."
+        echo "    Use review-container until the aarch64 raw asset is released."
         fail=$((fail+1))
       else
         echo "  ✗ VM release artifact is unavailable: ${VM_RELEASE_URL}"
-        echo "    Check REVIEW_VM_VERSION or configure REVIEW_VM_RUNNER_IMAGE."
+        echo "    Check REVIEW_VM_VERSION, or point REVIEW_VM_RAW at a verified raw disk."
         fail=$((fail+1))
       fi
     fi
@@ -1246,25 +1117,23 @@ review-doctor:
       echo "    For container-only mode, run: ${GITHUB_LOGIN_COMMAND}, or export REVIEW_GH_TOKEN."
       fail=$((fail+1))
     fi
-    echo "  ! VM GitHub identity is blocked: the current guest cannot receive GH_TOKEN."
-    echo "    Required before VM mode can fork, push, or open PRs: a guest that maps a compatible bootstrap identity field."
-    echo "    A host gh login or REVIEW_GH_TOKEN cannot satisfy this VM prerequisite."
+    report_vm_github_identity_blocked
     unset GH_TOKEN_VALUE
     echo ""
 
     echo "=== Agent backend (Goose only) ==="
     if ! require_copilot_provider; then
       fail=$((fail+1))
-    elif tool_installed goose; then
-      if tool_authenticated goose; then
+    elif command -v goose &>/dev/null; then
+      if goose_configured; then
         echo "  ✓ goose: installed + configured"
         pass=$((pass+1))
       else
-        echo "  ✗ goose: installed, NOT configured — $(tool_fixit_hint goose)"
+        echo "  ✗ goose: installed, NOT configured — ${GOOSE_FIXIT_HINT}"
         fail=$((fail+1))
       fi
     else
-      echo "  ✗ goose: not installed — $(tool_install_hint goose)"
+      echo "  ✗ goose: not installed — ${GOOSE_INSTALL_HINT}"
       fail=$((fail+1))
     fi
     echo ""

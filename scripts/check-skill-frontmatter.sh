@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Validate docs/skills/*.md front-matter and keep docs/skills/index.json in
-# sync with it.
+# sync with it. This is the single skill-catalog check: front-matter field
+# validation, schema conformance of index.json, and bidirectional coverage
+# between docs/skills/*.md and the manifest all live here.
 #
 # Modelled on projectbluefin/common's scripts/check-skill-frontmatter.sh, with
-# two differences: this repo has no grandfathered oversized skills, and it also
+# two differences: every skill in this repo is held to the size limits below
+# with no standing exceptions, and it also
 # validates the generated index.json manifest against the source files.
 #
 # Deliberately python3-only: `yq` is not guaranteed on contributor machines or
@@ -21,6 +24,7 @@ import sys
 
 SKILL_DIR = "docs/skills"
 INDEX = os.path.join(SKILL_DIR, "index.json")
+INDEX_MD = os.path.join(SKILL_DIR, "index.md")
 SCHEMA = os.path.join(SKILL_DIR, "index.schema.json")
 
 MAX_DESC = 256
@@ -262,6 +266,9 @@ def main():
     if not os.path.isdir(SKILL_DIR):
         print("::error file=%s::skill directory is missing" % SKILL_DIR)
         return 1
+
+    if not os.path.exists(INDEX_MD):
+        error(INDEX_MD, "skill router is missing")
 
     paths = sorted(
         os.path.join(SKILL_DIR, name)

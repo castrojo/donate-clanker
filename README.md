@@ -111,27 +111,6 @@ this repository does not own. Do not attempt to fix it by mounting GitHub
 configuration or adding an unconsumed bootstrap field, and do not filter or
 decline assignments — Hive is the sole authority for task selection.
 
-## Bluefin Ops Control Panel
-
-`mcp-app/` is an optional, read-only Goose Desktop MCP App. It observes Hive
-and GitHub evidence in a single Tactical Ledger view; it does not replace the
-launcher, select work, control Hive, read tmux, persist data, or poll.
-
-Build it, then register `node mcp-app/dist/server.js` as a stdio MCP server in
-Goose Desktop:
-
-```bash
-npm --prefix mcp-app install
-npm --prefix mcp-app run build
-```
-
-The app fetches one evidence snapshot when opened and only fetches again when
-the user activates **Refresh all evidence**. Its server uses
-`REVIEW_GH_TOKEN`, then `GH_TOKEN`, for GitHub API reads when
-available; it never uses or displays a Copilot credential. See
-[`mcp-app/README.md`](mcp-app/README.md) for Hive endpoint configuration and
-Goose resource details.
-
 ## Public PR queue
 
 The generated public PR queue is a small, static review backlog:
@@ -179,9 +158,8 @@ and a thinking effort:
 | `just review-container luna` | `gpt-5.6-luna` | `max` | provider default |
 | `just review-container opus5 high` | `claude-opus-5` | `high` | `264000` |
 
-Run it with no arguments in a terminal and `gum` picks both interactively;
-without a terminal, or without `gum` installed, it launches the default
-profile. Efforts are `low`, `medium`, `high`, and `max`. Contributor runs are
+Run it with no arguments and it launches the default profile.
+Efforts are `low`, `medium`, `high`, and `max`. Contributor runs are
 automated once Hive starts feeding them work, so `opus5` clamps
 `GOOSE_CONTEXT_LIMIT` rather than paying for a window nobody reads.
 `GOOSE_MODEL`, `GOOSE_THINKING_EFFORT`, and `GOOSE_CONTEXT_LIMIT` from the
@@ -240,7 +218,6 @@ All configuration is read at launch.
 | Variable | Purpose |
 |---|---|
 | `REVIEW_VM_RAW` | Verified local raw disk; its `.sha256` sidecar is required. |
-| `REVIEW_VM_RUNNER_IMAGE` | Immutable QEMU runner image used when no raw disk is selected. |
 | `REVIEW_VM_VERSION` | Raw-release version used when neither VM override is set. |
 | `REVIEW_CONTRIBUTOR_IMAGE` | Contributor image; defaults to `ghcr.io/projectbluefin/review:stable`. |
 | `REVIEW_HIVE_COMMIT` | Full Hive commit used for contributor setup. |
@@ -271,8 +248,8 @@ contributor GitHub token and runs unprivileged inside a disposable container,
 so its blast radius is that container plus whatever that token can reach.
 Prefer a `REVIEW_GH_TOKEN` limited to `public_repo` or `repo`.
 
-VM selection prefers an explicit raw disk, then a configured runner image,
-then an exact version-and-architecture raw release. Raw images are checksum
+VM selection prefers an explicit raw disk, then an exact
+version-and-architecture raw release. Raw images are checksum
 verified, boot through disposable overlays, and cached by version and
 architecture. Once the requested raw image is verified, older caches for that
 architecture are removed.
@@ -336,12 +313,14 @@ The image supplies `xterm-256color` and `tmux-256color` terminfo definitions.
 It preserves a recognized terminal type when attaching tmux and falls back to
 `xterm-256color` only when that type is unavailable in the image.
 
-The FSDK base ships no findutils or diffutils, so the image supplies its own
-`find` and `cmp -s`. They cover what Hive's relay and ordinary repository
-exploration need — `find` implements `-maxdepth`, `-type`, `-name`, `-path`,
-`-user`, `-mmin`, `-newer`, `-not`, GNU `-a`/`-o` precedence and `-exec ... +`
-— and exit non-zero on anything else rather than returning a wrong answer.
-`tests/find-semantics.sh` pins that behavior. There is no `diff`.
+The pinned FSDK base ships GNU findutils 4.10.0 and diffutils 3.12, so the
+image uses those directly. It previously installed Python `find` and `cmp`
+shims into `/usr/local/bin`, which precedes `/usr/sbin` on `PATH` and so
+shadowed the real tools; the `find` shim also got `-o` precedence wrong and
+deleted `*.out` of any age where GNU `find` deleted only old `*.html`,
+destroying fresh agent output. Both shims are gone. Use the tools the image
+ships; if one is missing, fix it at the FSDK seam rather than reimplementing
+it here.
 
 Context7 is Hive's, not this image's. The hub queries Context7 server-side and
 delivers the result through its knowledge export, so the image never
@@ -387,7 +366,6 @@ bash scripts/check-skill-frontmatter.sh
 bash tests/generate-skills.sh
 bash tests/image-contract.sh
 bash tests/hive-compatibility.sh
-bash tests/find-semantics.sh
 bash tests/bluefin-review.sh
 bash tests/just-onboarding.sh
 git diff --check

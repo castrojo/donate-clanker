@@ -127,7 +127,6 @@ require image/Containerfile \
   'RUN --mount=type=secret,id=github_token' \
   'GH_TOKEN="$(cat /run/secrets/github_token)"' \
   'gh attestation verify "$workdir/goose.tar.gz" --repo aaif-goose/goose --signer-workflow aaif-goose/goose/.github/workflows/canary.yml' \
-  'tf.extractall(root, filter="data")' \
   'COPY package.json package-lock.json /opt/hive/' \
   'npm --prefix /opt/hive ci --omit=dev --ignore-scripts;' \
   'npm cache clean --force;' \
@@ -143,9 +142,11 @@ require image/Containerfile \
   'image/config/goose.yaml /opt/bluefin/goose/config/config.yaml' \
   'COPY --chmod=0755 image/git-hooks/ /opt/bluefin/git-hooks/' \
   'COPY --chmod=0755 image/hive-entrypoint.d/ /etc/hive/entrypoint.d/' \
-  'COPY --chmod=0755 image/bin/cmp /usr/local/bin/cmp' \
-  'COPY --chmod=0755 image/bin/find /usr/local/bin/find' \
   'COPY --chmod=0755 image/bin/bluefin-review /usr/local/bin/bluefin-review' \
+  'tar --no-same-owner -xf "$workdir/node.tar.xz" -C /opt/node --strip-components=1;' \
+  'tar -I '\''python3 -m gzip'\'' -xOf "$workdir/gh.tar.gz" --wildcards --occurrence=1 '\''*/bin/gh'\'' > /usr/local/bin/gh;' \
+  'tar -I '\''python3 -m gzip'\'' -xOf "$workdir/tmux.tar.gz" --occurrence=1 tmux > /usr/local/bin/tmux;' \
+  'tar -I '\''python3 -m gzip'\'' -xOf "$workdir/goose.tar.gz" --occurrence=1 ./goose > /usr/local/bin/goose;' \
   'COPY image/tmux.conf /etc/tmux.conf' \
   'image/terminfo/xterm-256color.src /tmp/xterm-256color.src' \
   'tic -x -o /usr/share/terminfo /tmp/xterm-256color.src' \
@@ -161,6 +162,76 @@ require image/Containerfile \
   'USER dev' \
   'WORKDIR /home/dev' \
   'ENTRYPOINT ["/usr/local/bin/review-entrypoint"]'
+
+# The FSDK base ships GNU findutils and diffutils, so review must not shim
+# them. Shims are how this regressed once already: the Python `find` bound `-o`
+# more loosely than GNU does, so Hive's relay expression handed `-exec rm` a
+# path real find leaves alone. Assert the shims stay gone, that neither tool
+# may be shadowed from /usr/local/bin, and that the build still proves both
+# verbatim Hive invocations against whatever the base provides.
+# SC2016: every argument here is a literal to grep for, never an expansion.
+# shellcheck disable=SC2016
+require image/Containerfile \
+  "case \"\$(command -v find)\" in /usr/local/bin/*)" \
+  "case \"\$(command -v cmp)\" in /usr/local/bin/*)" \
+  "find \"\$probe\" -maxdepth 1 -type d -user dev -not -name 'tmux-*' -not -name 'claude-*' -not -name 'node-*' -not -name '.' -mmin +60 -exec rm -rf {} +" \
+  "find \"\$probe\" -maxdepth 1 -type f -user dev -name '*.out' -o -name '*.html' -mmin +60 -exec rm -f {} +" \
+  "find \"\$probe\" -maxdepth 1 -type f -name 'c.txt' -exec rm -f {} +" \
+  "cmp -s \"\$probe/cmp-left\" \"\$probe/cmp-right\"" \
+  '! cmp -s "$probe/cmp-left" "$probe/cmp-right"'
+
+# The probe uses `-user dev`, exactly as Hive's relay does, so it must come
+# after the layer that creates that user or the predicate cannot resolve.
+probe_user_layer="$(grep -n 'dev:x:1000:1000:Developer:' image/Containerfile | head -n 1 | cut -d: -f1)"
+probe_layer="$(grep -n -- '-type d -user dev -not -name' image/Containerfile | head -n 1 | cut -d: -f1)"
+if [[ -z "$probe_user_layer" || -z "$probe_layer" || "$probe_layer" -lt "$probe_user_layer" ]]; then
+  echo "::error file=image/Containerfile::the find/cmp probe must run after the dev user is created"
+  fail=1
+fi
+
+# The four release archives are unpacked by the base's own GNU tar, not by
+# hand-rolled Python. `python3 -c` is how all four previously reimplemented
+# member selection; `python3 -m gzip` is the stdlib decompressor CLI standing
+# in for the gzip binary the FSDK base does not ship, and is not the same
+# thing. Guard the reimplementation, allow the codec.
+# shellcheck disable=SC2016
+forbid image/Containerfile 'python3 -c'
+for extractor in image/bin/extract-archive image/bin/find image/bin/cmp; do
+  if [[ -e "$extractor" ]]; then
+    echo "::error file=${extractor}::use the base's tar/find/cmp, not a hand-rolled reimplementation"
+    fail=1
+  fi
+done
+
+# Every archive's checksum must still be verified before it is extracted.
+if ! python3 - <<'PY'; then
+from pathlib import Path
+
+container = Path("image/Containerfile").read_text()
+errors = []
+for name, archive in (
+    ("node", "node.tar.xz"),
+    ("gh", "gh.tar.gz"),
+    ("tmux", "tmux.tar.gz"),
+    ("goose", "goose.tar.gz"),
+):
+    verify = container.find(f'"$workdir/{archive}" | sha256sum -c -')
+    extract = container.find(f'"$workdir/{archive}" -C')
+    if extract < 0:
+        extract = container.find(f'-xOf "$workdir/{archive}"')
+    if verify < 0:
+        errors.append(f"{name}: no sha256sum verification of {archive}")
+    elif extract < 0:
+        errors.append(f"{name}: no tar extraction of {archive}")
+    elif verify > extract:
+        errors.append(f"{name}: {archive} is extracted before its checksum is verified")
+
+for error in errors:
+    print(f"::error file=image/Containerfile::{error}")
+raise SystemExit(bool(errors))
+PY
+  fail=1
+fi
 
 require .dockerignore \
   '!package.json' \

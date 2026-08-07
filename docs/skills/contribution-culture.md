@@ -1,6 +1,6 @@
 ---
 name: contribution-culture
-version: "1.2"
+version: "1.3"
 last_updated: 2026-08-07
 id: contribution-culture
 one_line_purpose: Do maintainer toil in small changes, never feature development.
@@ -77,6 +77,41 @@ written finding that says so, with the evidence — not a speculative
 implementation. This is not task selection: Hive still assigns the work, and
 the report is the completed work.
 
+## No Grandfathering
+
+Grandfathering is an antipattern in this project. Do not mark a known-wrong
+thing as an accepted exception and move on: fix it now, or delete it.
+
+An exception clause in a policy document is itself a defect. It outlives the
+condition that created it, and it silently converts "this is wrong" into "this
+is allowed." The words to refuse are *grandfathered*, *sanctioned*, *legacy
+exception*, *pre-existing*, *for now*, and *temporarily*. If the exception is
+worth writing down, the fix is worth doing instead.
+
+The worked example is local. This repository shipped Python `find` and `cmp`
+shims that a document described as grandfathered. That one word kept 214 lines
+alive after the pinned base gained GNU findutils 4.10.0 and diffutils 3.12.
+The shims installed to `/usr/local/bin`, which precedes `/usr/sbin` on `PATH`,
+so they shadowed the real GNU tools rather than filling a gap. And the shim was
+wrong: it bound `-o` more loosely than GNU, so Hive's prune expression
+`-name '*.out' -o -name '*.html' -mmin +60 -exec rm -f {} +` deleted
+freshly-written `*.out` agent output that GNU `find` leaves untouched —
+measured directly, GNU removed `c.html` while the shim removed `a.out`,
+`c.html`, and `d.out`, and `a.out` was seconds old. That is live data loss,
+protected by the word "grandfathered."
+
+The real lesson is the test. `tests/find-semantics.sh` pinned the shim's wrong
+behavior as expected, so correcting the bug would have failed CI. **A test that
+locks in an exception is how the exception becomes permanent.** When an
+exception is granted, its test stops being a safety net and becomes the thing
+defending the defect. Check what a failing test is actually protecting before
+assuming it is protecting you.
+
+The positive rule: use the tools already in the image. If a common tool is
+missing, add it at the FSDK seam so every consumer is fixed at once. Never
+hand-roll a local reimplementation of standard userland, and never leave a
+shim standing once the seam fix lands.
+
 ## Sizing A Change
 
 1. One logical change per pull request. Prefer the change a maintainer can
@@ -118,6 +153,7 @@ the report is the completed work.
 | "The project has no tests, so I cannot verify." | Then say that, and verify what can be verified. Silence reads as verification that never happened. |
 | "This feature obviously belongs here." | Feature direction is the maintainer's to set. Propose it as an issue if the task calls for it; do not implement it. |
 | "This document's tone contradicts the culture." | Voice is not policy. Rewriting a project's register is unrequested scope expansion; read the rules, not the jokes. |
+| "It is a known issue, so the exception is documented." | A documented exception is a defect with paperwork. Fix it or delete it. |
 
 ## Red Flags
 
@@ -130,6 +166,8 @@ the report is the completed work.
 - Responding to maintainer feedback with a defense instead of a change or a
   withdrawal.
 - Treating documentation, triage, or test work as lower-value than code.
+- Any standing exception: "grandfathered", "sanctioned", "legacy", "for now".
+- A test that asserts known-wrong behavior is correct.
 
 ## Verification
 

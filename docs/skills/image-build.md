@@ -39,6 +39,34 @@ Builds run on the ghost cluster's BuildBarn remote-execution grid per
 degraded-mode opt-out that must be announced when used and is not acceptable
 as a permanent workaround.
 
+## Known Base Gap: gzip
+
+**`lab-runner` 25.08 does not ship `gzip`, and this is a gap to close
+upstream, not a local decision to defend.** Verified by execution against the
+pinned digest: `tar`, `xz`, `zstd` and `bzip2` are all present; `gzip` is not.
+GNU tar has no built-in inflate — it execs the `gzip` binary — so on a
+`.tar.gz` both `tar -xzf` *and* auto-detecting `tar -xf` fail outright:
+
+```
+tar (child): gzip: Cannot exec: No such file or directory
+tar: Child returned status 2
+```
+
+Nothing else present covers it: `xz -d` refuses gzip and `zstd` is built
+without zlib support (`--format=gzip` → "Incorrect parameter"). `.tar.xz`
+extracts normally, so this is specific to gzip.
+
+`gh`, `tmux` and `goose` all publish `.tar.gz`, so the image must decompress
+gzip. This is exactly the gap that let hand-rolled Python persist for years:
+Python links zlib directly, so a `tarfile` one-liner silently worked where the
+base could not, and the missing component was never reported. **Add `gzip` at
+the BST seam.** When it lands, the correct form is plain `tar -xzf` and the
+`-I` filter below is deleted. Until then `tar -I 'python3 -m gzip'` supplies
+that one codec while GNU tar keeps every archive semantic — recorded here as
+an open upstream gap, tracked to closure, not a settled local answer.
+
+`unzip` and `rsync` are absent too; nothing in this image needs them today.
+
 ## Core Process
 1. Derive from the FSDK lab-runner base pinned by a tagged digest
    (`name:tag@sha256:`). The digest is the security property; the tag is what
@@ -55,17 +83,44 @@ as a permanent workaround.
    tools. Do not duplicate a capability already present in the verified base.
    Do not turn the image into a general-purpose distribution.
 4. Preserve canonical command semantics. Never shadow `grep`, `find`, `cat`, or
-   `ls` with modern alternatives. If a modern tool is added, install it under
-   its own native name (e.g. `rg`) beside the canonical command, never as a
-   replacement; none is installed today.
-5. Missing standard runtime utilities belong at the FSDK seam, and going there
-   works: `lab-runner` once shipped coreutils alone, so `which`, `xargs`, `ps`,
+   `ls` — with a modern alternative or with a hand-written one. If a modern
+   tool is added, install it under its own native name (e.g. `rg`) beside the
+   canonical command, never as a replacement; none is installed today.
+5. The rule, without exceptions: **use the tools already in the image; if a
+   common tool is missing, add it at the FSDK seam; never hand-roll a
+   reimplementation; and never leave a shim standing once the seam fix
+   lands.** There is no standing exception to this and no wording that creates
+   one. Missing standard runtime utilities belong at the FSDK seam, and going
+   there works: `lab-runner` once shipped coreutils alone, so `which`, `xargs`, `ps`,
    `awk`, `tar`, `diff` and `patch` exited 127 in live runs until the
    components were added upstream, fixing every consumer at once. Never answer
-   a missing utility with a shim here. The two that exist are grandfathered and
-   must satisfy every caller: Hive's relay prunes `/tmp` with `-maxdepth`,
-   `-type`, `-user`, `-not`, `-name`, `-mmin` and `-exec ... +`, so a shim
-   rejecting those fails invisibly. `tests/find-semantics.sh` pins them.
+   a missing utility with a shim here — **and a shim left standing after the
+   seam fix lands is worse than the original gap.** review's Python `find` and
+   `cmp` shims outlived the base gaining GNU findutils 4.10.0 and diffutils
+   3.12. Because PATH is
+   `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` and the shims
+   installed to `/usr/local/bin`, they *shadowed* the real tools in `/usr/sbin`
+   rather than filling a gap — the install location that makes a shim work is
+   the same one that hides the fix. `find` was also wrong, and
+   destructively so. In Hive's real prune, `find /tmp -maxdepth 1 -type f
+   -user dev -name '*.out' -o -name '*.html' -mmin +60 -exec rm -f {} +`, GNU
+   binds the action into the second `-o` group and deletes only `*.html` older
+   than 60 minutes; the shim applied the action across both OR-groups and so
+   also deleted every `*.out` regardless of age. Measured on one tree (`a.out`
+   seconds old, `c.html` and `d.out` three hours old): GNU removed `c.html`,
+   the shim removed `a.out`, `c.html` and `d.out`. That ran every ten minutes
+   against `/tmp` with stderr discarded, silently destroying fresh agent task
+   output each cycle, so deleting it is a data-loss fix. **Recheck the base
+   before assuming a gap, and check PATH order before assuming a shim is
+   inert.**
+   The build asserts the seam instead, which is stronger than a test that only
+   ever read the shim files: `image/Containerfile` runs both verbatim Hive
+   invocations as the `dev` user in a layer after that user exists, and rejects
+   a `find` or `cmp` resolving from `/usr/local/bin`; `tests/image-contract.sh`
+   pins that layer, its ordering, and the shims' absence; and
+   `tests/image-audit.sh` checks provenance in the built runtime.
+   `tests/find-semantics.sh` is deleted -- the shim it read no longer exists,
+   and the build is now the gate.
 6. Pin Node, GitHub CLI, and tmux versions and verify their checksums. For
    mutable Goose `canary`, CI resolves official `unknown-linux-musl` asset
    digests before each build, passes them as build inputs, and records them in
@@ -75,7 +130,16 @@ as a permanent workaround.
    changing an image. Extract safely; never compile, strip, repack, or fork
    Goose; preserve glibc loader links for dynamic Node and GitHub CLI. Lock
    `ws` in root `package-lock.json` with `npm ci --omit=dev --ignore-scripts`;
-   keep fixed Node/gh/tmux/ws ahead of mutable Goose. Remove only Node headers
+   keep fixed Node/gh/tmux/ws ahead of mutable Goose. Unpack with the base's
+   own GNU tar, never a hand-rolled extractor — `tar -xO ... --occurrence=1`
+   for a single binary, `--strip-components=1` for Node's versioned tree — and
+   keep each `sha256sum -c -` ahead of its extraction. A missing member then
+   fails the build with `Not found in archive` rather than writing an empty
+   binary. **`gzip` is absent from the base and GNU tar has no built-in
+   inflate**, so `tar -xzf` *and* auto-detecting `tar -xf` both fail on a
+   `.tar.gz` with `gzip: Cannot exec`; `xz` and `zstd` refuse gzip too. Until
+   gzip is added at the FSDK seam, `tar -I 'python3 -m gzip'` supplies only
+   that codec while tar keeps every archive semantic. Remove only Node headers
    and verified-unused npm cache; retain `node`, `npm`, and `corepack`.
 7. Place controlled Goose configuration under `/opt/bluefin/goose` as the
    image-owned policy, data, and state seam. Revalidate compatibility settings
@@ -182,10 +246,10 @@ way to know which an agent ran.
 **Ordinary userland is forbidden nowhere.** `find`, `cmp`, `diff`, `rg`, `fd`,
 `yq` and ShellCheck belong in the base when a contributor needs them; their
 absence is what made live agents fail with `command not found`. Add them at
-the BST seam, never here. `find` and `cmp` are the exception: review ships
-shims Hive's relay depends on, so the audit asserts each resolves under
-`/usr/local/bin` rather than forbidding the base copy, which would fail a
-correct change and still miss a PATH regression.
+the BST seam, never here. For `find` and `cmp` the audit checks provenance
+rather than presence: Hive's relay calls both directly, the base carries real
+GNU implementations, and the audit fails if either resolves under
+`/usr/local/bin` — the shape a reintroduced shim would take.
 
 ## Red Flags
 
@@ -201,6 +265,8 @@ correct change and still miss a PATH regression.
   or unrelated runtime package.
 - A custom compile, repacked bundle, package manager, command shadow, or copied
   cross-distribution closure.
+- A local reimplementation of a standard utility, or a shim surviving a gap the
+  FSDK base has since closed.
 
 ## Verification
 
@@ -218,8 +284,9 @@ bash tests/image-audit.sh --derived review:dev
 git diff --check
 ```
 
-Run `tests/find-semantics.sh` against the shim installed in the image; that
-copy, not the checkout's, is what Hive's relay calls.
+The `find` and `cmp` Hive's relay calls come from the FSDK base, so there is
+nothing in the checkout to test: `image/Containerfile` proves them at build
+time against the real base and the build fails if either regresses.
 ## Sources
 - Hive `v2`: `bin/contributor-agent.sh`, `bin/contributor-relay.sh`,
   `config/backends.conf`; Goose `canary` assets; Context7 `/npm/cli`,

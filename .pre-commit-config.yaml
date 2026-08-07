@@ -48,17 +48,13 @@ repos:
   - repo: https://github.com/scop/pre-commit-shfmt
     rev: v3.13.1-1 # shfmt v3.13.1
     hooks:
-      # image/ scripts are tab-indented (`-i 0`); shfmt infers sh vs bash from
-      # each file's shebang, so #!/bin/sh and #!/bin/bash both stay correct.
+      # One indent convention for every shell script in the repository:
+      # two spaces. shfmt infers sh vs bash from each file's shebang, so
+      # #!/bin/sh and #!/bin/bash both stay correct.
       - id: shfmt
-        name: shfmt (tabs, image/)
-        args: [--write, --indent=0]
-        files: ^image/.*\.sh$
-      # scripts/ and tests/ are two-space indented.
-      - id: shfmt
-        name: shfmt (2 spaces, scripts/ tests/)
+        name: shfmt (2 spaces)
         args: [--write, --indent=2]
-        files: ^(scripts|tests)/.*\.sh$
+        files: ^(image|scripts|tests)/.*\.sh$
 
   # ---------------------------------------------------------------- secrets
   # This repo handles GitHub tokens and Hive registration tokens.
@@ -97,12 +93,6 @@ repos:
         name: skill front-matter and index.json agree
         language: system
         entry: bash scripts/check-skill-frontmatter.sh
-        files: ^docs/skills/
-        pass_filenames: false
-      - id: skill-conformance
-        name: skill catalog matches its schema and files
-        language: system
-        entry: bash tests/skill-conformance.sh
         files: ^docs/skills/
         pass_filenames: false
       - id: generate-skills

@@ -42,6 +42,26 @@ ENV HIVE_CONTRIBUTOR_MODE=true
 # FSDK's shell-enabled base keeps the runtime lean but does not ship the whole
 # contributor stack. Keep the pinned Node, GitHub CLI, tmux, and relay module
 # together so a mutable Goose refresh reuses this fixed-tool layer.
+#
+# Every archive is checksum-verified with sha256sum BEFORE it is opened, and
+# unpacked by the base's own GNU tar 1.35 -- not by a hand-rolled extractor.
+#
+# The `-I` filter is an FSDK gap, not a preference: this base ships tar, xz,
+# zstd and bzip2 but NOT gzip, and GNU tar has no built-in inflate -- it execs
+# the gzip binary. So `tar -xzf` and even auto-detecting `tar -xf` both fail on
+# a .tar.gz with "gzip: Cannot exec". No other decompressor present handles
+# gzip (xz and zstd both refuse it). `python3 -m gzip` is the stdlib's own
+# decompressor CLI used purely as that codec -- every tar semantic stays in
+# tar. The real fix is adding gzip to the FSDK base; when it lands, delete the
+# `-I` filter and nothing else changes.
+#
+# The Python extractor these replaced passed tarfile's `filter="data"` to block
+# path traversal and tar bombs. GNU tar covers that here: without
+# `-P`/`--absolute-names` it strips leading `/` and refuses any member
+# containing `..`, and the single-file extracts never touch the filesystem at
+# all -- `-xO` writes one member to stdout, so the archive cannot choose its
+# own destination. Each archive is sha256-pinned above, so its exact bytes are
+# known before tar sees them.
 COPY package.json package-lock.json /opt/hive/
 RUN set -eu; \
     arch="$(uname -m)"; \
@@ -77,17 +97,21 @@ RUN set -eu; \
       "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${node_arch}.tar.xz" \
       -o "$workdir/node.tar.xz"; \
     printf '%s  %s\n' "$node_sha" "$workdir/node.tar.xz" | sha256sum -c -; \
-    python3 -c 'import pathlib, shutil, sys, tarfile; archive = pathlib.Path(sys.argv[1]); root = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:xz"); tf.extractall(root, filter="data"); tf.close(); node_dir = next(p for p in root.iterdir() if p.name.startswith("node-v") and p.is_dir()); target = root / "node"; target.exists() and shutil.rmtree(target); node_dir.rename(target)' "$workdir/node.tar.xz" /opt; \
+    rm -rf /opt/node; \
+    mkdir -p /opt/node; \
+    tar --no-same-owner -xf "$workdir/node.tar.xz" -C /opt/node --strip-components=1; \
     curl --fail --location --show-error --silent \
       "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${gh_arch}.tar.gz" \
       -o "$workdir/gh.tar.gz"; \
     printf '%s  %s\n' "$gh_sha" "$workdir/gh.tar.gz" | sha256sum -c -; \
-    python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.endswith("/bin/gh")); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/gh.tar.gz" /usr/local/bin/gh; \
+    tar -I 'python3 -m gzip' -xOf "$workdir/gh.tar.gz" --wildcards --occurrence=1 '*/bin/gh' > /usr/local/bin/gh; \
+    chmod 0755 /usr/local/bin/gh; \
     curl --fail --location --show-error --silent \
       "https://github.com/tmux/tmux-builds/releases/download/v${TMUX_VERSION}/tmux-${TMUX_VERSION}-linux-${tmux_arch}.tar.gz" \
       -o "$workdir/tmux.tar.gz"; \
     printf '%s  %s\n' "$tmux_sha" "$workdir/tmux.tar.gz" | sha256sum -c -; \
-    python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.rsplit("/", 1)[-1] == "tmux"); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/tmux.tar.gz" /usr/local/bin/tmux; \
+    tar -I 'python3 -m gzip' -xOf "$workdir/tmux.tar.gz" --occurrence=1 tmux > /usr/local/bin/tmux; \
+    chmod 0755 /usr/local/bin/tmux; \
     npm --prefix /opt/hive ci --omit=dev --ignore-scripts; \
     npm_cache="$(npm config get cache)"; \
     npm cache clean --force; \
@@ -135,23 +159,12 @@ RUN --mount=type=secret,id=github_token set -eu; \
       -o "$workdir/goose.tar.gz"; \
     printf '%s  %s\n' "$goose_sha" "$workdir/goose.tar.gz" | sha256sum -c -; \
     gh attestation verify "$workdir/goose.tar.gz" --repo aaif-goose/goose --signer-workflow aaif-goose/goose/.github/workflows/canary.yml; \
-    python3 -c 'import pathlib, sys, tarfile; archive = pathlib.Path(sys.argv[1]); target = pathlib.Path(sys.argv[2]); tf = tarfile.open(archive, mode="r:gz"); member = next(m for m in tf.getmembers() if m.isfile() and m.name.rsplit("/", 1)[-1] == "goose"); src = tf.extractfile(member); target.write_bytes(src.read()); src.close(); tf.close(); target.chmod(0o755)' "$workdir/goose.tar.gz" /usr/local/bin/goose; \
+    tar -I 'python3 -m gzip' -xOf "$workdir/goose.tar.gz" --occurrence=1 ./goose > /usr/local/bin/goose; \
+    chmod 0755 /usr/local/bin/goose; \
     /usr/local/bin/goose --version; \
     /usr/local/bin/goose run --help >/dev/null
 
-# Hive's ten-minute knowledge refresh uses `cmp -s`, but the lean FSDK base
-# omits diffutils. Supply that one required comparison operation using Python,
-# which the base already provides for our archive extraction.
-COPY --chmod=0755 image/bin/cmp /usr/local/bin/cmp
-COPY --chmod=0755 image/bin/find /usr/local/bin/find
 COPY --chmod=0755 image/bin/bluefin-review /usr/local/bin/bluefin-review
-RUN set -eu; \
-    printf 'same\n' > /tmp/cmp-left; \
-    cp /tmp/cmp-left /tmp/cmp-right; \
-    cmp -s /tmp/cmp-left /tmp/cmp-right; \
-    printf 'different\n' > /tmp/cmp-right; \
-    ! cmp -s /tmp/cmp-left /tmp/cmp-right; \
-    rm /tmp/cmp-left /tmp/cmp-right
 
 # FSDK intentionally omits terminfo. Supply the terminal descriptions used by
 # the attach client and tmux panes without layering a general terminal database.
@@ -186,6 +199,57 @@ RUN set -eu; \
     grep -q '^dev:' /etc/passwd || echo 'dev:x:1000:1000:Developer:/home/dev:/usr/bin/bash' >> /etc/passwd; \
     mkdir -p /run/hive-metrics /home/dev/.config/goose /home/dev/.config/gh /home/dev/.agents; \
     chown -R 1000:1000 /run/hive-metrics /home/dev
+
+# Hive's contributor runtime calls `find` and `cmp` directly: the relay prunes
+# /tmp every ten minutes with a full GNU expression, and the knowledge refresh
+# compares AGENTS.md with `cmp -s`. review used to ship 214 lines of Python
+# shims for both, justified as filling a gap in a lean base that omitted
+# findutils and diffutils.
+#
+# That justification was wrong by the time it was load-bearing. PATH in this
+# base is /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin, and
+# the shims installed to /usr/local/bin/find and /usr/local/bin/cmp -- which
+# PRECEDES /usr/sbin, where the base ships real GNU findutils 4.10.0 and
+# diffutils 3.12. So the shims were not filling a gap, they were SHADOWING
+# working GNU tools with a strictly weaker subset that failed loudly on any
+# predicate outside it, and silently got one inside it wrong: the shim bound
+# `-o` looser than GNU, so the relay's file sweep handed `-exec rm -f` paths
+# real find leaves alone. Deleting them is a correctness fix, not a cleanup.
+#
+# Missing userland belongs at the FSDK seam, not in a shim here, so this layer
+# asserts the seam held rather than patching around it. Both expressions below
+# are verbatim from the pinned Hive commit's bin/contributor-relay.sh and
+# bin/contributor-agent.sh, run as the `dev` user the relay runs as -- which
+# is why this layer sits after that user is created. A base that drops either
+# tool, or anything that shadows them from /usr/local/bin again, fails the
+# build here instead of failing silently at runtime under the relay's
+# discarded stderr.
+RUN set -eu; \
+    case "$(command -v find)" in /usr/local/bin/*) echo 'find must come from the base, not a shim' >&2; exit 1 ;; esac; \
+    case "$(command -v cmp)" in /usr/local/bin/*) echo 'cmp must come from the base, not a shim' >&2; exit 1 ;; esac; \
+    probe="$(mktemp -d)"; \
+    install -d -o dev "$probe/stale-dir" "$probe/tmux-1" "$probe/fresh-dir"; \
+    install -o dev /dev/null "$probe/a.out"; \
+    install -o dev /dev/null "$probe/b.html"; \
+    install -o dev /dev/null "$probe/c.txt"; \
+    touch -d '3 hours ago' "$probe/stale-dir" "$probe/tmux-1" "$probe/a.out" "$probe/b.html" "$probe/c.txt"; \
+    find "$probe" -maxdepth 1 -type d -user dev -not -name 'tmux-*' -not -name 'claude-*' -not -name 'node-*' -not -name '.' -mmin +60 -exec rm -rf {} + 2>/dev/null; \
+    find "$probe" -maxdepth 1 -type f -user dev -name '*.out' -o -name '*.html' -mmin +60 -exec rm -f {} + 2>/dev/null; \
+    test ! -e "$probe/stale-dir"; \
+    test -d "$probe/tmux-1"; \
+    test -d "$probe/fresh-dir"; \
+    test ! -e "$probe/b.html"; \
+    test -e "$probe/c.txt"; \
+    test "$(find "$probe" -maxdepth 1 -type f -name 'c.txt')" = "$probe/c.txt"; \
+    find "$probe" -maxdepth 1 -type f -name 'c.txt' -exec rm -f {} +; \
+    test ! -e "$probe/c.txt"; \
+    printf 'same\n' > "$probe/cmp-left"; \
+    cp "$probe/cmp-left" "$probe/cmp-right"; \
+    cmp -s "$probe/cmp-left" "$probe/cmp-right"; \
+    printf 'different\n' > "$probe/cmp-right"; \
+    ! cmp -s "$probe/cmp-left" "$probe/cmp-right"; \
+    test -z "$(cmp -s "$probe/cmp-left" "$probe/cmp-right" 2>&1 || true)"; \
+    rm -rf "$probe"
 
 # Controlled Goose configuration. This is NOT ~/.config/goose/config.yaml:
 # Hive's contributor runtime overwrites that file at every startup, so the

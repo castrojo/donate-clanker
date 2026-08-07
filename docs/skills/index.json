@@ -17,7 +17,7 @@
         "contribution"
       ],
       "description": "Defines the scope and manners of factory work: toil reduction for under-maintained projects in small, reviewable changes, never feature development. Use before deciding how large a change should be or what a task's deliverable is.",
-      "version": "1.2",
+      "version": "1.3",
       "last_updated": "2026-08-07",
       "doc_type": "policy"
     },
@@ -97,25 +97,6 @@
       "version": "1.1",
       "last_updated": "2026-08-04",
       "doc_type": "policy"
-    },
-    {
-      "id": "mcp-app",
-      "name": "mcp-app",
-      "one_line_purpose": "Build read-only Goose Desktop MCP Apps as typed UI resources.",
-      "entry_point": "docs/skills/mcp-app.md",
-      "category": "meta",
-      "status": "active",
-      "tags": [
-        "goose",
-        "mcp",
-        "ui",
-        "react",
-        "desktop"
-      ],
-      "description": "Builds a stateless Goose Desktop MCP App resource with a server-only data boundary. Use when adding a Goose Desktop panel, dashboard, or interactive MCP resource.",
-      "version": "1.1",
-      "last_updated": "2026-08-04",
-      "doc_type": "reference"
     },
     {
       "id": "image-build",

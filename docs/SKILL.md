@@ -14,7 +14,6 @@ it scopes every task, so read it alongside the matching skill.
 | Investigate an assigned-task or connection problem | [`hive-triage.md`](skills/hive-triage.md) |
 | Report evidence to or follow up on a `kubestellar/hive` issue | [`upstream-hive.md`](skills/upstream-hive.md) |
 | Change Goose configuration or skill loading | [`goose-context.md`](skills/goose-context.md) |
-| Build a Goose Desktop MCP App panel or resource | [`mcp-app.md`](skills/mcp-app.md) |
 | Change the contributor image or pinned image inputs | [`image-build.md`](skills/image-build.md) |
 | Change the public static pull-request queue | [`static-pr-queue.md`](skills/static-pr-queue.md) |
 | Prepare a branch, commit, or pull request | [`pr-workflow.md`](skills/pr-workflow.md) |

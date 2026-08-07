@@ -165,7 +165,6 @@ Prefer not needing that.
 
 ```bash
 bash scripts/check-skill-frontmatter.sh
-bash tests/skill-conformance.sh
 bash tests/generate-skills.sh
 bash tests/image-contract.sh
 bash tests/just-onboarding.sh

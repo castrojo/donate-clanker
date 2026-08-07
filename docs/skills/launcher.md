@@ -53,7 +53,10 @@ Goose, or image build skill documents.
    when a new launch starts.
 3. Keep VM isolation narrow. The guest receives per-run control data and
    clones assigned work itself; it does not receive a host workspace or home.
-   VM disks are verified and use a disposable overlay.
+   VM disks are verified and use a disposable overlay. There is exactly one
+   VM launch path — the verified raw disk booted by `qemu-system-*` in the
+   foreground — and when no disk can be resolved the recipe fails with an
+   actionable `ERROR:` line rather than falling through to a second mode.
 4. Keep the container path narrow too. It mounts only the read-only Hive
    contributor configuration and runs the image entrypoint, which attaches to
    Hive's `contributor` session.
@@ -69,11 +72,11 @@ Goose, or image build skill documents.
    That default comes from the model profile: `review-container [profile]
    [effort]` resolves `luna` to `gpt-5.6-luna` at `max` with the provider's
    own context window, and `opus5` to `claude-opus-5` at `high` with
-   `GOOSE_CONTEXT_LIMIT=264000`. An empty profile asks with `gum` when a
-   terminal is attached and falls back to `luna` when one is not, so the
-   headless path stays noninteractive. Profiles are defaults, never
-   overrides: `GOOSE_MODEL`, `GOOSE_THINKING_EFFORT`, and
-   `GOOSE_CONTEXT_LIMIT` from the environment always win.
+   `GOOSE_CONTEXT_LIMIT=264000`. An empty profile is `luna`; two profiles do
+   not warrant a picker, so every launch is noninteractive whether or not a
+   terminal is attached. Profiles are defaults, never overrides:
+   `GOOSE_MODEL`, `GOOSE_THINKING_EFFORT`, and `GOOSE_CONTEXT_LIMIT` from the
+   environment always win.
 6. For container-only mode, pass Copilot and GitHub credentials by inherited
    environment (`--env NAME`), not command-line values or host configuration
    mounts. Resolve the GitHub token from `REVIEW_GH_TOKEN`, existing
@@ -99,7 +102,8 @@ The two run modes are separate products, and the difference is user-visible:
 
 The VM can carry the Copilot provider secret, but the current guest has no
 compatible bootstrap mapping for a host `GH_TOKEN`; the launcher reports that
-block unconditionally on both VM branches. Hive's task prompt is unconditional
+block unconditionally, in the same words on the launch path and in the doctor,
+because nothing about the host changes the answer. Hive's task prompt is unconditional
 and tells the agent to fork, push, and open a pull request with `GH_TOKEN`, so
 VM mode can be assigned work it cannot complete. Document that honestly; do not
 filter assignments to route around it. Use `review-container` when the task
@@ -119,7 +123,10 @@ Ownership must therefore be proven, not guessed: stamp
 `--label review.owner=<boot-id>:<client-pid>` at launch, and treat a container
 as owned only when all three hold — the PID is alive, the boot id matches, and
 that process still names the container in `/proc/<pid>/cmdline`. Anything else
-is an orphan and is reclaimed silently at the next launch. Never answer an
+— including an unlabelled container, which cannot have been started by this
+launcher in this boot — is an orphan and is reclaimed silently at the next
+launch. There is no `pgrep` fallback, and adding one back would reintroduce
+exactly the guess the label exists to replace. Never answer an
 ownerless container by telling a user to press Ctrl-C in a terminal that no
 longer exists, and never reintroduce a user-facing stop or clean verb.
 
@@ -139,13 +146,10 @@ numbering, a multi-instance manager, or any registry of running instances;
 that would be launcher state and task-selection surface this repository does
 not have.
 
-A name supplied by a user reaches `podman run --name` and both ownership
-probes, so validate it against podman's own rule
+A name supplied by a user reaches `podman run --name` and the ownership
+probe, so validate it against podman's own rule
 (`[a-zA-Z0-9][a-zA-Z0-9_.-]*`) before launch rather than letting podman fail
-late. Validate before the model picker and the Hive setup so a typo costs
-nothing. The pre-marker `pgrep` fallback in `container_has_owner` builds a
-regex from the name, and podman's rule allows `.`; escape it, or one
-instance's heuristic can answer for a differently-named sibling. Every
+late. Validate before the Hive setup so a typo costs nothing. Every
 user-facing message — the refusal, the attach hint, the reclaim line — must
 name the container that was actually requested, or a second agent is told to
 attach to the first one's session.

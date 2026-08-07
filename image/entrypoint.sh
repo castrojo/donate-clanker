@@ -12,16 +12,16 @@ note() { printf 'review: %s\n' "$1" >&2; }
 # Validate the caller's requested provider before any other startup work so an
 # unsupported setting always gets the same actionable answer.
 if [ -n "${GOOSE_PROVIDER:-}" ] && [ "$GOOSE_PROVIDER" != github_copilot ]; then
-	note "ERROR: GOOSE_PROVIDER=${GOOSE_PROVIDER} is not supported — review supports GitHub Copilot only."
-	note "  Unset GOOSE_PROVIDER or set GOOSE_PROVIDER=github_copilot."
-	exit 1
+  note "ERROR: GOOSE_PROVIDER=${GOOSE_PROVIDER} is not supported — review supports GitHub Copilot only."
+  note "  Unset GOOSE_PROVIDER or set GOOSE_PROVIDER=github_copilot."
+  exit 1
 fi
 
 hive_config="${HOME}/.config/hive"
 if [ ! -f "${hive_config}/contributor.env" ]; then
-	note "missing ${hive_config}/contributor.env"
-	note "  mount your Hive config, or run: just contribute-setup goose"
-	exit 1
+  note "missing ${hive_config}/contributor.env"
+  note "  mount your Hive config, or run: just contribute-setup goose"
+  exit 1
 fi
 
 note 'Bluefin Operations | contributor runtime starting'
@@ -42,8 +42,8 @@ export GOOSE_PROVIDER=github_copilot
 # Goose refuses to start without a model. Keep the direct-image fallback in
 # sync with the launcher's default for users who invoke this image directly.
 if [ -z "${GOOSE_MODEL:-}" ]; then
-	GOOSE_MODEL="gpt-5.6-luna"
-	note "GOOSE_MODEL not set; defaulting to ${GOOSE_MODEL} for GitHub Copilot"
+  GOOSE_MODEL="gpt-5.6-luna"
+  note "GOOSE_MODEL not set; defaulting to ${GOOSE_MODEL} for GitHub Copilot"
 fi
 export GOOSE_MODEL
 
@@ -68,25 +68,25 @@ export GOOSE_MOIM_MESSAGE_FILE="${GOOSE_MOIM_MESSAGE_FILE:-/opt/bluefin/local-ag
 # `git config --global`, which writes individual keys and leaves core.hooksPath
 # intact. Hooks are ergonomics only: --no-verify bypasses all of them.
 if [ -d /opt/bluefin/git-hooks ]; then
-	git config --global core.hooksPath /opt/bluefin/git-hooks || true
+  git config --global core.hooksPath /opt/bluefin/git-hooks || true
 fi
 
 skills_root="${HOME}/.agents/skills"
 if [ -d "$skills_root" ]; then
-	shopt -s nullglob
-	skills=("$skills_root"/*/SKILL.md)
-	note "${#skills[@]} org skills available (load one with /<skill-name>)"
+  shopt -s nullglob
+  skills=("$skills_root"/*/SKILL.md)
+  note "${#skills[@]} org skills available (load one with /<skill-name>)"
 fi
 
 validation_tools=(bats shellcheck systemd-analyze pre-commit just podman)
 missing_validation_tools=()
 for validation_tool in "${validation_tools[@]}"; do
-	if ! command -v "$validation_tool" >/dev/null 2>&1; then
-		missing_validation_tools+=("$validation_tool")
-	fi
+  if ! command -v "$validation_tool" >/dev/null 2>&1; then
+    missing_validation_tools+=("$validation_tool")
+  fi
 done
 if ((${#missing_validation_tools[@]})); then
-	note "validation tools unavailable: ${missing_validation_tools[*]}"
+  note "validation tools unavailable: ${missing_validation_tools[*]}"
 fi
 
 # --- Hand over to Hive -------------------------------------------------------
@@ -100,8 +100,8 @@ fi
 # back to xterm when the caller's terminal is not available.
 tmux_fallback_term=xterm-256color
 if ! infocmp "${TERM:-}" >/dev/null 2>&1; then
-	note "TERM=${TERM:-<unset>} has no terminfo; using ${tmux_fallback_term}"
-	export TERM="$tmux_fallback_term"
+  note "TERM=${TERM:-<unset>} has no terminfo; using ${tmux_fallback_term}"
+  export TERM="$tmux_fallback_term"
 fi
 agent_pid=
 attach_pid=
@@ -120,35 +120,35 @@ attach_pid=
 shutdown_grace_deciseconds=20
 
 wait_for_exit() {
-	# Poll rather than 'wait' so this is reusable from inside a trap handler,
-	# where the child has usually already been reaped.
-	local pid="$1" limit="$2" waited=0
-	while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$limit" ]; do
-		sleep 0.1
-		waited=$((waited + 1))
-	done
+  # Poll rather than 'wait' so this is reusable from inside a trap handler,
+  # where the child has usually already been reaped.
+  local pid="$1" limit="$2" waited=0
+  while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$limit" ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
 }
 
 cleanup() {
-	status=$?
-	# A second signal during teardown would re-enter this handler and restart
-	# the escalation, stretching a bounded teardown past podman's deadline.
-	trap '' HUP INT TERM
-	if [ -n "$attach_pid" ] && kill -0 "$attach_pid" 2>/dev/null; then
-		kill "$attach_pid" 2>/dev/null || true
-	fi
-	if [ -n "$agent_pid" ] && kill -0 "$agent_pid" 2>/dev/null; then
-		kill -TERM "$agent_pid" 2>/dev/null || true
-		wait_for_exit "$agent_pid" "$shutdown_grace_deciseconds"
-		# Hive's agent script blocks on its own tmux session, so dropping the
-		# session is what lets a stuck shutdown finish.
-		tmux kill-session -t contributor 2>/dev/null || true
-		wait_for_exit "$agent_pid" 10
-		kill -KILL "$agent_pid" 2>/dev/null || true
-		wait "$agent_pid" 2>/dev/null || true
-	fi
-	tmux kill-session -t contributor 2>/dev/null || true
-	exit "$status"
+  status=$?
+  # A second signal during teardown would re-enter this handler and restart
+  # the escalation, stretching a bounded teardown past podman's deadline.
+  trap '' HUP INT TERM
+  if [ -n "$attach_pid" ] && kill -0 "$attach_pid" 2>/dev/null; then
+    kill "$attach_pid" 2>/dev/null || true
+  fi
+  if [ -n "$agent_pid" ] && kill -0 "$agent_pid" 2>/dev/null; then
+    kill -TERM "$agent_pid" 2>/dev/null || true
+    wait_for_exit "$agent_pid" "$shutdown_grace_deciseconds"
+    # Hive's agent script blocks on its own tmux session, so dropping the
+    # session is what lets a stuck shutdown finish.
+    tmux kill-session -t contributor 2>/dev/null || true
+    wait_for_exit "$agent_pid" 10
+    kill -KILL "$agent_pid" 2>/dev/null || true
+    wait "$agent_pid" 2>/dev/null || true
+  fi
+  tmux kill-session -t contributor 2>/dev/null || true
+  exit "$status"
 }
 trap cleanup EXIT HUP INT TERM
 
@@ -157,19 +157,19 @@ agent_pid=$!
 
 attempts=0
 while ! tmux has-session -t contributor 2>/dev/null; do
-	if ! kill -0 "$agent_pid" 2>/dev/null; then
-		wait "$agent_pid"
-		exit $?
-	fi
-	attempts=$((attempts + 1))
-	if [ "$attempts" -ge 600 ]; then
-		note 'contributor session did not start'
-		note "tmux readiness diagnostics: TMUX=${TMUX:-<unset>} TMUX_TMPDIR=${TMUX_TMPDIR:-<unset>}"
-		tmux_state="$(tmux ls 2>&1 || true)"
-		note "tmux readiness diagnostics: ${tmux_state//$'\n'/; }"
-		exit 1
-	fi
-	sleep 0.1
+  if ! kill -0 "$agent_pid" 2>/dev/null; then
+    wait "$agent_pid"
+    exit $?
+  fi
+  attempts=$((attempts + 1))
+  if [ "$attempts" -ge 600 ]; then
+    note 'contributor session did not start'
+    note "tmux readiness diagnostics: TMUX=${TMUX:-<unset>} TMUX_TMPDIR=${TMUX_TMPDIR:-<unset>}"
+    tmux_state="$(tmux ls 2>&1 || true)"
+    note "tmux readiness diagnostics: ${tmux_state//$'\n'/; }"
+    exit 1
+  fi
+  sleep 0.1
 done
 
 # Attach only when there is a terminal. Without this an unattended run would
@@ -192,15 +192,15 @@ done
 # redirection of its own, and `tmux attach` dies with "open terminal failed:
 # not a terminal" the moment it loses the tty.
 if [ -t 0 ] && [ -t 1 ]; then
-	exec 3<&0
-	tmux attach-session -t contributor <&3 &
-	attach_pid=$!
-	wait "$attach_pid" || true
-	attach_pid=
-	exec 3<&-
-	note 'tmux detached; the agent remains foreground in this terminal. Press Ctrl-C or close this terminal to stop it.'
-	wait "$agent_pid"
+  exec 3<&0
+  tmux attach-session -t contributor <&3 &
+  attach_pid=$!
+  wait "$attach_pid" || true
+  attach_pid=
+  exec 3<&-
+  note 'tmux detached; the agent remains foreground in this terminal. Press Ctrl-C or close this terminal to stop it.'
+  wait "$agent_pid"
 else
-	note 'no tty; following the agent without attaching'
-	wait "$agent_pid"
+  note 'no tty; following the agent without attaching'
+  wait "$agent_pid"
 fi

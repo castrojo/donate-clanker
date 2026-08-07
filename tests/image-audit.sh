@@ -157,19 +157,19 @@ forbid_line() {
   fi
 }
 
-shim_path_line() {
-  # The base now ships real find and cmp, so their mere presence proves
-  # nothing. What Hive's relay depends on is that review's shims are the ones
-  # that run, which holds because the base PATH puts /usr/local/bin ahead of
-  # /usr/bin. Assert the resolved path so a PATH or install-location change
-  # fails here instead of silently altering relay behaviour.
+unshadowed_path_line() {
+  # The base ships real GNU findutils and diffutils, so review no longer shims
+  # find and cmp; the Python shims it once carried are deleted. What Hive's
+  # relay depends on now is that nothing shadows them from /usr/local/bin,
+  # which the base PATH searches first. Assert the resolved path so a
+  # reintroduced shim fails here instead of silently altering relay behaviour.
   local inventory="$1" name="$2" resolved
   resolved="$(grep -F "path:${name}:" <<<"$inventory" | head -n 1)"
   resolved="${resolved#path:"${name}":}"
   if [[ -z "$resolved" ]]; then
-    error "shim command missing from runtime: ${name}"
-  elif [[ "$resolved" != /usr/local/bin/* ]]; then
-    error "review's ${name} shim is shadowed: resolves to ${resolved}, not /usr/local/bin/${name}"
+    error "base-provided command missing from runtime: ${name}"
+  elif [[ "$resolved" == /usr/local/bin/* ]]; then
+    error "review shadows the base ${name}: resolves to ${resolved}; use the FSDK seam, not a shim"
   fi
 }
 
@@ -551,19 +551,19 @@ base_required="bash cat chmod cp curl git grep jq ls mkdir mv python3 rm sed sh 
 # Ordinary userland -- find, cmp, diff, and utilities such as rg, fd, yq and
 # ShellCheck -- is deliberately absent from both lists. Contributor agents
 # need it, and its absence is what made them fail with 'command not found'.
-# For 'find' and 'cmp' the real invariant is not absence but precedence:
-# review ships deliberate shims Hive's relay depends on, so they must still
-# win on PATH now that the base carries real implementations. That is
-# asserted directly below rather than approximated by forbidding the base
-# copy.
+# For 'find' and 'cmp' the real invariant is not absence but provenance:
+# Hive's relay calls both directly, the base carries real GNU implementations,
+# and review must not shadow them. That is asserted directly below rather than
+# approximated by forbidding the base copy.
 package_managers="apt dnf apk"
 review_owned="node npm gh tmux goose"
 base_forbidden="${review_owned} ${package_managers}"
 derived_required="bash node npm corepack gh tmux goose find cmp infocmp"
 derived_forbidden="$package_managers"
-# Shims review layers over the base. Hive's relay depends on their exact
-# semantics, which tests/find-semantics.sh pins.
-derived_shims="find cmp"
+# Base commands Hive's relay calls directly and review must never shim over.
+# image/Containerfile proves their semantics at build time against the real
+# base; this checks the finished runtime still resolves them from it.
+derived_unshadowed="find cmp"
 
 append ""
 append "#### Native runtime audit"
@@ -596,8 +596,8 @@ for image_kind in base derived; do
     forbid_line "$inventory" forbidden "$command"
   done
   if [[ "$image_kind" == derived ]]; then
-    for command in $derived_shims; do
-      shim_path_line "$inventory" "$command"
+    for command in $derived_unshadowed; do
+      unshadowed_path_line "$inventory" "$command"
     done
     require_line "$inventory" terminfo xterm-256color
     require_line "$inventory" terminfo tmux-256color
