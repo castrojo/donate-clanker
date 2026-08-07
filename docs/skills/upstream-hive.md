@@ -1,7 +1,7 @@
 ---
 name: upstream-hive
-version: "1.2"
-last_updated: 2026-08-04
+version: "1.3"
+last_updated: 2026-08-07
 id: upstream-hive
 one_line_purpose: File and follow up on kubestellar/hive issues as an exemplary downstream.
 entry_point: docs/skills/upstream-hive.md
@@ -50,10 +50,14 @@ depends on reading both correctly.
 An **upstream gap** is a missing capability in Hive's contributor protocol,
 assignment flow, or contributor runtime — the surface Hive owns and we consume.
 A missing capability in the pinned base image is **not** an upstream gap. It is
-a base-image capability gap, it belongs to `image-build.md`, and it is governed
-by that document's rules: use the tools the image already ships, and where one is
-genuinely missing, add it at the FSDK seam so every consumer is fixed at once.
-Never hand-roll a local reimplementation of standard userland. There is no
+a base-image capability gap; it is filed on
+[`projectbluefin/fsdk-containers`](https://github.com/projectbluefin/fsdk-containers)
+under the same evidence discipline as this document, and it is governed by
+[`image-build.md`](image-build.md): use the tools the image already ships, and
+where one is genuinely missing, add it at the FSDK seam so every consumer is
+fixed at once. Different tracker, same rules — reproduce it, file it, reference
+the number, and never describe it in a document instead. Never hand-roll a
+local reimplementation of standard userland. There is no
 standing exception to this and no wording that creates one, so there is no
 base-image precedent to cite for shimming a protocol gap either.
 
@@ -117,6 +121,8 @@ issue.
 - Citing a base-image shim as precedent for a protocol workaround.
 - Reopening a direction a maintainer already decided in a `DESIGN-RESPONSE`.
 - Filing a new issue for evidence that belongs on an existing one.
+- Describing a gap in a document instead of filing it. A paragraph cannot be
+  assigned or closed; it survives the fix and reads as acceptance.
 
 ## Verification
 

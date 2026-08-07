@@ -46,17 +46,10 @@ ENV HIVE_CONTRIBUTOR_MODE=true
 # Every archive is checksum-verified with sha256sum BEFORE it is opened, and
 # unpacked by the base's own GNU tar 1.35 -- not by a hand-rolled extractor.
 #
-# The `-I` filter is an FSDK gap, not a preference: this base ships tar, xz,
-# zstd and bzip2 but NOT gzip, and GNU tar has no built-in inflate -- it execs
-# the gzip binary. So `tar -xzf` and even auto-detecting `tar -xf` both fail on
-# a .tar.gz with "gzip: Cannot exec". No other decompressor present handles
-# gzip (xz and zstd both refuse it). `python3 -m gzip` is the stdlib's own
-# decompressor CLI used purely as that codec -- every tar semantic stays in
-# tar. The real fix is adding gzip to the FSDK base; when it lands, delete the
-# `-I` filter and nothing else changes.
+# The `-I 'python3 -m gzip'` filter supplies the one codec this base lacks;
+# tar keeps every archive semantic. Delete it when fsdk-containers#87 lands.
 #
-# The Python extractor these replaced passed tarfile's `filter="data"` to block
-# path traversal and tar bombs. GNU tar covers that here: without
+# GNU tar is what blocks path traversal and tar bombs here: without
 # `-P`/`--absolute-names` it strips leading `/` and refuses any member
 # containing `..`, and the single-file extracts never touch the filesystem at
 # all -- `-xO` writes one member to stdout, so the archive cannot choose its
