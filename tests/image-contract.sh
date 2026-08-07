@@ -448,6 +448,8 @@ require image/entrypoint.sh \
   'shopt -s nullglob' \
   'validation_tools=(bats shellcheck systemd-analyze pre-commit just podman)' \
   'validation tools unavailable:' \
+  "python3 -c 'import yaml'" \
+  'no YAML parser: ${missing_parsers[*]} (fsdk-containers#88); read YAML as text' \
   'tmux_fallback_term=xterm-256color' \
   'infocmp "${TERM:-}"' \
   'TERM=${TERM:-<unset>} has no terminfo; using ${tmux_fallback_term}' \
