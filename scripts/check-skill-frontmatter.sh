@@ -21,6 +21,7 @@ import sys
 
 SKILL_DIR = "docs/skills"
 INDEX = os.path.join(SKILL_DIR, "index.json")
+SCHEMA = os.path.join(SKILL_DIR, "index.schema.json")
 
 MAX_DESC = 256
 MAX_SOFT = 200
@@ -198,6 +199,26 @@ def check_index(front_matter, stems):
     except ValueError as exc:
         error(INDEX, "does not parse as JSON: %s" % exc)
         return
+
+    # Validate against schema when jsonschema is available.
+    if os.path.exists(SCHEMA):
+        try:
+            with open(SCHEMA, "r", encoding="utf-8") as fh:
+                schema = json.load(fh)
+            try:
+                import jsonschema
+                try:
+                    jsonschema.validate(manifest, schema)
+                except jsonschema.ValidationError as exc:
+                    error(INDEX, "schema validation failed: %s" % exc.message)
+                except jsonschema.SchemaError as exc:
+                    error(SCHEMA, "invalid schema: %s" % exc.message)
+            except ImportError:
+                pass
+        except ValueError as exc:
+            error(SCHEMA, "does not parse as JSON: %s" % exc)
+    else:
+        error(SCHEMA, "schema file is missing")
 
     entries = manifest.get("skills")
     if not isinstance(entries, list):
