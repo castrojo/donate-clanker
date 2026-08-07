@@ -1,7 +1,7 @@
 ---
 name: skill-improvement
-version: "1.0"
-last_updated: 2026-08-03
+version: "1.1"
+last_updated: 2026-08-07
 id: skill-improvement
 one_line_purpose: Keep review documentation source-backed, current, and compact.
 entry_point: docs/skills/skill-improvement.md
@@ -67,6 +67,12 @@ that work.
 - Treating an old plan or design record as current behavior.
 - Updating a skill without its matching catalog entry.
 - Adding a permanent session log instead of repairing the relevant skill.
+- Changing another repository before reading its `AGENTS.md`, `CONTRIBUTING.md`
+  and `docs/skills/`. Those files name the seam and forbid the shortcut, so
+  the two minutes spent reading them is repaid immediately; skipping them is
+  what produces a rejected approach and a wasted build.
+- Diagnosing a service by guessing at endpoint names when its skill documents
+  the supported read-only ones.
 - Claiming project-internal facts without checking the launcher, image, tests,
   workflow, or pinned common source.
 

@@ -1,7 +1,7 @@
 ---
 name: launcher
-version: "1.8"
-last_updated: 2026-08-04
+version: "2.3"
+last_updated: 2026-08-07
 id: launcher
 one_line_purpose: Change review just recipes without breaking foreground.
 entry_point: docs/skills/launcher.md
@@ -40,6 +40,12 @@ Goose, or image build skill documents.
    | `review-container` | Run the contributor container directly for fast local iteration. |
    | `review-doctor` | Perform read-only preflight checks. |
 
+   `just` reads only the current directory's justfile, so these recipes fail
+   with `justfile does not contain recipe` from any other checkout. That is
+   `just`'s behavior, not a launcher bug: fix it outside the repository with a
+   `~/.local/bin` shim that forwards these three names to this justfile, and
+   do not add a wrapper recipe here to compensate.
+
 2. Keep both launch paths foreground. No detached Podman, background service,
    lifecycle command, or persistent launcher state is allowed beyond the
    verified caches and pinned Hive checkout under `~/.local/state/review/`.
@@ -47,7 +53,10 @@ Goose, or image build skill documents.
    when a new launch starts.
 3. Keep VM isolation narrow. The guest receives per-run control data and
    clones assigned work itself; it does not receive a host workspace or home.
-   VM disks are verified and use a disposable overlay.
+   VM disks are verified and use a disposable overlay. There is exactly one
+   VM launch path — the verified raw disk booted by `qemu-system-*` in the
+   foreground — and when no disk can be resolved the recipe fails with an
+   actionable `ERROR:` line rather than falling through to a second mode.
 4. Keep the container path narrow too. It mounts only the read-only Hive
    contributor configuration and runs the image entrypoint, which attaches to
    Hive's `contributor` session.
@@ -56,6 +65,18 @@ Goose, or image build skill documents.
    at every launch. Nothing is persisted: not a secret, not a provider, not a
    model. There is no last-selection file, and `tests/just-onboarding.sh`
    asserts one is never written.
+   `review-container` must set its own thinking-effort default before forming
+   the Podman environment, while still honoring `GOOSE_THINKING_EFFORT` from
+   the caller. Do not apply that container default to the VM or replace the
+   image's direct-invocation fallback.
+   That default comes from the model profile: `review-container [profile]
+   [effort]` resolves `luna` to `gpt-5.6-luna` at `max` with the provider's
+   own context window, and `opus5` to `claude-opus-5` at `high` with
+   `GOOSE_CONTEXT_LIMIT=264000`. An empty profile is `luna`; two profiles do
+   not warrant a picker, so every launch is noninteractive whether or not a
+   terminal is attached. Profiles are defaults, never overrides:
+   `GOOSE_MODEL`, `GOOSE_THINKING_EFFORT`, and `GOOSE_CONTEXT_LIMIT` from the
+   environment always win.
 6. For container-only mode, pass Copilot and GitHub credentials by inherited
    environment (`--env NAME`), not command-line values or host configuration
    mounts. Resolve the GitHub token from `REVIEW_GH_TOKEN`, existing
@@ -81,7 +102,8 @@ The two run modes are separate products, and the difference is user-visible:
 
 The VM can carry the Copilot provider secret, but the current guest has no
 compatible bootstrap mapping for a host `GH_TOKEN`; the launcher reports that
-block unconditionally on both VM branches. Hive's task prompt is unconditional
+block unconditionally, in the same words on the launch path and in the doctor,
+because nothing about the host changes the answer. Hive's task prompt is unconditional
 and tells the agent to fork, push, and open a pull request with `GH_TOKEN`, so
 VM mode can be assigned work it cannot complete. Document that honestly; do not
 filter assignments to route around it. Use `review-container` when the task
@@ -101,12 +123,66 @@ Ownership must therefore be proven, not guessed: stamp
 `--label review.owner=<boot-id>:<client-pid>` at launch, and treat a container
 as owned only when all three hold — the PID is alive, the boot id matches, and
 that process still names the container in `/proc/<pid>/cmdline`. Anything else
-is an orphan and is reclaimed silently at the next launch. Never answer an
+— including an unlabelled container, which cannot have been started by this
+launcher in this boot — is an orphan and is reclaimed silently at the next
+launch. There is no `pgrep` fallback, and adding one back would reintroduce
+exactly the guess the label exists to replace. Never answer an
 ownerless container by telling a user to press Ctrl-C in a terminal that no
 longer exists, and never reintroduce a user-facing stop or clean verb.
 
+## Concurrent Instances
+
+Every ownership check is keyed on the container name, so the name is what
+scopes an instance. `REVIEW_CONTAINER_NAME` overrides the default
+`review-container` and is the only supported way to run a second contributor
+agent at the same time:
+
+```bash
+REVIEW_CONTAINER_NAME=review-container-2 just review-container opus5 high
+```
+
+Keep it to that one variable. Do not add a `--name` recipe parameter, instance
+numbering, a multi-instance manager, or any registry of running instances;
+that would be launcher state and task-selection surface this repository does
+not have.
+
+A name supplied by a user reaches `podman run --name` and the ownership
+probe, so validate it against podman's own rule
+(`[a-zA-Z0-9][a-zA-Z0-9_.-]*`) before launch rather than letting podman fail
+late. Validate before the Hive setup so a typo costs nothing. Every
+user-facing message — the refusal, the attach hint, the reclaim line — must
+name the container that was actually requested, or a second agent is told to
+attach to the first one's session.
+
 Hive selects every task. The launcher must not filter, skip, rank, or decline
 assignments by repository, label, title, author, or issue.
+
+## Rootless Podman And Mounted Host Files
+
+Rootless Podman maps the host user to container **root**, not to the container
+user of the same uid. A mounted host file keeps its mode, so Hive's
+`contributor.env` at `0600` arrives root-owned and the image's `dev` user
+cannot read it — the agent dies at startup with `Permission denied` before any
+work begins. Launch with `--userns keep-id:uid=1000,gid=1000` so the host user
+maps onto `dev`. Never answer this by loosening the host file's mode; it holds
+Hive credentials.
+
+A locally built image has no registry behind it and is not a moving tag.
+`podman build -t review:dev` stores `localhost/review:dev`, and refreshing
+that emits pull retries and an always-false "may be out of date" warning.
+Detect the local build before deciding a ref is refreshable.
+
+The same reasoning governs the missing case. `localhost/` is podman's local
+storage namespace, never a registry host, so pulling a `localhost/` ref that
+is absent dials `https://localhost/v2/` and fails three times with a
+connection-refused error that reads like a network fault instead of a missing
+build. Absent from local storage is the final answer for a `localhost/` ref:
+fail immediately and say it must be built, or that the override should be
+dropped for the published default.
+
+`just --list` in another repository shows only that repository's recipes, so
+run `just review-container` from this checkout, or pass `--justfile`, when you
+want to be certain which launcher you are invoking.
 
 ## Common Rationalizations
 
@@ -132,6 +208,9 @@ assignments by repository, label, title, author, or issue.
 - A token in output, files, Podman arguments, or any persisted launcher file.
 - Ownership inferred from `pgrep` rather than a label plus a live, same-boot,
   still-naming PID.
+- A user-supplied container name reaching `podman run` or an ownership probe
+  unvalidated, or a hint that names the default container instead of the one
+  the caller asked for.
 - A second implementation of launcher behavior in another language.
 - Task-selection policy outside Hive.
 

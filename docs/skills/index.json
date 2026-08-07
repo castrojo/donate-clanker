@@ -17,8 +17,8 @@
         "contribution"
       ],
       "description": "Defines the scope and manners of factory work: toil reduction for under-maintained projects in small, reviewable changes, never feature development. Use before deciding how large a change should be or what a task's deliverable is.",
-      "version": "1.1",
-      "last_updated": "2026-08-04",
+      "version": "1.3",
+      "last_updated": "2026-08-07",
       "doc_type": "policy"
     },
     {
@@ -75,8 +75,8 @@
         "websocket"
       ],
       "description": "Diagnoses a contributor that connects but receives no assignment without adding client-side selection or retry behavior. Use when a ready contributor remains idle.",
-      "version": "1.3",
-      "last_updated": "2026-08-04",
+      "version": "1.4",
+      "last_updated": "2026-08-07",
       "doc_type": "runbook"
     },
     {
@@ -94,28 +94,9 @@
         "contribution"
       ],
       "description": "Defines how this repository reports evidence to kubestellar/hive and follows up on filed issues. Use before opening, commenting on, or responding to an upstream Hive issue or pull request.",
-      "version": "1.1",
+      "version": "1.2",
       "last_updated": "2026-08-04",
       "doc_type": "policy"
-    },
-    {
-      "id": "mcp-app",
-      "name": "mcp-app",
-      "one_line_purpose": "Build read-only Goose Desktop MCP Apps as typed UI resources.",
-      "entry_point": "docs/skills/mcp-app.md",
-      "category": "meta",
-      "status": "active",
-      "tags": [
-        "goose",
-        "mcp",
-        "ui",
-        "react",
-        "desktop"
-      ],
-      "description": "Builds a stateless Goose Desktop MCP App resource with a server-only data boundary. Use when adding a Goose Desktop panel, dashboard, or interactive MCP resource.",
-      "version": "1.1",
-      "last_updated": "2026-08-04",
-      "doc_type": "reference"
     },
     {
       "id": "image-build",
@@ -133,8 +114,8 @@
         "audit"
       ],
       "description": "Use when maintaining the pinned FSDK-derived contributor image, audit, Goose canary assets, Hive runtime, or publishing path.",
-      "version": "2.12",
-      "last_updated": "2026-08-04",
+      "version": "2.15",
+      "last_updated": "2026-08-07",
       "doc_type": "procedure"
     },
     {
@@ -152,8 +133,8 @@
         "foreground"
       ],
       "description": "Maintains the three foreground review recipes, VM and container-only launch paths, and credential boundaries. Use when editing justfile.",
-      "version": "1.8",
-      "last_updated": "2026-08-04",
+      "version": "2.3",
+      "last_updated": "2026-08-07",
       "doc_type": "runbook"
     },
     {
@@ -187,11 +168,12 @@
         "pullrequest",
         "conventional",
         "hooks",
-        "branches"
+        "branches",
+        "worktree"
       ],
-      "description": "Defines protected-branch pull request, branch, title, trailer, and validation requirements, and how to reconcile a long-lived branch with a squash-merged main. Use before branching, committing, opening a review pull request, or resolving merge conflicts.",
-      "version": "1.5",
-      "last_updated": "2026-08-04",
+      "description": "Defines protected-branch pull request, branch, title, trailer, and validation requirements, how to commit without clobbering uncommitted work, and how to reconcile a long-lived branch with a squash-merged main. Use before branching or committing.",
+      "version": "1.7",
+      "last_updated": "2026-08-07",
       "doc_type": "policy"
     },
     {
@@ -208,8 +190,8 @@
         "factory"
       ],
       "description": "Maintains review documentation and skill contracts from local source evidence. Use when auditing docs, correcting stale guidance, or recording durable agent learning.",
-      "version": "1.0",
-      "last_updated": "2026-08-03",
+      "version": "1.1",
+      "last_updated": "2026-08-07",
       "doc_type": "reference"
     }
   ]

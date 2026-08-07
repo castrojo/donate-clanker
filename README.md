@@ -76,7 +76,7 @@ three public recipes:
 | Command | Purpose |
 |---|---|
 | `just review` | Run the contributor through a foreground QEMU VM. |
-| `just review-container` | Run the contributor container directly, without a VM. |
+| `just review-container [profile] [effort]` | Run the contributor container directly, without a VM. |
 | `just review-doctor` | Perform read-only launch diagnostics. |
 
 Every run remains attached to its originating terminal. Ctrl-C or closing that
@@ -110,27 +110,6 @@ This is tracked by issue #50 and blocked on a republished VM guest artifact
 this repository does not own. Do not attempt to fix it by mounting GitHub
 configuration or adding an unconsumed bootstrap field, and do not filter or
 decline assignments — Hive is the sole authority for task selection.
-
-## Bluefin Ops Control Panel
-
-`mcp-app/` is an optional, read-only Goose Desktop MCP App. It observes Hive
-and GitHub evidence in a single Tactical Ledger view; it does not replace the
-launcher, select work, control Hive, read tmux, persist data, or poll.
-
-Build it, then register `node mcp-app/dist/server.js` as a stdio MCP server in
-Goose Desktop:
-
-```bash
-npm --prefix mcp-app install
-npm --prefix mcp-app run build
-```
-
-The app fetches one evidence snapshot when opened and only fetches again when
-the user activates **Refresh all evidence**. Its server uses
-`REVIEW_GH_TOKEN`, then `GH_TOKEN`, for GitHub API reads when
-available; it never uses or displays a Copilot credential. See
-[`mcp-app/README.md`](mcp-app/README.md) for Hive endpoint configuration and
-Goose resource details.
 
 ## Public PR queue
 
@@ -166,8 +145,40 @@ an operations task outside this repository automation.
 Goose is the only agent backend and GitHub Copilot is the only supported
 provider. `GOOSE_PROVIDER` may be unset or `github_copilot`; `GOOSE_MODEL`
 optionally overrides the `gpt-5.6-luna` default, and
-`GOOSE_THINKING_EFFORT` optionally overrides the default `high` reasoning
-effort. A `gh auth token` does not authenticate Copilot inference.
+`GOOSE_THINKING_EFFORT` optionally overrides the default `max` reasoning
+effort for `review-container` (the VM default remains `high`). A `gh auth
+token` does not authenticate Copilot inference.
+
+`review-container` takes two optional positional arguments, a model profile
+and a thinking effort:
+
+| Invocation | Model | Effort | Context |
+|---|---|---|---|
+| `just review-container` | `gpt-5.6-luna` | `max` | provider default |
+| `just review-container luna` | `gpt-5.6-luna` | `max` | provider default |
+| `just review-container opus5 high` | `claude-opus-5` | `high` | `264000` |
+
+Run it with no arguments and it launches the default profile.
+Efforts are `low`, `medium`, `high`, and `max`. Contributor runs are
+automated once Hive starts feeding them work, so `opus5` clamps
+`GOOSE_CONTEXT_LIMIT` rather than paying for a window nobody reads.
+`GOOSE_MODEL`, `GOOSE_THINKING_EFFORT`, and `GOOSE_CONTEXT_LIMIT` from the
+environment still win over any profile.
+
+One contributor container owns the name `review-container`, and a second
+launch under that name is refused rather than replacing a live session. To run
+two agents at once, give the second one its own name:
+
+```bash
+REVIEW_CONTAINER_NAME=review-container-2 just review-container opus5 high
+```
+
+Each instance is guarded, reclaimed, and attached under its own name, so
+Ctrl-C in one terminal stops only that agent. The name must match podman's own
+rule, `[a-zA-Z0-9][a-zA-Z0-9_.-]*`; anything else is rejected before launch.
+Both instances mount the same Hive contributor credentials and are fed
+independent assignments by Hive, which remains the sole authority for task
+selection.
 
 The container recipe inherits the Copilot and GitHub tokens by environment
 variable name, so token values are not placed on Podman's command line. The
@@ -207,10 +218,10 @@ All configuration is read at launch.
 | Variable | Purpose |
 |---|---|
 | `REVIEW_VM_RAW` | Verified local raw disk; its `.sha256` sidecar is required. |
-| `REVIEW_VM_RUNNER_IMAGE` | Immutable QEMU runner image used when no raw disk is selected. |
 | `REVIEW_VM_VERSION` | Raw-release version used when neither VM override is set. |
 | `REVIEW_CONTRIBUTOR_IMAGE` | Contributor image; defaults to `ghcr.io/projectbluefin/review:stable`. |
 | `REVIEW_HIVE_COMMIT` | Full Hive commit used for contributor setup. |
+| `REVIEW_CONTAINER_NAME` | Contributor container name; defaults to `review-container`. Give a second concurrent instance its own name. |
 | `REVIEW_GH_TOKEN` | Optional GitHub token override for container-only mode. |
 | `GOOSE_PROVIDER` | Unset or `github_copilot`. |
 | `GOOSE_MODEL` | Optional GitHub Copilot model override. |
@@ -237,8 +248,8 @@ contributor GitHub token and runs unprivileged inside a disposable container,
 so its blast radius is that container plus whatever that token can reach.
 Prefer a `REVIEW_GH_TOKEN` limited to `public_repo` or `repo`.
 
-VM selection prefers an explicit raw disk, then a configured runner image,
-then an exact version-and-architecture raw release. Raw images are checksum
+VM selection prefers an explicit raw disk, then an exact
+version-and-architecture raw release. Raw images are checksum
 verified, boot through disposable overlays, and cached by version and
 architecture. Once the requested raw image is verified, older caches for that
 architecture are removed.
@@ -302,12 +313,14 @@ The image supplies `xterm-256color` and `tmux-256color` terminfo definitions.
 It preserves a recognized terminal type when attaching tmux and falls back to
 `xterm-256color` only when that type is unavailable in the image.
 
-The FSDK base ships no findutils or diffutils, so the image supplies its own
-`find` and `cmp -s`. They cover what Hive's relay and ordinary repository
-exploration need — `find` implements `-maxdepth`, `-type`, `-name`, `-path`,
-`-user`, `-mmin`, `-newer`, `-not`, GNU `-a`/`-o` precedence and `-exec ... +`
-— and exit non-zero on anything else rather than returning a wrong answer.
-`tests/find-semantics.sh` pins that behavior. There is no `diff`.
+The pinned FSDK base ships GNU findutils 4.10.0 and diffutils 3.12, so the
+image uses those directly. It previously installed Python `find` and `cmp`
+shims into `/usr/local/bin`, which precedes `/usr/sbin` on `PATH` and so
+shadowed the real tools; the `find` shim also got `-o` precedence wrong and
+deleted `*.out` of any age where GNU `find` deleted only old `*.html`,
+destroying fresh agent output. Both shims are gone. Use the tools the image
+ships; if one is missing, fix it at the FSDK seam rather than reimplementing
+it here.
 
 Context7 is Hive's, not this image's. The hub queries Context7 server-side and
 delivers the result through its knowledge export, so the image never
@@ -353,7 +366,6 @@ bash scripts/check-skill-frontmatter.sh
 bash tests/generate-skills.sh
 bash tests/image-contract.sh
 bash tests/hive-compatibility.sh
-bash tests/find-semantics.sh
 bash tests/bluefin-review.sh
 bash tests/just-onboarding.sh
 git diff --check

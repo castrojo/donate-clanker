@@ -61,20 +61,6 @@ jobs:
           set -euo pipefail
           node --test queue/test/queue.test.mjs
 
-      # The MCP App is a read-only presentation layer. Nothing in the MCP SDK
-      # or Goose enforces that, so build it and assert the served surface here.
-      - name: MCP App installs, type-checks, and builds
-        run: |
-          set -euo pipefail
-          npm --prefix mcp-app ci
-          npm --prefix mcp-app run typecheck
-          npm --prefix mcp-app run build
-
-      - name: MCP App read-only contract
-        run: |
-          set -euo pipefail
-          bash tests/mcp-app-contract.sh
-
       - name: Install just
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
 
@@ -113,7 +99,6 @@ jobs:
           set -euo pipefail
           bash tests/image-contract.sh
           bash tests/hive-compatibility.sh
-          bash tests/find-semantics.sh
           bash tests/bluefin-review.sh
 
       - name: Interactive launcher docs and shell stay aligned

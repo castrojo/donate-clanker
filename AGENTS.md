@@ -18,11 +18,6 @@ Keep this repository small. Do not add a daemon, service, background
 lifecycle, persistent state beyond launcher configuration, task-selection
 logic, or a second implementation of the launcher.
 
-`mcp-app/` is a separate, read-only Goose Desktop presentation layer. It may
-observe evidence from Hive and GitHub through its foreground stdio MCP server,
-but it must never select work, control Hive, read tmux, expose credentials,
-persist state, or poll.
-
 The public launcher is foreground-only. Every launch path must end in a
 process that is `exec`'d, or is the last foreground command whose exit status
 propagates verbatim: no `nohup`, `--detach`, systemd unit, or `podman run -d`,
@@ -57,6 +52,25 @@ When a task can only be completed by out-of-scope work, an evidenced written
 finding is the deliverable. See
 [`docs/skills/contribution-culture.md`](docs/skills/contribution-culture.md).
 
+Grandfathering is an antipattern here. Do not record a known-wrong thing as an
+accepted exception and move on: fix it now, or delete it. An exception clause
+outlives the condition that created it and converts "this is wrong" into "this
+is allowed" — and a test that pins the exception makes correcting the defect
+fail CI. Reject the words *grandfathered*, *sanctioned*, *legacy exception*,
+*pre-existing*, *for now*, and *temporarily* in this repository's documents.
+
+Use the tools the image already ships. If a common utility is missing, add it
+to the base at the FSDK seam; never hand-roll a local reimplementation, and
+never leave a shim standing once the seam fix lands. A shim is not inert
+because it looks unused: `image/bin/find` and `image/bin/cmp` installed into
+`/usr/local/bin`, which precedes `/usr/sbin` on `PATH`, so they shadowed the
+GNU findutils and diffutils the pinned base had since gained. The `find` shim
+also got `-o` precedence wrong and deleted `*.out` of any age where GNU `find`
+deleted only old `*.html`, destroying fresh agent output every task cycle.
+Verify a utility's absence by executing it at the pinned digest before
+concluding the base lacks it. See
+[`docs/skills/image-build.md`](docs/skills/image-build.md).
+
 Reporting downstream evidence upstream to `kubestellar/hive` is expected work,
 and filed issues are followed up rather than abandoned. Report observations,
 reproductions, and options; upstream owns the design decision and the triage
@@ -67,8 +81,6 @@ labels. Never add a local workaround for an accepted upstream gap. See
 
 - `justfile` is the only shipped launcher artifact. Its
   three public recipes and private helpers intentionally live together.
-- `mcp-app/` contains the optional Goose Desktop MCP App; it is not a launcher
-  artifact and does not participate in launcher lifecycle.
 - `image/` builds the FSDK-derived contributor image and its layered runtime
   configuration.
 - `package.json` and `package-lock.json` at the root pin only the contributor
@@ -85,7 +97,7 @@ the Hive-managed path.
 
 ## Permitted changes
 
-Agents may change `justfile`, `mcp-app/`, `image/`, `queue/`, `scripts/`,
+Agents may change `justfile`, `image/`, `queue/`, `scripts/`,
 `tests/`, `docs/`, `README.md`, `AGENTS.md`, and `.github/workflows/`.
 
 Do not modify `ublue-os/*`, or commit generated `.agents/skills/` content.
@@ -123,8 +135,6 @@ bash scripts/check-skill-frontmatter.sh
 bash tests/generate-skills.sh
 bash tests/image-contract.sh
 bash tests/hive-compatibility.sh
-bash tests/find-semantics.sh
-bash tests/mcp-app-contract.sh
 bash tests/bluefin-review.sh
 bash tests/just-onboarding.sh
 git diff --check

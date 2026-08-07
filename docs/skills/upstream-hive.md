@@ -1,6 +1,6 @@
 ---
 name: upstream-hive
-version: "1.1"
+version: "1.2"
 last_updated: 2026-08-04
 id: upstream-hive
 one_line_purpose: File and follow up on kubestellar/hive issues as an exemplary downstream.
@@ -51,11 +51,11 @@ An **upstream gap** is a missing capability in Hive's contributor protocol,
 assignment flow, or contributor runtime — the surface Hive owns and we consume.
 A missing capability in the pinned base image is **not** an upstream gap. It is
 a base-image capability gap, it belongs to `image-build.md`, and it is governed
-by that document's rules: prefer a real FSDK-owned package, record the base gap,
-and where a shim is sanctioned it stays inside the narrow set already named
-there, such as the `find` and `cmp` replacements for the lean base's missing
-findutils and diffutils. Do not read that sanction as permission to shim a
-protocol gap.
+by that document's rules: use the tools the image already ships, and where one is
+genuinely missing, add it at the FSDK seam so every consumer is fixed at once.
+Never hand-roll a local reimplementation of standard userland. There is no
+standing exception to this and no wording that creates one, so there is no
+base-image precedent to cite for shimming a protocol gap either.
 
 A gap is **accepted** once an upstream maintainer has responded with a
 decision — typically a `DESIGN-RESPONSE` comment, but any explicit maintainer
@@ -114,7 +114,7 @@ issue.
 - Presenting a downstream design consequence as an upstream defect.
 - Building a local workaround for an upstream protocol gap, accepted or still
   awaiting a response.
-- Citing a sanctioned base-image shim as precedent for a protocol workaround.
+- Citing a base-image shim as precedent for a protocol workaround.
 - Reopening a direction a maintainer already decided in a `DESIGN-RESPONSE`.
 - Filing a new issue for evidence that belongs on an existing one.
 

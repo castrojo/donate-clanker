@@ -2,10 +2,10 @@
 
 This document is the canonical local model for `review`. It adapts
 [`projectbluefin/common`'s Agentic Operating Model][common-model] to this
-repository's thin foreground launcher and read-only MCP app. Read it after
+repository's thin foreground launcher. Read it after
 `AGENTS.md` and before task-specific skills.
 
-The model is documentation: the launcher, image, MCP app, tests, skills, and
+The model is documentation: the launcher, image, tests, skills, and
 user-facing instructions must describe the same roles and authority
 boundaries. When source evidence changes the model, update this document and
 the affected local contract together. Do not preserve superseded plans,
@@ -72,14 +72,17 @@ Hive owns the contributor WebSocket protocol, task selection, assignment prompt
 injection, the `contributor` tmux session, and output capture. The launcher
 must not filter, prioritize, decline, retry, or otherwise manage assignments.
 
-`mcp-app/` presents read-only Review Evidence over foreground stdio MCP. It
-does not select work, control Hive, read tmux, expose credentials, persist
-state, poll, or mutate GitHub or launcher state.
-
 The human Maintainer Reviewer is the decision point. A Factory Worker,
 Managed Reviewer Client, Portable Reviewer Prompt, Review Evidence view, or
 Bluefin PR Queue must never claim approval, merge, queue-management, or
 task-selection authority.
+
+The pinned FSDK base owns the contributor toolchain. `review` consumes the
+tools the image ships and does not reimplement them: a missing utility is
+fixed at the FSDK seam, and a shim is removed the moment that fix lands. A
+local reimplementation is not a neutral stopgap — it shadows the real tool on
+`PATH` and silently substitutes its own semantics for the ones every caller
+assumes.
 
 ## Documentation discipline
 
@@ -102,8 +105,6 @@ bash scripts/check-skill-frontmatter.sh
 bash tests/generate-skills.sh
 bash tests/image-contract.sh
 bash tests/hive-compatibility.sh
-bash tests/find-semantics.sh
-bash tests/mcp-app-contract.sh
 bash tests/bluefin-review.sh
 bash tests/just-onboarding.sh
 git diff --check
