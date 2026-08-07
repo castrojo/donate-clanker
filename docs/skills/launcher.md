@@ -1,6 +1,6 @@
 ---
 name: launcher
-version: "2.2"
+version: "2.3"
 last_updated: 2026-08-07
 id: launcher
 one_line_purpose: Change review just recipes without breaking foreground.
@@ -172,9 +172,17 @@ A locally built image has no registry behind it and is not a moving tag.
 that emits pull retries and an always-false "may be out of date" warning.
 Detect the local build before deciding a ref is refreshable.
 
-`just` reads only the justfile in the current directory, so `just
-review-container` fails from another repository; run it from this checkout or
-pass `--justfile`.
+The same reasoning governs the missing case. `localhost/` is podman's local
+storage namespace, never a registry host, so pulling a `localhost/` ref that
+is absent dials `https://localhost/v2/` and fails three times with a
+connection-refused error that reads like a network fault instead of a missing
+build. Absent from local storage is the final answer for a `localhost/` ref:
+fail immediately and say it must be built, or that the override should be
+dropped for the published default.
+
+`just --list` in another repository shows only that repository's recipes, so
+run `just review-container` from this checkout, or pass `--justfile`, when you
+want to be certain which launcher you are invoking.
 
 ## Common Rationalizations
 

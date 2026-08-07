@@ -29,7 +29,7 @@ import sys
 import urllib.error
 import urllib.request
 
-DEFAULT_COMMON_COMMIT = "56944ddddfe55811428f3287f5e3533f3e1c05e1"
+DEFAULT_COMMON_COMMIT = "b6f5c370cca19398fbbbe43a0182dca6783a80cb"
 DEFAULT_INDEX = (
     "https://raw.githubusercontent.com/projectbluefin/common/"
     f"{DEFAULT_COMMON_COMMIT}/docs/skills/index.json"
