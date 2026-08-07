@@ -157,6 +157,22 @@ forbid_line() {
   fi
 }
 
+shim_path_line() {
+  # The base now ships real find and cmp, so their mere presence proves
+  # nothing. What Hive's relay depends on is that review's shims are the ones
+  # that run, which holds because the base PATH puts /usr/local/bin ahead of
+  # /usr/bin. Assert the resolved path so a PATH or install-location change
+  # fails here instead of silently altering relay behaviour.
+  local inventory="$1" name="$2" resolved
+  resolved="$(grep -F "path:${name}:" <<<"$inventory" | head -n 1)"
+  resolved="${resolved#path:"${name}":}"
+  if [[ -z "$resolved" ]]; then
+    error "shim command missing from runtime: ${name}"
+  elif [[ "$resolved" != /usr/local/bin/* ]]; then
+    error "review's ${name} shim is shadowed: resolves to ${resolved}, not /usr/local/bin/${name}"
+  fi
+}
+
 normalize_arch() {
   case "$1" in
   x86_64 | amd64) echo amd64 ;;
@@ -502,6 +518,8 @@ runtime_inventory() {
     terminfo="$3"
     for command in $required; do
       command -v "$command" >/dev/null && printf "required:%s\n" "$command"
+      resolved="$(command -v "$command" 2>/dev/null)" &&
+        printf "path:%s:%s\n" "$command" "$resolved"
     done
     for command in $forbidden; do
       command -v "$command" >/dev/null && printf "forbidden:%s\n" "$command"
@@ -520,9 +538,32 @@ runtime_inventory() {
 }
 
 base_required="bash cat chmod cp curl git grep jq ls mkdir mv python3 rm sed sh sort tail tee touch tr uname wc ssh kubectl tic infocmp argo just nginx"
-base_forbidden="node npm gh tmux goose find cmp diff rg fd yq shellcheck apt dnf apk"
+# Two different rules used to be spelled the same way here, which made the
+# audit fail for a change that was actually correct.
+#
+# A package manager is genuinely forbidden: images are built from BST
+# elements, so a runtime that can mutate itself is a defect.
+#
+# Everything review installs itself is forbidden only from the base, because
+# a second copy there means two versions of the same tool and no way to tell
+# which one an agent ran.
+#
+# Ordinary userland -- find, cmp, diff, and utilities such as rg, fd, yq and
+# ShellCheck -- is deliberately absent from both lists. Contributor agents
+# need it, and its absence is what made them fail with 'command not found'.
+# For 'find' and 'cmp' the real invariant is not absence but precedence:
+# review ships deliberate shims Hive's relay depends on, so they must still
+# win on PATH now that the base carries real implementations. That is
+# asserted directly below rather than approximated by forbidding the base
+# copy.
+package_managers="apt dnf apk"
+review_owned="node npm gh tmux goose"
+base_forbidden="${review_owned} ${package_managers}"
 derived_required="bash node npm corepack gh tmux goose find cmp infocmp"
-derived_forbidden="apt dnf apk"
+derived_forbidden="$package_managers"
+# Shims review layers over the base. Hive's relay depends on their exact
+# semantics, which tests/find-semantics.sh pins.
+derived_shims="find cmp"
 
 append ""
 append "#### Native runtime audit"
@@ -555,6 +596,9 @@ for image_kind in base derived; do
     forbid_line "$inventory" forbidden "$command"
   done
   if [[ "$image_kind" == derived ]]; then
+    for command in $derived_shims; do
+      shim_path_line "$inventory" "$command"
+    done
     require_line "$inventory" terminfo xterm-256color
     require_line "$inventory" terminfo tmux-256color
     "$engine" run --rm --entrypoint /usr/bin/bash "$image" -ceu \
