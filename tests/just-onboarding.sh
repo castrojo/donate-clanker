@@ -417,7 +417,7 @@ run_recipe() {
       -u TEST_UNAME_M -u TEST_CURL_MODE -u REVIEW_TEST_GUM_TTY \
       -u GOOSE_THINKING_EFFORT -u GOOSE_CONTEXT_LIMIT \
       -u REVIEW_NON_INTERACTIVE -u GOOSE_INSTALLED \
-      -u REVIEW_TEST_BOOTSTRAP_MODE \
+      -u REVIEW_TEST_BOOTSTRAP_MODE -u REVIEW_CONTAINER_NAME \
       HOME="$home" PATH="$fake_bin:/usr/bin:/bin" TMPDIR="$tmp_root" \
       GUM_LOG="$gum_log" RUNNER_LOG="$runner_log" QEMU_LOG="$qemu_log" \
       IMAGE_LOG="$image_log" \
@@ -1013,6 +1013,75 @@ run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 \
   GOOSE_MODEL=gpt-test \
   FAKE_PODMAN_RUNNING=1 FAKE_PODMAN_OWNED=1
 assert_not_contains "press Ctrl-C in the terminal that owns it." "$OUT"
+
+# ── concurrent instances ──────────────────────────────────────────────────
+# One name can only be held by one agent, so a second concurrent contributor
+# asks for a name of its own. That is the whole feature: one validated
+# environment override, no instance registry and no state.
+
+begin "review-container: the default name is unchanged when the override is unset"
+reset_logs
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 GOOSE_MODEL=gpt-test
+assert_file_contains "--replace --name review-container " "$runner_log"
+assert_contains "podman exec -it review-container tmux attach" "$OUT"
+
+begin "review-container: REVIEW_CONTAINER_NAME runs a second, differently-named instance"
+reset_logs
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 GOOSE_MODEL=gpt-test \
+  REVIEW_CONTAINER_NAME=review-container-2
+assert_eq "$(wc -l <"$runner_log")" 1 "expected exactly one podman invocation"
+assert_file_contains "--replace --name review-container-2 " "$runner_log"
+assert_file_contains "--label review.owner=${boot_id}:" "$runner_log"
+assert_file_not_contains "--detach" "$runner_log"
+# Every hint has to name the container the user actually started, or a second
+# agent is told to attach to the first one's session.
+assert_contains "podman exec -it review-container-2 tmux attach" "$OUT"
+
+begin "review-container: an invalid REVIEW_CONTAINER_NAME is one actionable error"
+reset_logs
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 GOOSE_MODEL=gpt-test \
+  'REVIEW_CONTAINER_NAME=-bad name; rm -rf /'
+assert_nonzero_status "$STATUS" "an invalid container name must stop the launch"
+assert_eq "$(error_line_count "$OUT")" 1 "expected exactly one ERROR: line"
+assert_contains "is not a valid container name" "$OUT"
+assert_eq "$(wc -c <"$runner_log")" 0 "an invalid name must never reach podman"
+
+begin "review-container: a live instance is refused under its own name"
+reset_logs
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 GOOSE_MODEL=gpt-test \
+  REVIEW_CONTAINER_NAME=review-container-2 \
+  FAKE_PODMAN_RUNNING=1 FAKE_PODMAN_OWNED=1
+assert_nonzero_status "$STATUS" "a live owner must stop the relaunch"
+assert_contains "review-container-2 is already running in another terminal" "$OUT"
+assert_contains "podman exec -it review-container-2 tmux attach" "$OUT"
+assert_not_contains "podman exec -it review-container tmux attach" "$OUT"
+assert_eq "$(wc -c <"$runner_log")" 0 "a live session must never be replaced"
+
+begin "review-container: orphan reclaim is per-name"
+reset_logs
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 GOOSE_MODEL=gpt-test \
+  REVIEW_CONTAINER_NAME=review-container-2 \
+  FAKE_PODMAN_RUNNING=1 FAKE_PODMAN_OWNED=0
+assert_contains "reclaiming review-container-2" "$OUT"
+assert_not_contains "ERROR:" "$OUT"
+assert_file_contains "--replace --name review-container-2 " "$runner_log"
+
+begin "review-container: a named instance with a live owner is never replaced"
+# The ownership marker is confirmed against the owner's own '/proc' cmdline,
+# so the confirmation has to follow the custom name too.
+reset_logs
+bash -c 'trap "exit 0" TERM; sleep 30' --name review-container-2 &
+named_owner_pid=$!
+run_recipe review-container GH_READY=1 REVIEW_TEST_GUM_TTY=1 GOOSE_MODEL=gpt-test \
+  REVIEW_CONTAINER_NAME=review-container-2 \
+  FAKE_PODMAN_RUNNING=1 FAKE_PODMAN_OWNED=0 \
+  "FAKE_PODMAN_OWNER_LABEL=${boot_id}:${named_owner_pid}"
+kill "$named_owner_pid" 2>/dev/null || true
+wait "$named_owner_pid" 2>/dev/null || true
+assert_nonzero_status "$STATUS" "a marked, live owner must stop the relaunch"
+assert_contains "review-container-2 is already running in another terminal" "$OUT"
+assert_contains "pid ${named_owner_pid}" "$OUT"
+assert_eq "$(wc -c <"$runner_log")" 0 "a live session must never be replaced"
 
 # ══ Doctor is read-only ═══════════════════════════════════════════════════
 begin "review-doctor: read-only, Goose-only diagnostics"

@@ -1,7 +1,7 @@
 ---
 name: launcher
-version: "1.9"
-last_updated: 2026-08-06
+version: "2.0"
+last_updated: 2026-08-07
 id: launcher
 one_line_purpose: Change review just recipes without breaking foreground.
 entry_point: docs/skills/launcher.md
@@ -117,6 +117,33 @@ is an orphan and is reclaimed silently at the next launch. Never answer an
 ownerless container by telling a user to press Ctrl-C in a terminal that no
 longer exists, and never reintroduce a user-facing stop or clean verb.
 
+## Concurrent Instances
+
+Every ownership check is keyed on the container name, so the name is what
+scopes an instance. `REVIEW_CONTAINER_NAME` overrides the default
+`review-container` and is the only supported way to run a second contributor
+agent at the same time:
+
+```bash
+REVIEW_CONTAINER_NAME=review-container-2 just review-container opus5 high
+```
+
+Keep it to that one variable. Do not add a `--name` recipe parameter, instance
+numbering, a multi-instance manager, or any registry of running instances;
+that would be launcher state and task-selection surface this repository does
+not have.
+
+A name supplied by a user reaches `podman run --name` and both ownership
+probes, so validate it against podman's own rule
+(`[a-zA-Z0-9][a-zA-Z0-9_.-]*`) before launch rather than letting podman fail
+late. Validate before the model picker and the Hive setup so a typo costs
+nothing. The pre-marker `pgrep` fallback in `container_has_owner` builds a
+regex from the name, and podman's rule allows `.`; escape it, or one
+instance's heuristic can answer for a differently-named sibling. Every
+user-facing message — the refusal, the attach hint, the reclaim line — must
+name the container that was actually requested, or a second agent is told to
+attach to the first one's session.
+
 Hive selects every task. The launcher must not filter, skip, rank, or decline
 assignments by repository, label, title, author, or issue.
 
@@ -144,6 +171,9 @@ assignments by repository, label, title, author, or issue.
 - A token in output, files, Podman arguments, or any persisted launcher file.
 - Ownership inferred from `pgrep` rather than a label plus a live, same-boot,
   still-naming PID.
+- A user-supplied container name reaching `podman run` or an ownership probe
+  unvalidated, or a hint that names the default container instead of the one
+  the caller asked for.
 - A second implementation of launcher behavior in another language.
 - Task-selection policy outside Hive.
 
