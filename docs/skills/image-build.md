@@ -158,6 +158,17 @@ fix.
     `bash tests/image-audit.sh --verify-base-evidence`; it verifies the
     `projectbluefin/fsdk-containers` attestation and both platform manifests.
     Audit each derived build with `bash tests/image-audit.sh --derived <image>`.
+    The audit is the CI gate: it fails on a disappeared base command, an
+    appeared package manager, a base manifest list without exactly
+    linux/amd64 and linux/arm64, a derived rootfs that does not preserve the
+    exact base layers, and — when given the publish flags — a published
+    manifest list missing a platform or whose OCI labels diverge from the
+    pinned source. Its report states only current exact-digest facts; retired
+    comparisons stay in #70/#87. Both platform slots are always recorded —
+    native or unavailable — and an unavailable slot is never a skipped row or
+    a QEMU substitute (native arm64 runtime measurement is #87). `--report
+    FILE` writes the Markdown report to a file; reports are generated output
+    and stay out of git (`image-audit-report.md` is ignored).
     Publishing requires BuildKit `provenance: mode=max` and `sbom: true`, a
     GitHub artifact attestation for the pushed digest, and post-publish
     verification of both platforms, OCI labels/annotations, both BuildKit
@@ -246,10 +257,10 @@ way to know which an agent ran.
 `yq` and ShellCheck belong in the base when a contributor needs them; their
 absence is what made live agents fail with `command not found`. Add them at
 the BST seam, never here, and file the ones that are missing rather than
-describing them. For `find` and `cmp` the audit checks provenance
-rather than presence: Hive's relay calls both directly, the base carries real
-GNU implementations, and the audit fails if either resolves under
-`/usr/local/bin` — the shape a reintroduced shim would take.
+describing them. For `find`, `cmp` and `diff` the audit checks provenance
+rather than presence: Hive's relay calls `find` and `cmp` directly, the base
+carries real GNU implementations, and the audit fails if any of the three
+resolves under `/usr/local/bin` — the shape a reintroduced shim would take.
 
 ## Red Flags
 
@@ -283,6 +294,8 @@ GH_TOKEN="$(gh auth token)" podman build \
   --build-arg GOOSE_REFRESH="$(date +%s)" \
   -f image/Containerfile -t review:dev .
 bash tests/image-audit.sh --derived review:dev
+# Optional: keep the Markdown report (generated output, git-ignored).
+bash tests/image-audit.sh --derived review:dev --report image-audit-report.md
 git diff --check
 ```
 
