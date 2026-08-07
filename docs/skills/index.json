@@ -133,7 +133,7 @@
         "audit"
       ],
       "description": "Use when maintaining the pinned FSDK-derived contributor image, audit, Goose canary assets, Hive runtime, or publishing path.",
-      "version": "2.13",
+      "version": "2.14",
       "last_updated": "2026-08-07",
       "doc_type": "procedure"
     },
@@ -187,11 +187,12 @@
         "pullrequest",
         "conventional",
         "hooks",
-        "branches"
+        "branches",
+        "worktree"
       ],
-      "description": "Defines protected-branch pull request, branch, title, trailer, and validation requirements, and how to reconcile a long-lived branch with a squash-merged main. Use before branching, committing, opening a review pull request, or resolving merge conflicts.",
-      "version": "1.5",
-      "last_updated": "2026-08-04",
+      "description": "Defines protected-branch pull request, branch, title, trailer, and validation requirements, how to commit without clobbering uncommitted work, and how to reconcile a long-lived branch with a squash-merged main. Use before branching or committing.",
+      "version": "1.6",
+      "last_updated": "2026-08-07",
       "doc_type": "policy"
     },
     {

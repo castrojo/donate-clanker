@@ -1,7 +1,7 @@
 ---
 name: pr-workflow
-version: "1.5"
-last_updated: 2026-08-04
+version: "1.6"
+last_updated: 2026-08-07
 id: pr-workflow
 one_line_purpose: Open review pull requests that merge cleanly.
 entry_point: docs/skills/pr-workflow.md
@@ -10,8 +10,8 @@ mcp_compliance_level: partial
 optimization_status: draft
 status: active
 dependencies: []
-tags: [git, pullrequest, conventional, hooks, branches]
-description: "Defines protected-branch pull request, branch, title, trailer, and validation requirements, and how to reconcile a long-lived branch with a squash-merged main. Use before branching, committing, opening a review pull request, or resolving merge conflicts."
+tags: [git, pullrequest, conventional, hooks, branches, worktree]
+description: "Defines protected-branch pull request, branch, title, trailer, and validation requirements, how to commit without clobbering uncommitted work, and how to reconcile a long-lived branch with a squash-merged main. Use before branching or committing."
 metadata:
   type: policy
   context7-sources: [/pre-commit/pre-commit]
@@ -95,8 +95,50 @@ When a pinned dependency conflicts, resolve by date rather than by side:
 gh api repos/<owner>/<repo>/commits/<sha> --jq '.commit.committer.date'
 ```
 
+## Committing In A Repository That Has Uncommitted Work
+
+A working tree you did not create may hold someone's uncommitted work. Staging
+in it is destructive: `git add -A`, `git add .`, and a bare `git checkout --`
+will sweep up or discard changes that are not yours, and the loss is silent
+because the diff you review afterwards looks correct.
+
+Before committing anywhere, check:
+
+```bash
+git status --short
+```
+
+If that prints anything you did not write, do not commit in place. Create a
+throwaway worktree from the pushed branch point, make the change there, and
+leave the original tree untouched:
+
+```bash
+git fetch origin
+git worktree add /tmp/work -b my-change origin/main
+cd /tmp/work
+```
+
+Commit, push, and open the pull request from `/tmp/work`, then remove it with
+`git worktree remove /tmp/work`. The dirty tree never changes state, so there
+is nothing to restore.
+
+Stage files by name, never by wildcard, even in a clean tree. `git add
+path/to/file` cannot pick up a file you did not intend to touch.
+
+If work is clobbered anyway, `git add` has already written the blob to the
+object database and `git reset` does not remove it. Recover with:
+
+```bash
+git fsck --unreachable --no-reflogs | grep blob
+git cat-file -p <sha>
+```
+
+Prefer not needing that.
+
 ## Red Flags
 
+- Committing from a working tree that holds someone else's uncommitted work.
+- Staging with `git add -A` or `git add .` rather than by explicit path.
 - Pushing directly to `main`.
 - A non-Conventional pull request title.
 - Combining unrelated changes in one pull request.

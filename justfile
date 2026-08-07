@@ -313,6 +313,18 @@ require_no_running_instance() {
   fi
   return 1
 }
+image_ref_is_local_build() {
+  # A locally built image has no registry behind it, so trying to refresh it
+  # only produces a failed pull and a misleading "may be out of date" warning.
+  # podman stores 'podman build -t review:dev' as 'localhost/review:dev', so
+  # accept the bare name a user is likely to type as well as the stored form.
+  local ref="$1"
+  case "$ref" in
+    localhost/*) return 0 ;;
+    */*)         return 1 ;;
+  esac
+  podman image exists "localhost/${ref}"
+}
 image_ref_is_moving() {
   # A digest is immutable and an 'sha-<commit>' tag is minted once per build,
   # so both always name exactly one image. Anything else can be repointed at
@@ -320,8 +332,9 @@ image_ref_is_moving() {
   case "$1" in
     *@sha256:*) return 1 ;;
     *:sha-*)    return 1 ;;
-    *)          return 0 ;;
   esac
+  image_ref_is_local_build "$1" && return 1
+  return 0
 }
 ensure_contributor_image() {
   # A missing tag otherwise surfaces as a bare 'manifest unknown' from
@@ -1074,6 +1087,12 @@ review-container profile="" effort="":
     CONTAINER_ARGS=(
       podman run --rm --interactive --tty --replace --name "$CONTAINER_NAME"
       --label "$(owner_run_label)"
+      # Rootless podman maps the host user to container root by default, so a
+      # 0600 host file bind-mounts in as root-owned and the 'dev' user the
+      # image runs as cannot read it -- contributor.env holds Hive's own
+      # settings and is exactly that. Mapping the host user onto dev's uid
+      # instead makes the mount readable without loosening the host mode.
+      --userns "keep-id:uid=1000,gid=1000"
       --volume "${HOME}/.config/hive:/home/dev/.config/hive:ro"
       --env "AGENT_BACKEND=goose"
     )

@@ -1,6 +1,6 @@
 ---
 name: image-build
-version: "2.13"
+version: "2.14"
 last_updated: 2026-08-07
 id: image-build
 one_line_purpose: Derive and pin the review contributor image safely.
@@ -129,7 +129,7 @@ compatibility burden for both sides. See [`upstream-hive.md`](upstream-hive.md).
 
 ## When Not to Use
 
-Do not use this runbook to change Hive assignment, checkout, or contributor protocol behavior; those belong in Hive. Do not add task-specific validation dependencies when an unavailable-command report is sufficient. Do not switch the final image to a shell-less base or copy a hand-selected dynamic-library closure from another distribution.
+Do not use this runbook to change Hive assignment, checkout, or contributor protocol behavior; those belong in Hive. Do not switch the final image to a shell-less base or copy a hand-selected dynamic-library closure from another distribution.
 
 ## Common Rationalizations
 
@@ -141,9 +141,10 @@ Do not use this runbook to change Hive assignment, checkout, or contributor prot
   deliberately. Safety that decays unobserved is not safety.
 - "It's only a SHA bump, automerge it." Hive is a protocol dependency; verify
   the three consumed files are unchanged first.
-- "Adding every validator makes contributors more useful." The image must stay a
-  narrow contributor runtime; report a missing tool and let the assigned
-  repository choose its validation environment.
+- "Adding every validator makes contributors more useful." Userland an agent
+  needs on every task belongs in the base at the BST seam. A validator only one
+  repository needs does not: report it unavailable and let that repository
+  choose its own validation environment.
 - "Replacing grep/find/cat/ls makes every agent faster." These commands are a
   script interface, and the scripts are not all yours: Hive's relay calls `find`
   too. Install modern tools beside them, never substituting semantics.
@@ -153,6 +154,23 @@ Do not use this runbook to change Hive assignment, checkout, or contributor prot
 - "Passing `--env NAME=value` is harmless." Podman exposes command arguments
   locally; export the value and use `--env NAME` so Podman inherits only that
   host environment entry.
+
+## What The Image Audit Forbids
+
+`tests/image-audit.sh` keeps two rules apart that are easy to conflate. A
+**package manager** (`apt`, `dnf`, `apk`) is forbidden in both images always:
+content comes from BST elements, so a self-mutating runtime is a defect.
+**Anything review installs itself** (`node`, `npm`, `gh`, `tmux`, `goose`) is
+forbidden in the base only, because a second copy means two versions and no
+way to know which an agent ran.
+
+**Ordinary userland is forbidden nowhere.** `find`, `cmp`, `diff`, `rg`, `fd`,
+`yq` and ShellCheck belong in the base when a contributor needs them; their
+absence is what made live agents fail with `command not found`. Add them at
+the BST seam, never here. `find` and `cmp` are the exception: review ships
+shims Hive's relay depends on, so the audit asserts each resolves under
+`/usr/local/bin` rather than forbidding the base copy, which would fail a
+correct change and still miss a PATH regression.
 
 ## Red Flags
 
