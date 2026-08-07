@@ -157,10 +157,11 @@ and a thinking effort:
 | `just review-container` | `gpt-5.6-luna` | `max` | provider default |
 | `just review-container luna` | `gpt-5.6-luna` | `max` | provider default |
 | `just review-container opus5 high` | `claude-opus-5` | `high` | `264000` |
+| `just review-container kimi` | `kimi-k3` | `max` | `264000` |
 
 Run it with no arguments and it launches the default profile.
 Efforts are `low`, `medium`, `high`, and `max`. Contributor runs are
-automated once Hive starts feeding them work, so `opus5` clamps
+automated once Hive starts feeding them work, so `opus5` and `kimi` clamp
 `GOOSE_CONTEXT_LIMIT` rather than paying for a window nobody reads.
 `GOOSE_MODEL`, `GOOSE_THINKING_EFFORT`, and `GOOSE_CONTEXT_LIMIT` from the
 environment still win over any profile.

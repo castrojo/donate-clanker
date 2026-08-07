@@ -81,11 +81,14 @@ hive_repo_url := "https://github.com/kubestellar/hive"
 hive_commit := "98781c252cefb2f2193832a701abd8d0728ea18b"
 copilot_default_model := "gpt-5.6-luna"
 # Contributor runs are automated in practice — Hive keeps feeding the session —
-# so a large window is money spent on context nobody reads. Opus is the one
-# model whose default window is worth clamping; luna keeps the provider
+# so a large window is money spent on context nobody reads. Opus and Kimi are
+# the models whose default windows are worth clamping; luna keeps the provider
 # default because it is already the cheap path.
 opus_model := "claude-opus-5"
 opus_context_limit := "264000"
+# Kimi K3's default window is ~1M tokens, so the same clamp applies.
+kimi_model := "kimi-k3"
+kimi_context_limit := "264000"
 vm_raw_image := env("REVIEW_VM_RAW", "")
 vm_version := env("REVIEW_VM_VERSION", "25.08.15")
 # The fsdk-derived contributor image. Used by
@@ -451,9 +454,14 @@ resolve_model_profile() {
       PROFILE_EFFORT="high"
       PROFILE_CONTEXT_LIMIT="${OPUS_CONTEXT_LIMIT}"
       ;;
+    kimi)
+      PROFILE_MODEL="${KIMI_MODEL}"
+      PROFILE_EFFORT="max"
+      PROFILE_CONTEXT_LIMIT="${KIMI_CONTEXT_LIMIT}"
+      ;;
     *)
       echo "ERROR: unknown model profile '${profile}'." >&2
-      echo "  Known profiles: luna (${COPILOT_DEFAULT_MODEL}), opus5 (${OPUS_MODEL})." >&2
+      echo "  Known profiles: luna (${COPILOT_DEFAULT_MODEL}), opus5 (${OPUS_MODEL}), kimi (${KIMI_MODEL})." >&2
       return 1
       ;;
   esac
@@ -934,13 +942,14 @@ review:
 #   just review-container              # luna: gpt-5.6-luna at max effort
 #   just review-container luna         # the same, named explicitly
 #   just review-container opus5 high   # claude-opus-5, high effort, 264k context
+#   just review-container kimi         # kimi-k3, max effort, 264k context
 #
 # One instance owns the 'review-container' name, so a second concurrent agent
 # needs a name of its own:
 #
 #   REVIEW_CONTAINER_NAME=review-container-2 just review-container opus5 high
 #
-# Usage: just review-container [luna|opus5] [low|medium|high|max]
+# Usage: just review-container [luna|opus5|kimi] [low|medium|high|max]
 # Env:   REVIEW_CONTAINER_NAME=<name>  run a concurrent second instance
 #        (default 'review-container'; must match [a-zA-Z0-9][a-zA-Z0-9_.-]*)
 review-container profile="" effort="":
@@ -951,6 +960,8 @@ review-container profile="" effort="":
     COPILOT_DEFAULT_MODEL="{{copilot_default_model}}"
     OPUS_MODEL="{{opus_model}}"
     OPUS_CONTEXT_LIMIT="{{opus_context_limit}}"
+    KIMI_MODEL="{{kimi_model}}"
+    KIMI_CONTEXT_LIMIT="{{kimi_context_limit}}"
 
     STATE_DIR="${HOME}/.local/state/review"
     HIVE_SRC_DIR="${STATE_DIR}/hive-src"
