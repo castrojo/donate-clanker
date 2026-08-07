@@ -254,12 +254,26 @@ container_has_owner() {
   # A launcher-written marker is authoritative. Only a container from before
   # ownership marking falls back to the old command-line heuristic, which
   # cannot distinguish 'the owner exists' from 'conmon outlived it'.
-  local name="$1"
+  local name="$1" pattern
   if [[ -n "$(container_owner_label "$name")" ]]; then
     [[ -n "$(container_owner_pid "$name")" ]]
     return
   fi
-  pgrep -f "^podman run .*--name ${name}( |\$)" >/dev/null 2>&1
+  # This fallback is the one place a name reaches a regex. Podman's own name
+  # rule allows '.', which would otherwise match any character and let one
+  # instance's heuristic answer for a differently-named sibling.
+  pattern="${name//./\\.}"
+  pgrep -f "^podman run .*--name ${pattern}( |\$)" >/dev/null 2>&1
+}
+require_valid_container_name() {
+  # A name supplied through REVIEW_CONTAINER_NAME reaches 'podman run --name'
+  # and the ownership probes, so it is checked against podman's own rule
+  # rather than handed to podman as-is and left to fail late and cryptically.
+  local name="$1"
+  [[ "$name" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] && return 0
+  echo "ERROR: REVIEW_CONTAINER_NAME='${name}' is not a valid container name." >&2
+  echo "  Use [a-zA-Z0-9][a-zA-Z0-9_.-]*, e.g. REVIEW_CONTAINER_NAME=review-container-2." >&2
+  return 1
 }
 owner_run_label() {
   # Stamped onto every launch so the NEXT launch can answer 'is anyone
@@ -1012,7 +1026,14 @@ review:
 #   just review-container luna         # gpt-5.6-luna at max effort (default)
 #   just review-container opus5 high   # claude-opus-5, high effort, 264k context
 #
+# One instance owns the 'review-container' name, so a second concurrent agent
+# needs a name of its own:
+#
+#   REVIEW_CONTAINER_NAME=review-container-2 just review-container opus5 high
+#
 # Usage: just review-container [luna|opus5] [low|medium|high|max]
+# Env:   REVIEW_CONTAINER_NAME=<name>  run a concurrent second instance
+#        (default 'review-container'; must match [a-zA-Z0-9][a-zA-Z0-9_.-]*)
 review-container profile="" effort="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1037,11 +1058,15 @@ review-container profile="" effort="":
       exit 1
     }
 
+    # Resolved before anything interactive so a typo fails immediately rather
+    # than after the model picker and the Hive setup.
+    CONTAINER_NAME="${REVIEW_CONTAINER_NAME:-review-container}"
+    require_valid_container_name "$CONTAINER_NAME"
+
     resolve_model_profile "{{profile}}" "{{effort}}"
     resolve_goose_selection
     ensure_hive_contributor_env
 
-    CONTAINER_NAME="review-container"
     CONTRIBUTOR_IMAGE="{{contributor_image}}"
     require_no_running_instance "$CONTAINER_NAME"
     ensure_contributor_image "$CONTRIBUTOR_IMAGE"

@@ -187,6 +187,21 @@ automated once Hive starts feeding them work, so `opus5` clamps
 `GOOSE_MODEL`, `GOOSE_THINKING_EFFORT`, and `GOOSE_CONTEXT_LIMIT` from the
 environment still win over any profile.
 
+One contributor container owns the name `review-container`, and a second
+launch under that name is refused rather than replacing a live session. To run
+two agents at once, give the second one its own name:
+
+```bash
+REVIEW_CONTAINER_NAME=review-container-2 just review-container opus5 high
+```
+
+Each instance is guarded, reclaimed, and attached under its own name, so
+Ctrl-C in one terminal stops only that agent. The name must match podman's own
+rule, `[a-zA-Z0-9][a-zA-Z0-9_.-]*`; anything else is rejected before launch.
+Both instances mount the same Hive contributor credentials and are fed
+independent assignments by Hive, which remains the sole authority for task
+selection.
+
 The container recipe inherits the Copilot and GitHub tokens by environment
 variable name, so token values are not placed on Podman's command line. The
 agent can use every scope on its GitHub token; prefer a
@@ -229,6 +244,7 @@ All configuration is read at launch.
 | `REVIEW_VM_VERSION` | Raw-release version used when neither VM override is set. |
 | `REVIEW_CONTRIBUTOR_IMAGE` | Contributor image; defaults to `ghcr.io/projectbluefin/review:stable`. |
 | `REVIEW_HIVE_COMMIT` | Full Hive commit used for contributor setup. |
+| `REVIEW_CONTAINER_NAME` | Contributor container name; defaults to `review-container`. Give a second concurrent instance its own name. |
 | `REVIEW_GH_TOKEN` | Optional GitHub token override for container-only mode. |
 | `GOOSE_PROVIDER` | Unset or `github_copilot`. |
 | `GOOSE_MODEL` | Optional GitHub Copilot model override. |

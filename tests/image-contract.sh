@@ -350,7 +350,11 @@ done
 require image/config/local-agent-policy.md \
   'Use installed global Agent Skills when their descriptions match the task' \
   'docs/skills/index.json' \
-  'inspect local repository evidence first'
+  'inspect local repository evidence first' \
+  'it has no package' \
+  'Probe with' \
+  'are not installed' \
+  'that is an evidenced finding'
 forbid image/config/local-agent-policy.md \
   'context7'
 
