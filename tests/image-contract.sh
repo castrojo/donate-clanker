@@ -425,9 +425,15 @@ require image/config/local-agent-policy.md \
   'it has no package' \
   'Probe with' \
   'are not installed' \
+  'gh run watch' \
   'that is an evidenced finding'
+# The policy tells the agent what the runtime lacks, so a tool the base
+# actually ships must never be named as absent: that steers every task into a
+# hand-rolled substitute. These are present at the pinned base digest.
+# shellcheck disable=SC2016 # Literal policy text, not shell expansion.
 forbid image/config/local-agent-policy.md \
-  'context7'
+  'context7' \
+  '`which`, `awk`'
 
 # GOOSE_PATH_ROOT keeps controlled policy/data/state out of Hive's runtime
 # config. The pinned runtime now links its knowledge export to Goose-native
@@ -445,6 +451,7 @@ require image/entrypoint.sh \
   'GOOSE_MOIM_MESSAGE_FILE' \
   '/opt/bluefin/local-agent-policy.md' \
   'core.hooksPath /opt/bluefin/git-hooks' \
+  'checkout.defaultRemote origin' \
   'shopt -s nullglob' \
   'validation_tools=(bats shellcheck hadolint systemd-analyze pre-commit just podman)' \
   'validation tools unavailable: ${missing_validation_tools[*]} (fsdk-containers#89)' \
@@ -536,7 +543,8 @@ forbid image/entrypoint.sh \
 
 require image/tmux.conf \
   'set -g default-terminal "tmux-256color"' \
-  'set -g mouse on'
+  'set -g mouse on' \
+  'set -g history-limit 50000'
 
 # This source-backed behavioral check fetches the exact pin and exercises the
 # hosted hook's curl rewrite without reaching the hosted service.
