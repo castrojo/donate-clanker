@@ -12,7 +12,7 @@
 # was never once offered an update and silently froze. A pin no tool can track
 # is not a stricter pin, it is a stale one. The reference below is the only
 # source of truth for which base this is; do not restate its value here.
-ARG FSDK_RUNNER_IMAGE=ghcr.io/projectbluefin/lab-runner:25.08@sha256:9a683102749ecf261a41ac48f48d83186f970504ec0eee63b524fb143fff19ae
+ARG FSDK_RUNNER_IMAGE=ghcr.io/projectbluefin/lab-runner:25.08@sha256:780b703c438281a017942ef86ccf3c65ee51cf6b721e063888c8ee46c1f49a44
 # Kept equal to justfile's hive_commit: host setup and the
 # image runtime use the same contributor relay protocol revision.
 ARG HIVE_COMMIT=98781c252cefb2f2193832a701abd8d0728ea18b
@@ -159,25 +159,16 @@ RUN --mount=type=secret,id=github_token set -eu; \
 
 COPY --chmod=0755 image/bin/bluefin-review /usr/local/bin/bluefin-review
 
-# FSDK intentionally omits terminfo. Supply the terminal descriptions used by
-# the attach client and tmux panes without layering a general terminal database.
-# The direct-color entries make 24-bit color a terminfo fact rather than a
-# tmux terminal-features override; the 256color entries remain the attach
-# fallback for host TERM values the image does not know.
-COPY image/terminfo/xterm-256color.src /tmp/xterm-256color.src
-COPY image/terminfo/tmux-256color.src /tmp/tmux-256color.src
-COPY image/terminfo/xterm-direct.src /tmp/xterm-direct.src
-COPY image/terminfo/tmux-direct.src /tmp/tmux-direct.src
+# The base ships the full ncurses terminfo database (fsdk-containers#101):
+# TERM inside the container is the truth about the attached terminal, and
+# the direct-color entries make 24-bit color a terminfo fact rather than a
+# tmux terminal-features override. Fail the build if the base regresses.
 RUN set -eu; \
-    tic -x -o /usr/share/terminfo /tmp/xterm-256color.src; \
-    tic -x -o /usr/share/terminfo /tmp/tmux-256color.src; \
-    tic -x -o /usr/share/terminfo /tmp/xterm-direct.src; \
-    tic -x -o /usr/share/terminfo /tmp/tmux-direct.src; \
-    rm /tmp/xterm-256color.src /tmp/tmux-256color.src /tmp/xterm-direct.src /tmp/tmux-direct.src; \
     infocmp xterm-256color >/dev/null; \
     infocmp tmux-256color >/dev/null; \
     infocmp xterm-direct >/dev/null; \
-    infocmp tmux-direct >/dev/null
+    infocmp tmux-direct >/dev/null; \
+    infocmp -x tmux-direct | grep -q 'RGB'
 
 # Pull the contributor-mode runtime directly from the pinned Hive commit. The
 # launcher still depends on Hive's relay protocol and tmux contract; we just own

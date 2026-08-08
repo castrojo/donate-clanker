@@ -148,14 +148,7 @@ require image/Containerfile \
   'tar -I '\''python3 -m gzip'\'' -xOf "$workdir/tmux.tar.gz" --occurrence=1 tmux > /usr/local/bin/tmux;' \
   'tar -I '\''python3 -m gzip'\'' -xOf "$workdir/goose.tar.gz" --occurrence=1 ./goose > /usr/local/bin/goose;' \
   'COPY image/tmux.conf /etc/tmux.conf' \
-  'image/terminfo/xterm-256color.src /tmp/xterm-256color.src' \
-  'tic -x -o /usr/share/terminfo /tmp/xterm-256color.src' \
-  'image/terminfo/tmux-256color.src /tmp/tmux-256color.src' \
-  'tic -x -o /usr/share/terminfo /tmp/tmux-256color.src' \
-  'image/terminfo/xterm-direct.src /tmp/xterm-direct.src' \
-  'tic -x -o /usr/share/terminfo /tmp/xterm-direct.src' \
-  'image/terminfo/tmux-direct.src /tmp/tmux-direct.src' \
-  'tic -x -o /usr/share/terminfo /tmp/tmux-direct.src' \
+  'infocmp -x tmux-direct | grep -q' \
   'https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/docs/skills/index.json' \
   '--raw-base "https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/"' \
   '--out /home/dev/.agents/skills' \
@@ -166,12 +159,6 @@ require image/Containerfile \
   'USER dev' \
   'WORKDIR /home/dev' \
   'ENTRYPOINT ["/usr/local/bin/review-entrypoint"]'
-
-# The direct-color entries must carry the RGB boolean: without it tmux does
-# not recognize colors#0x1000000 as 24-bit (tmux info shows "RGB: [missing]")
-# and Goose's truecolor output is downsampled.
-require image/terminfo/xterm-direct.src 'RGB, am, bce'
-require image/terminfo/tmux-direct.src 'RGB, am, hs'
 
 # The FSDK base ships GNU findutils and diffutils, so review must not shim
 # them. Shims are how this regressed once already: the Python `find` bound `-o`
