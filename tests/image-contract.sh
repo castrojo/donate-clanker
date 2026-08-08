@@ -458,7 +458,7 @@ require image/entrypoint.sh \
   'core.hooksPath /opt/bluefin/git-hooks' \
   'checkout.defaultRemote origin' \
   'shopt -s nullglob' \
-  'validation_tools=(bats shellcheck hadolint systemd-analyze pre-commit just podman)' \
+  'validation_tools=(bats shellcheck hadolint systemd-analyze pre-commit just podman actionlint)' \
   'validation tools unavailable: ${missing_validation_tools[*]} (fsdk-containers#89)' \
   'tmux_fallback_term=xterm-256color' \
   'infocmp "${TERM:-}"' \

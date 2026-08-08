@@ -89,7 +89,7 @@ fi
 # package manager to obtain one (fsdk-containers#89). Naming them at startup
 # stops an agent from discovering it mid-task and reaching for a slow ad-hoc
 # `npx --yes` download.
-validation_tools=(bats shellcheck hadolint systemd-analyze pre-commit just podman)
+validation_tools=(bats shellcheck hadolint systemd-analyze pre-commit just podman actionlint)
 missing_validation_tools=()
 for validation_tool in "${validation_tools[@]}"; do
   if ! command -v "$validation_tool" >/dev/null 2>&1; then

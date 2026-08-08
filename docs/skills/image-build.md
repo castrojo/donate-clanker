@@ -150,7 +150,8 @@ fix.
    step and must not be an argument or environment layer.
 10. Treat the image as a task runtime, not a general validation distribution.
    At startup, probe the baseline validation commands (`bats`, `shellcheck`,
-   `hadolint`, `systemd-analyze`, `pre-commit`, `just`, and `podman`) and
+   `hadolint`, `systemd-analyze`, `pre-commit`, `just`, `podman`, and
+   `actionlint`) and
    report only the missing ones, naming fsdk-containers#89 so the absence is
    traceable — `just` comes from the FSDK base — without blocking Hive or
    installing them solely to hide the absence.
