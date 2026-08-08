@@ -278,6 +278,12 @@ resolves under `/usr/local/bin` — the shape a reintroduced shim would take.
   cross-distribution closure.
 - A local reimplementation of a standard utility, or a shim surviving a gap the
   FSDK base has since closed.
+- A document, prompt, or policy naming a tool as absent without executing it at
+  the pinned digest first. `local-agent-policy.md` told the agent that `which`,
+  `awk`, `xargs`, `ps`, `tar`, `less`, `file`, `diff` and `patch` were "not
+  installed" while all nine were present in `/usr/sbin`, so every task routed
+  around them into hand-rolled `sed`/`python3` substitutes. A false absence
+  claim costs the same as a missing tool and is invisible in a passing test.
 - A base gap described in a document instead of filed as an issue, or any
   section that exists to explain a known-broken thing.
 

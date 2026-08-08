@@ -71,6 +71,13 @@ if [ -d /opt/bluefin/git-hooks ]; then
   git config --global core.hooksPath /opt/bluefin/git-hooks || true
 fi
 
+# Contributor work forks the assigned repository, so `gh repo fork
+# --remote=true` leaves both `origin` and `upstream` tracking a `main`. Git
+# then refuses `git checkout main` with "matched multiple (2) remote tracking
+# branches" and prints this exact setting as the hint. Name the fork's remote
+# so the first checkout of a freshly forked repository just works.
+git config --global checkout.defaultRemote origin || true
+
 skills_root="${HOME}/.agents/skills"
 if [ -d "$skills_root" ]; then
   shopt -s nullglob
