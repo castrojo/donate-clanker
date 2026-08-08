@@ -107,10 +107,11 @@ fi
 # Hive's own documented flow. Running it in the foreground is deliberate: the
 # launcher never backgrounds or detaches the agent.
 # The attach client must describe the terminal that actually renders tmux.
-# FSDK includes only the narrow terminfo set compiled in the image, so fall
-# back to xterm when the caller's terminal is not available. A truecolor
-# caller (COLORTERM) gets the direct-color fallback; without it tmux
-# downsamples every pane color to 256 and Goose renders the wrong colors.
+# The base ships the full terminfo database, so the caller's TERM normally
+# resolves; the fallback covers terminals newer than the base's ncurses
+# (e.g. xterm-ghostty). A truecolor caller (COLORTERM) gets the direct-color
+# fallback; without it tmux downsamples every pane color to 256 and Goose
+# renders the wrong colors.
 tmux_fallback_term=xterm-256color
 if ! infocmp "${TERM:-}" >/dev/null 2>&1; then
   case "${COLORTERM:-}" in
