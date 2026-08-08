@@ -433,7 +433,8 @@ require image/config/local-agent-policy.md \
 # shellcheck disable=SC2016 # Literal policy text, not shell expansion.
 forbid image/config/local-agent-policy.md \
   'context7' \
-  '`which`, `awk`'
+  '`which`, `awk`' \
+  '`yq` and the PyYAML module'
 
 # GOOSE_PATH_ROOT keeps controlled policy/data/state out of Hive's runtime
 # config. The pinned runtime now links its knowledge export to Goose-native
@@ -455,8 +456,6 @@ require image/entrypoint.sh \
   'shopt -s nullglob' \
   'validation_tools=(bats shellcheck hadolint systemd-analyze pre-commit just podman)' \
   'validation tools unavailable: ${missing_validation_tools[*]} (fsdk-containers#89)' \
-  "python3 -c 'import yaml'" \
-  'no YAML parser: ${missing_parsers[*]} (fsdk-containers#88); read YAML as text' \
   'tmux_fallback_term=xterm-256color' \
   'infocmp "${TERM:-}"' \
   'TERM=${TERM:-<unset>} has no terminfo; using ${tmux_fallback_term}' \
