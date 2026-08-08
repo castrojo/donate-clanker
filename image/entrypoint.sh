@@ -115,7 +115,7 @@ fi
 tmux_fallback_term=xterm-256color
 if ! infocmp "${TERM:-}" >/dev/null 2>&1; then
   case "${COLORTERM:-}" in
-    truecolor | 24bit) tmux_fallback_term=xterm-direct ;;
+  truecolor | 24bit) tmux_fallback_term=xterm-direct ;;
   esac
   note "TERM=${TERM:-<unset>} has no terminfo; using ${tmux_fallback_term}"
   export TERM="$tmux_fallback_term"
