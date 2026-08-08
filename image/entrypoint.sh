@@ -100,17 +100,6 @@ if ((${#missing_validation_tools[@]})); then
   note "validation tools unavailable: ${missing_validation_tools[*]} (fsdk-containers#89)"
 fi
 
-# Assigned work is usually YAML -- workflows, manifests, skill frontmatter --
-# and the base ships no parser for it (fsdk-containers#88). Report that at
-# startup rather than letting it surface as a mid-task ModuleNotFoundError.
-# yq is a binary; PyYAML is a module, so neither check finds the other.
-missing_parsers=()
-command -v yq >/dev/null 2>&1 || missing_parsers+=(yq)
-python3 -c 'import yaml' >/dev/null 2>&1 || missing_parsers+=(PyYAML)
-if ((${#missing_parsers[@]})); then
-  note "no YAML parser: ${missing_parsers[*]} (fsdk-containers#88); read YAML as text"
-fi
-
 # --- Hand over to Hive -------------------------------------------------------
 #
 # contributor-agent.sh creates the tmux session named "contributor", starts the
