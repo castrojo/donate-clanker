@@ -312,8 +312,11 @@ Organization skills are generated at image build time from
 directory. Repositories may route agents to their own skill catalog, but
 per-repository skills are not automatically discovered at session startup.
 
-The image supplies `xterm-256color` and `tmux-256color` terminfo definitions.
-It preserves a recognized terminal type when attaching tmux and falls back to
+The image supplies `xterm-256color` and `tmux-256color` terminfo definitions
+plus their direct-color (`-direct`) variants. tmux panes run `tmux-direct`,
+so 24-bit color is a terminfo fact and tmux passes RGB through to terminals
+that support it, downsampling only for weaker attach clients. It preserves a
+recognized terminal type when attaching tmux and falls back to
 `xterm-256color` only when that type is unavailable in the image.
 
 The pinned FSDK base ships GNU findutils 4.10.0 and diffutils 3.12, so the
