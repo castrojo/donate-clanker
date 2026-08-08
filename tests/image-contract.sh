@@ -430,6 +430,7 @@ require image/config/local-agent-policy.md \
 # The policy tells the agent what the runtime lacks, so a tool the base
 # actually ships must never be named as absent: that steers every task into a
 # hand-rolled substitute. These are present at the pinned base digest.
+# shellcheck disable=SC2016 # Literal policy text, not shell expansion.
 forbid image/config/local-agent-policy.md \
   'context7' \
   '`which`, `awk`'
