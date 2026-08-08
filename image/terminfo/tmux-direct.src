@@ -1,6 +1,6 @@
 # Reconstructed via infocmp from the ncurses tmux-direct entry.
 tmux-direct|tmux with direct-color indexing,
-	am, hs, km, mir, msgr, xenl,
+	RGB, am, hs, km, mir, msgr, xenl,
 	colors#0x1000000, cols#80, it#8, lines#24, pairs#0x10000,
 	acsc=++\,\,--..00``aaffgghhiijjkkllmmnnooppqqrrssttuuvvwwxxyyzz{{||}}~~,
 	bel=^G, blink=\E[5m, bold=\E[1m, cbt=\E[Z, civis=\E[?25l,

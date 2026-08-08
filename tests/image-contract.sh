@@ -167,6 +167,12 @@ require image/Containerfile \
   'WORKDIR /home/dev' \
   'ENTRYPOINT ["/usr/local/bin/review-entrypoint"]'
 
+# The direct-color entries must carry the RGB boolean: without it tmux does
+# not recognize colors#0x1000000 as 24-bit (tmux info shows "RGB: [missing]")
+# and Goose's truecolor output is downsampled.
+require image/terminfo/xterm-direct.src 'RGB, am, bce'
+require image/terminfo/tmux-direct.src 'RGB, am, hs'
+
 # The FSDK base ships GNU findutils and diffutils, so review must not shim
 # them. Shims are how this regressed once already: the Python `find` bound `-o`
 # more loosely than GNU does, so Hive's relay expression handed `-exec rm` a
@@ -462,6 +468,7 @@ require image/entrypoint.sh \
   'validation tools unavailable: ${missing_validation_tools[*]} (fsdk-containers#89)' \
   'tmux_fallback_term=xterm-256color' \
   'infocmp "${TERM:-}"' \
+  'truecolor | 24bit) tmux_fallback_term=xterm-direct ;;' \
   'TERM=${TERM:-<unset>} has no terminfo; using ${tmux_fallback_term}' \
   '/usr/local/bin/contributor-agent.sh "$@" &' \
   'tmux has-session -t contributor' \

@@ -1,6 +1,6 @@
 # Reconstructed via infocmp from the ncurses xterm-direct entry.
 xterm-direct|xterm with direct-color indexing,
-	am, bce, km, mc5i, mir, msgr, npc, xenl,
+	RGB, am, bce, km, mc5i, mir, msgr, npc, xenl,
 	colors#0x1000000, cols#80, it#8, lines#24, pairs#0x10000,
 	acsc=``aaffggiijjkkllmmnnooppqqrrssttuuvvwwxxyyzz{{||}}~~,
 	bel=^G, blink=\E[5m, bold=\E[1m, cbt=\E[Z, civis=\E[?25l,

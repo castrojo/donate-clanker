@@ -1107,6 +1107,10 @@ review-container profile="" effort="":
       # file mounted over itself.
       --volume "${HIVE_CONTRIBUTOR_ENV}:/home/dev/.config/hive/contributor.env:ro"
       --env "AGENT_BACKEND=goose"
+      # Podman does not pass COLORTERM through on its own; the entrypoint
+      # needs it to pick the direct-color attach fallback for a host TERM
+      # the image's narrow terminfo set does not know (e.g. xterm-ghostty).
+      --env COLORTERM
     )
     [[ -n "$GOOSE_PROVIDER" ]] && CONTAINER_ARGS+=(--env "GOOSE_PROVIDER=${GOOSE_PROVIDER}")
     [[ -n "$GOOSE_MODEL" ]] && CONTAINER_ARGS+=(--env "GOOSE_MODEL=${GOOSE_MODEL}")
