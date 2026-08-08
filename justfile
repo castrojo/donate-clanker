@@ -132,11 +132,14 @@ GOOSE_FIXIT_HINT="Run: goose configure, select GitHub Copilot, and complete the 
 goose_configured() {
   # An explicit GOOSE_PROVIDER counts as configured because the launcher
   # passes it straight through to the guest; otherwise Goose's own config
-  # must name a provider. A GitHub login alone is deliberately NOT enough:
-  # Goose still needs a provider selected before it can talk to a model.
+  # must name a provider. Current Goose records the selection as
+  # 'active_provider:' beside a 'providers:' map; older releases wrote a
+  # bare 'provider:' — accept either. A GitHub login alone is deliberately
+  # NOT enough: Goose still needs a provider selected before it can talk
+  # to a model.
   [[ -n "${GOOSE_PROVIDER:-}" ]] && return 0
   local cfg="${HOME}/.config/goose/config.yaml"
-  [[ -s "$cfg" ]] && grep -Eq '^[[:space:]]*(GOOSE_PROVIDER|provider):[[:space:]]*[^[:space:]#]' "$cfg"
+  [[ -s "$cfg" ]] && grep -Eq '^[[:space:]]*(GOOSE_PROVIDER|provider|active_provider):[[:space:]]*[^[:space:]#]' "$cfg"
 }
 require_copilot_provider() {
   local provider="${GOOSE_PROVIDER:-}"
@@ -536,10 +539,83 @@ prepare_pinned_hive_checkout() {
     return 1
   }
 }
+hive_registration_name() {
+  # Which hive registration this launch uses. REVIEW_HIVE names one
+  # explicitly; otherwise the current repository's directory names it, so
+  # running from another checkout contributes to that project's hive once
+  # it is registered. Empty means the default registration.
+  HIVE_REGISTRATION_NAME=""
+  if [[ -n "${REVIEW_HIVE:-}" ]]; then
+    [[ "$REVIEW_HIVE" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || {
+      echo "ERROR: REVIEW_HIVE='${REVIEW_HIVE}' is not a valid registration name." >&2
+      echo "  Use [a-zA-Z0-9][a-zA-Z0-9_.-]*, e.g. REVIEW_HIVE=endusers." >&2
+      return 1
+    }
+    HIVE_REGISTRATION_NAME="$REVIEW_HIVE"
+    return 0
+  fi
+  command -v git &>/dev/null || return 0
+  local top base
+  top="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+  base="${top##*/}"
+  [[ "$base" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ ]] || return 0
+  HIVE_REGISTRATION_NAME="$base"
+}
+register_named_hive() {
+  # Register a dedicated hive under this name WITHOUT touching the default
+  # registration: upstream contribute-setup writes into a throwaway
+  # config_dir and the result is installed as contributor.<name>.env.
+  # With HIVE_HUB unset upstream lists the caller's hives and asks which
+  # one; an exported HIVE_HUB is honored as-is.
+  local target="$1" tmp
+  if [[ "${REVIEW_NON_INTERACTIVE:-}" == "true" ]]; then
+    print_missing_hive_setup_guidance "$target" "non-interactive mode cannot answer the upstream prompts" goose "$HIVE_COMMIT"
+    return 1
+  fi
+  if ! can_run_attended_hive_setup; then
+    echo "ERROR: no hive registration named '${HIVE_REGISTRATION_NAME}' at ${target}." >&2
+    echo "  Register one from an interactive terminal: REVIEW_HIVE=${HIVE_REGISTRATION_NAME} just ${REVIEW_RECIPE:-review}" >&2
+    return 1
+  fi
+  for cmd in just gh git; do
+    command -v "$cmd" &>/dev/null || { echo "ERROR: '${cmd}' is required to run contribute-setup." >&2; return 1; }
+  done
+  prepare_pinned_hive_checkout || return 1
+  echo "Registering hive '${HIVE_REGISTRATION_NAME}': upstream contribute-setup with an isolated config_dir."
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-hive-setup.XXXXXX")"
+  HIVE_SKIP_VERSION_CHECK=true just --working-directory "$HIVE_SRC_DIR" --justfile "$HIVE_SRC_DIR/Justfile" config_dir="$tmp" contribute-setup goose || {
+    rm -rf "$tmp"
+    echo "ERROR: upstream contribute-setup did not complete; nothing was registered." >&2
+    return 1
+  }
+  [[ -f "$tmp/contributor.env" ]] || {
+    rm -rf "$tmp"
+    echo "ERROR: contribute-setup ran but produced no contributor.env." >&2
+    return 1
+  }
+  mkdir -p "${HOME}/.config/hive"
+  cp "$tmp/contributor.env" "$target"
+  chmod 600 "$target"
+  rm -rf "$tmp"
+  echo "✓ hive '${HIVE_REGISTRATION_NAME}' registered: ${target}"
+}
 ensure_hive_contributor_env() {
-  # Upstream 'just contribute-setup goose' writes this file. It is the only
-  # host state the guest genuinely needs, and Hive owns its format.
-  HIVE_CONTRIBUTOR_ENV="${HOME}/.config/hive/contributor.env"
+  # Upstream 'just contribute-setup goose' writes these files. They are the
+  # only host state the guest genuinely needs, and Hive owns their format.
+  # Selection: an explicit REVIEW_HIVE name, then the current repository's
+  # name, then the default registration.
+  local hive_dir="${HOME}/.config/hive"
+  HIVE_CONTRIBUTOR_ENV="${hive_dir}/contributor.env"
+  hive_registration_name || return 1
+  if [[ -n "$HIVE_REGISTRATION_NAME" ]]; then
+    local named="${hive_dir}/contributor.${HIVE_REGISTRATION_NAME}.env"
+    if [[ -f "$named" ]]; then
+      HIVE_CONTRIBUTOR_ENV="$named"
+    elif [[ -n "${REVIEW_HIVE:-}" ]]; then
+      register_named_hive "$named" || return 1
+      HIVE_CONTRIBUTOR_ENV="$named"
+    fi
+  fi
   [[ -f "$HIVE_CONTRIBUTOR_ENV" ]] && return 0
   if [[ "${REVIEW_NON_INTERACTIVE:-}" == "true" ]]; then
     print_missing_hive_setup_guidance "$HIVE_CONTRIBUTOR_ENV" "non-interactive mode cannot answer the upstream prompts" goose "$HIVE_COMMIT"
@@ -569,6 +645,21 @@ ensure_hive_contributor_env() {
   HIVE_SKIP_VERSION_CHECK=true just --working-directory "$HIVE_SRC_DIR" --justfile "$HIVE_SRC_DIR/Justfile" contribute-setup goose
   [[ -f "$HIVE_CONTRIBUTOR_ENV" ]] || { echo "ERROR: contribute-setup ran but ${HIVE_CONTRIBUTOR_ENV} still missing." >&2; return 1; }
   echo "✓ Upstream contribute-setup complete."
+}
+report_hive_selection() {
+  # Say out loud which hive this launch contributes to. A silent default is
+  # how a contributor ends up watching one hub's dashboard while their agent
+  # asks another for work. The token is never printed — the hub only.
+  local hub
+  hub="$(read_hive_value HIVE_HUB)"
+  if [[ -n "$HIVE_REGISTRATION_NAME" && "$HIVE_CONTRIBUTOR_ENV" == *"contributor.${HIVE_REGISTRATION_NAME}.env" ]]; then
+    echo "✓ hive: ${hub:-unknown} (registration '${HIVE_REGISTRATION_NAME}')"
+  else
+    echo "✓ hive: ${hub:-unknown} (default registration)"
+    if [[ -n "$HIVE_REGISTRATION_NAME" ]]; then
+      echo "  '${HIVE_REGISTRATION_NAME}' has no registration of its own; register one with: REVIEW_HIVE=${HIVE_REGISTRATION_NAME} just ${REVIEW_RECIPE:-review}"
+    fi
+  fi
 }
 read_hive_value() {
   local key="$1"
@@ -780,6 +871,7 @@ PY
 # agent until you stop it.
 # Usage: just review
 #        TOOL=goose just review
+#        REVIEW_HIVE=endusers just review   # use that named hive registration
 review:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -809,7 +901,9 @@ review:
     fi
     report_vm_github_identity_blocked
 
+    REVIEW_RECIPE=review
     ensure_hive_contributor_env
+    report_hive_selection
 
     RUN_ID="$(date +%s)-$$"
     umask 077
@@ -952,6 +1046,10 @@ review:
 # Usage: just review-container [luna|opus5|kimi] [low|medium|high|max]
 # Env:   REVIEW_CONTAINER_NAME=<name>  run a concurrent second instance
 #        (default 'review-container'; must match [a-zA-Z0-9][a-zA-Z0-9_.-]*)
+#        REVIEW_HIVE=<name>  use ~/.config/hive/contributor.<name>.env; when
+#        missing, register a hive under that name. Without it, the current
+#        repository's directory name is tried, then the default
+#        ~/.config/hive/contributor.env.
 review-container profile="" effort="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -985,7 +1083,9 @@ review-container profile="" effort="":
 
     resolve_model_profile "{{profile}}" "{{effort}}"
     resolve_goose_selection
+    REVIEW_RECIPE=review-container
     ensure_hive_contributor_env
+    report_hive_selection
 
     CONTRIBUTOR_IMAGE="{{contributor_image}}"
     require_no_running_instance "$CONTAINER_NAME"
@@ -1001,6 +1101,11 @@ review-container profile="" effort="":
       # instead makes the mount readable without loosening the host mode.
       --userns "keep-id:uid=1000,gid=1000"
       --volume "${HOME}/.config/hive:/home/dev/.config/hive:ro"
+      # The selected registration lands on the path the relay reads. When a
+      # named registration (contributor.<name>.env) is in play this overlays
+      # it on top of the directory mount; with the default it is the same
+      # file mounted over itself.
+      --volume "${HIVE_CONTRIBUTOR_ENV}:/home/dev/.config/hive/contributor.env:ro"
       --env "AGENT_BACKEND=goose"
     )
     [[ -n "$GOOSE_PROVIDER" ]] && CONTAINER_ARGS+=(--env "GOOSE_PROVIDER=${GOOSE_PROVIDER}")
@@ -1194,7 +1299,12 @@ review-doctor:
     echo ""
 
     echo "=== Hive contributor setup ==="
+    hive_registration_name || true
     HIVE_CONTRIBUTOR_ENV="${HOME}/.config/hive/contributor.env"
+    if [[ -n "${HIVE_REGISTRATION_NAME:-}" ]] &&
+      [[ -f "${HOME}/.config/hive/contributor.${HIVE_REGISTRATION_NAME}.env" ]]; then
+      HIVE_CONTRIBUTOR_ENV="${HOME}/.config/hive/contributor.${HIVE_REGISTRATION_NAME}.env"
+    fi
     if [[ -f "$HIVE_CONTRIBUTOR_ENV" ]]; then
       echo "  ✓ ${HIVE_CONTRIBUTOR_ENV} exists"
       pass=$((pass+1))

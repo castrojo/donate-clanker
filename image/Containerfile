@@ -161,14 +161,23 @@ COPY --chmod=0755 image/bin/bluefin-review /usr/local/bin/bluefin-review
 
 # FSDK intentionally omits terminfo. Supply the terminal descriptions used by
 # the attach client and tmux panes without layering a general terminal database.
+# The direct-color entries make 24-bit color a terminfo fact rather than a
+# tmux terminal-features override; the 256color entries remain the attach
+# fallback for host TERM values the image does not know.
 COPY image/terminfo/xterm-256color.src /tmp/xterm-256color.src
 COPY image/terminfo/tmux-256color.src /tmp/tmux-256color.src
+COPY image/terminfo/xterm-direct.src /tmp/xterm-direct.src
+COPY image/terminfo/tmux-direct.src /tmp/tmux-direct.src
 RUN set -eu; \
     tic -x -o /usr/share/terminfo /tmp/xterm-256color.src; \
     tic -x -o /usr/share/terminfo /tmp/tmux-256color.src; \
-    rm /tmp/xterm-256color.src /tmp/tmux-256color.src; \
+    tic -x -o /usr/share/terminfo /tmp/xterm-direct.src; \
+    tic -x -o /usr/share/terminfo /tmp/tmux-direct.src; \
+    rm /tmp/xterm-256color.src /tmp/tmux-256color.src /tmp/xterm-direct.src /tmp/tmux-direct.src; \
     infocmp xterm-256color >/dev/null; \
-    infocmp tmux-256color >/dev/null
+    infocmp tmux-256color >/dev/null; \
+    infocmp xterm-direct >/dev/null; \
+    infocmp tmux-direct >/dev/null
 
 # Pull the contributor-mode runtime directly from the pinned Hive commit. The
 # launcher still depends on Hive's relay protocol and tmux contract; we just own

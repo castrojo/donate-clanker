@@ -150,7 +150,8 @@ fix.
    step and must not be an argument or environment layer.
 10. Treat the image as a task runtime, not a general validation distribution.
    At startup, probe the baseline validation commands (`bats`, `shellcheck`,
-   `hadolint`, `systemd-analyze`, `pre-commit`, `just`, and `podman`) and
+   `hadolint`, `systemd-analyze`, `pre-commit`, `just`, `podman`, and
+   `actionlint`) and
    report only the missing ones, naming fsdk-containers#89 so the absence is
    traceable — `just` comes from the FSDK base — without blocking Hive or
    installing them solely to hide the absence.
@@ -178,7 +179,10 @@ fix.
     cold/warm builds, and native amd64/arm64 runtime behavior before and after
     each composition change. Deleting inherited files in a later layer does not
     reclaim the base layer.
-The publish workflow moves `:stable` on main. It also publishes immutable
+The publish workflow moves `:stable` on main and re-runs hourly on a
+schedule so a moved Goose `canary` asset reaches `:stable` without waiting
+for a merge; a scheduled run that resolves the same asset digests the
+published image already carries skips the build. It also publishes immutable
 `sha-<commit>` tags; use an immutable tag or digest when reproducibility is
 required. Do not use `:latest`.
 ## Pin Maintenance

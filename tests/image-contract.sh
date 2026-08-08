@@ -152,6 +152,10 @@ require image/Containerfile \
   'tic -x -o /usr/share/terminfo /tmp/xterm-256color.src' \
   'image/terminfo/tmux-256color.src /tmp/tmux-256color.src' \
   'tic -x -o /usr/share/terminfo /tmp/tmux-256color.src' \
+  'image/terminfo/xterm-direct.src /tmp/xterm-direct.src' \
+  'tic -x -o /usr/share/terminfo /tmp/xterm-direct.src' \
+  'image/terminfo/tmux-direct.src /tmp/tmux-direct.src' \
+  'tic -x -o /usr/share/terminfo /tmp/tmux-direct.src' \
   'https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/docs/skills/index.json' \
   '--raw-base "https://raw.githubusercontent.com/projectbluefin/common/${SKILLS_COMMIT}/"' \
   '--out /home/dev/.agents/skills' \
@@ -454,7 +458,7 @@ require image/entrypoint.sh \
   'core.hooksPath /opt/bluefin/git-hooks' \
   'checkout.defaultRemote origin' \
   'shopt -s nullglob' \
-  'validation_tools=(bats shellcheck hadolint systemd-analyze pre-commit just podman)' \
+  'validation_tools=(bats shellcheck hadolint systemd-analyze pre-commit just podman actionlint)' \
   'validation tools unavailable: ${missing_validation_tools[*]} (fsdk-containers#89)' \
   'tmux_fallback_term=xterm-256color' \
   'infocmp "${TERM:-}"' \
@@ -541,7 +545,8 @@ forbid image/entrypoint.sh \
   'tmux_term=xterm-256color'
 
 require image/tmux.conf \
-  'set -g default-terminal "tmux-256color"' \
+  'set -g default-terminal "tmux-direct"' \
+  'set-environment -g COLORTERM "truecolor"' \
   'set -g mouse on' \
   'set -g history-limit 50000'
 
