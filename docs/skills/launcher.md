@@ -60,11 +60,25 @@ Goose, or image build skill documents.
 4. Keep the container path narrow too. It mounts only the read-only Hive
    contributor configuration and runs the image entrypoint, which attaches to
    Hive's `contributor` session.
+   Which hive a launch contributes to is launcher configuration, not task
+   selection: `~/.config/hive/contributor.<name>.env` registrations sit
+   beside the default `contributor.env`, and the launch picks `REVIEW_HIVE`
+   first, then the current repository's directory name, then the default.
+   An explicit `REVIEW_HIVE` with no file yet registers one by running
+   upstream `contribute-setup` with an isolated `config_dir` so the default
+   registration is never clobbered. Every launch prints the hub it will
+   talk to; a silent default is how a contributor ends up watching one
+   hub's dashboard while their agent asks another for work.
 5. Keep Goose Copilot-only. The launcher resolves a Copilot credential for the
    provider secret and recomputes the provider and model from the environment
    at every launch. Nothing is persisted: not a secret, not a provider, not a
    model. There is no last-selection file, and `tests/just-onboarding.sh`
    asserts one is never written.
+   The configured-provider preflight reads Goose's own config and must
+   accept both keys Goose has shipped: current releases record the
+   selection as `active_provider:` beside a `providers:` map, older ones
+   wrote a bare `provider:`. Goose migrates the host file on its own, so
+   a preflight that knows only one key strands a configured host.
    `review-container` must set its own thinking-effort default before forming
    the Podman environment, while still honoring `GOOSE_THINKING_EFFORT` from
    the caller. Do not apply that container default to the VM or replace the

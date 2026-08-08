@@ -136,6 +136,12 @@ esac
 EOF
 cat >"$fake_bin/git" <<'EOF'
 #!/usr/bin/env bash
+# rev-parse --show-toplevel is read-only and local; answer it honestly so the
+# launcher's repo-derived hive registration name can be exercised. Everything
+# else stays hermetic.
+if [[ "${1:-}" == "rev-parse" && "${2:-}" == "--show-toplevel" ]]; then
+  exec /usr/bin/git "$@"
+fi
 exit 97
 EOF
 # brew is faked so vm_firmware's search roots can never resolve to a real
@@ -469,6 +475,26 @@ run_recipe review GH_READY=1
 assert_nonzero_status "$STATUS" "a provider-less goose config must fail the launch"
 assert_eq "$(error_line_count "$OUT")" 1 "expected exactly one ERROR: line"
 assert_contains "goose configure" "$OUT"
+write_goose_config
+
+begin "preflight: Goose's current active_provider config counts as configured"
+# Goose >= 1.45 records the selection as 'active_provider:' beside a
+# 'providers:' map; the launcher must accept it or every launch dies on
+# "Goose has no usable provider configuration" after Goose migrates the
+# host config. No VM disk is seeded, so a passing preflight surfaces as
+# the VM-disk error instead.
+cat >"$home/.config/goose/config.yaml" <<'EOF'
+providers:
+  github_copilot:
+    enabled: true
+    model: kimi-k3
+    configured: true
+active_provider: github_copilot
+EOF
+run_recipe review GH_READY=1
+assert_nonzero_status "$STATUS" "no VM disk is available in this scenario"
+assert_not_contains "Goose has no usable provider configuration" "$OUT"
+assert_contains "no review VM disk is available for this host" "$OUT"
 write_goose_config
 
 begin "preflight: unsupported GOOSE_PROVIDER yields one actionable Copilot-only error"
@@ -819,7 +845,7 @@ else
 fi
 
 # ══ 4. Container recipe ═══════════════════════════════════════════════════
-begin "review-container: exactly one foreground podman run, hive mount only"
+begin "review-container: exactly one foreground podman run, hive mounts only"
 reset_logs
 run_recipe review-container GH_READY=1 \
   GOOSE_MODEL=gpt-test
@@ -827,6 +853,7 @@ assert_nonzero_status "$STATUS" "the fake podman always exits non-zero"
 assert_eq "$(wc -l <"$runner_log")" 1 "expected exactly one podman invocation"
 assert_file_contains "run --rm --interactive --tty --replace --name review-container" "$runner_log"
 assert_file_contains "--volume ${home}/.config/hive:/home/dev/.config/hive:ro" "$runner_log"
+assert_file_contains "--volume ${home}/.config/hive/contributor.env:/home/dev/.config/hive/contributor.env:ro" "$runner_log"
 assert_file_contains "--env AGENT_BACKEND=goose" "$runner_log"
 assert_file_contains "--env GOOSE_PROVIDER=github_copilot" "$runner_log"
 assert_file_contains "--env GOOSE_MODEL=gpt-test" "$runner_log"
@@ -842,6 +869,57 @@ assert_eq "$(wc -c <"$qemu_log")" 0 "the container recipe must not start a VM"
 # A moving tag must be refreshed on every launch, or a contributor silently
 # keeps running whatever copy they first pulled.
 assert_file_contains "pull ghcr.io/projectbluefin/review:stable" "$image_log"
+
+begin "hive selection: the current repository's registration wins when it exists"
+reset_logs
+cat >"$home/.config/hive/contributor.review.env" <<'EOF'
+HIVE_REGISTRATION_TOKEN=named-secret-token
+HIVE_HUB=wss://named-hive.invalid/contribute
+CONTRIBUTOR_ID=test-contributor-named
+CONTRIBUTOR_USERNAME=test-user
+AGENT_BACKEND=goose
+EOF
+# The tests run with the review repository as cwd, so the repo-derived
+# registration name is 'review'.
+run_recipe review-container GH_READY=1 GOOSE_MODEL=gpt-test
+assert_file_contains "--volume ${home}/.config/hive/contributor.review.env:/home/dev/.config/hive/contributor.env:ro" "$runner_log"
+assert_contains "hive: wss://named-hive.invalid/contribute (registration 'review')" "$OUT"
+assert_not_contains "super-secret-registration-token" "$OUT"
+assert_not_contains "named-secret-token" "$OUT"
+assert_file_not_contains "named-secret-token" "$runner_log"
+rm -f "$home/.config/hive/contributor.review.env"
+
+begin "hive selection: no repo registration falls back to the default and says so"
+reset_logs
+run_recipe review-container GH_READY=1 GOOSE_MODEL=gpt-test
+assert_file_contains "--volume ${home}/.config/hive/contributor.env:/home/dev/.config/hive/contributor.env:ro" "$runner_log"
+assert_contains "hive: wss://example.invalid/contribute (default registration)" "$OUT"
+assert_contains "REVIEW_HIVE=review" "$OUT"
+
+begin "hive selection: REVIEW_HIVE overrides the repository-derived name"
+reset_logs
+cp "$home/.config/hive/contributor.env" "$home/.config/hive/contributor.otherhive.env"
+sed -i 's|wss://example.invalid/contribute|wss://other-hive.invalid/contribute|' \
+  "$home/.config/hive/contributor.otherhive.env"
+run_recipe review-container GH_READY=1 GOOSE_MODEL=gpt-test REVIEW_HIVE=otherhive
+assert_file_contains "--volume ${home}/.config/hive/contributor.otherhive.env:/home/dev/.config/hive/contributor.env:ro" "$runner_log"
+assert_contains "hive: wss://other-hive.invalid/contribute (registration 'otherhive')" "$OUT"
+rm -f "$home/.config/hive/contributor.otherhive.env"
+
+begin "hive selection: an invalid REVIEW_HIVE is one actionable error"
+reset_logs
+run_recipe review-container GH_READY=1 GOOSE_MODEL=gpt-test REVIEW_HIVE='bad;name'
+assert_nonzero_status "$STATUS" "an invalid REVIEW_HIVE must fail the launch"
+assert_eq "$(error_line_count "$OUT")" 1 "expected exactly one ERROR: line"
+assert_contains "REVIEW_HIVE='bad;name' is not a valid registration name" "$OUT"
+
+begin "hive selection: an unregistered REVIEW_HIVE names the fix when unattended"
+reset_logs
+run_recipe review-container GH_READY=1 GOOSE_MODEL=gpt-test REVIEW_HIVE=unregistered
+assert_nonzero_status "$STATUS" "an unregistered REVIEW_HIVE cannot register without a terminal"
+assert_contains "no hive registration named 'unregistered'" "$OUT"
+assert_contains "REVIEW_HIVE=unregistered just review-container" "$OUT"
+assert_file_not_exists "$home/.config/hive/contributor.unregistered.env"
 
 begin "review-container: the Copilot credential is passed, never a gh token"
 # Without this the agent starts a fresh device flow on every launch and the
